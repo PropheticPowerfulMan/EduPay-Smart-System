@@ -1,0 +1,136 @@
+services:
+  # ============================
+  # FRONTEND - React + Vite
+  # ============================
+  - type: web
+    name: edupay-web
+    env: node
+    region: oregon
+    plan: free
+    
+    buildCommand: >-
+      pnpm install &&
+      pnpm -r build --filter=web
+    
+    startCommand: >-
+      pnpm install -g serve &&
+      serve -s apps/web/dist -l 80
+    
+    envVars:
+      - key: NODE_ENV
+        value: production
+      
+      - key: VITE_API_URL
+        fromService:
+          name: edupay-api
+          property: host
+        scope: build
+      
+      - key: VITE_ENVIRONMENT
+        value: production
+
+  # ============================
+  # API - Node.js + Express
+  # ============================
+  - type: web
+    name: edupay-api
+    env: node
+    region: oregon
+    plan: free
+    
+    buildCommand: >-
+      pnpm install &&
+      pnpm -r build --filter=api
+    
+    startCommand: >-
+      pnpm -r prisma:deploy &&
+      node apps/api/dist/src/server.js
+    
+    envVars:
+      - key: NODE_ENV
+        value: production
+      
+      - key: DATABASE_URL
+        fromDatabase:
+          name: edupay-postgres
+          property: connectionString
+      
+      - key: REDIS_URL
+        fromService:
+          name: edupay-redis
+          property: connectionString
+      
+      - key: JWT_SECRET
+        scope: project
+      
+      - key: API_PORT
+        value: "4000"
+      
+      - key: API_HOST
+        value: "0.0.0.0"
+      
+      - key: FRONTEND_URL
+        fromService:
+          name: edupay-web
+          property: host
+
+  # ============================
+  # DATABASE - PostgreSQL
+  # ============================
+  - type: pserv
+    name: edupay-postgres
+    env: postgres
+    region: oregon
+    plan: free
+    
+    ipAllowList: []
+    
+    envVars:
+      - key: POSTGRES_USER
+        value: edupay_user
+      
+      - key: POSTGRES_PASSWORD
+        scope: project
+      
+      - key: POSTGRES_INITDB_ARGS
+        value: "--encoding=UTF8"
+
+  # ============================
+  # CACHE - Redis
+  # ============================
+  - type: redis
+    name: edupay-redis
+    region: oregon
+    plan: free
+    ipAllowList: []
+
+  # ============================
+  # AI SERVICE - Python (optionnel)
+  # ============================
+  - type: web
+    name: edupay-ai
+    env: python
+    region: oregon
+    plan: free
+    
+    buildCommand: >-
+      pip install --upgrade pip &&
+      pip install -r apps/ai-service/requirements.txt
+    
+    startCommand: >-
+      python -m uvicorn apps.ai-service.app.main:app
+      --host 0.0.0.0 --port 8000
+    
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+
+# ============================
+# DATABASE DEPLOYMENT
+# ============================
+databases:
+  - name: edupay-postgres
+    engine: postgres
+    version: "16"
+    plan: free
+    region: oregon

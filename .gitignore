@@ -1,0 +1,13 @@
+node_modules
+dist
+build
+coverage
+.env
+.env.*
+!.env.example
+pnpm-lock.yaml
+apps/api/prisma/migrations
+__pycache__
+.pytest_cache
+.venv
+*.pyc
