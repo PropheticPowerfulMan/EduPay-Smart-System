@@ -22,11 +22,13 @@ export function Sidebar() {
         {/* Header */}
         <div className="space-y-4">
           <div className="flex items-center gap-3 p-4 rounded-xl glass hover:bg-slate-700/40 transition-all duration-300">
-            <img 
-              src={schoolBranding.logoSrc} 
-              alt={`Logo ${schoolBranding.schoolName}`} 
-              className="h-12 w-12 rounded-xl bg-gradient-to-br from-brand-500 to-accent-dark p-2" 
-            />
+            <div className="logo-glass h-12 w-12 rounded-xl flex items-center justify-center">
+              <img 
+                src={schoolBranding.logoSrc} 
+                alt={`Logo ${schoolBranding.schoolName}`} 
+                className="h-10 w-10 object-contain" 
+              />
+            </div>
             <div>
               <p className="font-display font-bold text-white text-sm leading-tight">{schoolBranding.schoolName}</p>
               <p className="text-xs text-brand-300">{schoolBranding.tagline}</p>

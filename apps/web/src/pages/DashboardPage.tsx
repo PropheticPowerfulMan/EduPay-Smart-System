@@ -66,9 +66,9 @@ export function DashboardPage() {
   ];
 
   return (
-    <div className="space-y-8 pb-8">
+    <div className="space-y-8 pb-8 animate-fadeInUp">
       {/* Header */}
-      <div className="space-y-2 animate-fadeInDown">
+      <div className="space-y-2 animate-fadeInDown glass px-8 py-6 rounded-2xl shadow-xl border border-brand-500/20">
         <h1 className="font-display text-3xl font-bold text-white">{t("dashboardTitle")}</h1>
         <p className="text-ink-dim">{t("financialPerformance")}</p>
       </div>
@@ -78,7 +78,7 @@ export function DashboardPage() {
         {kpis.map((kpi, idx) => (
           <div 
             key={kpi.label}
-            className="card group overflow-hidden relative"
+            className="card group overflow-hidden relative glass border border-brand-500/10 shadow-lg animate-fadeInUp"
             style={{ animationDelay: `${idx * 0.1}s` }}
           >
             {/* Background gradient effect */}
@@ -101,7 +101,7 @@ export function DashboardPage() {
       {/* Charts Section */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Bar Chart */}
-        <div className="card animate-fadeInLeft">
+        <div className="card glass animate-fadeInLeft border border-blue-500/10 shadow-lg">
           <div className="mb-6">
             <h3 className="font-display text-lg font-bold text-white">{t("financialPerformance")}</h3>
             <p className="text-xs text-ink-dim mt-1">{t("monthlyAnalysis")}</p>
@@ -132,7 +132,7 @@ export function DashboardPage() {
         </div>
 
         {/* Pie Chart */}
-        <div className="card animate-fadeInRight">
+        <div className="card glass animate-fadeInRight border border-emerald-500/10 shadow-lg">
           <div className="mb-6">
             <h3 className="font-display text-lg font-bold text-white">{t("paymentStatus")}</h3>
             <p className="text-xs text-ink-dim mt-1">{t("paymentDistribution")}</p>
@@ -165,7 +165,7 @@ export function DashboardPage() {
       </div>
 
       {/* Summary Card */}
-      <div className="card glass animate-fadeInUp">
+      <div className="card glass animate-fadeInUp border border-brand-500/10 shadow-lg">
         <div className="grid md:grid-cols-3 gap-6">
           <div className="space-y-2">
             <p className="text-ink-dim text-sm">{t("systemStatus")}</p>
@@ -189,7 +189,7 @@ export function DashboardPage() {
       {alerts.length > 0 && (
         <div className="space-y-3 animate-fadeInDown">
           {alerts.map((a, i) => (
-            <div key={i} className={`rounded-lg border-l-4 p-4 shadow-lg ${
+            <div key={i} className={`rounded-lg border-l-4 p-4 shadow-lg glass ${
               a.type === "danger" ? "border-red-500 bg-red-900/20 text-red-200" :
               a.type === "warning" ? "border-amber-500 bg-amber-900/20 text-amber-200" :
               a.type === "info" ? "border-cyan-500 bg-cyan-900/20 text-cyan-200" :
@@ -210,7 +210,7 @@ export function DashboardPage() {
       )}
 
       {/* Suggestions d'action */}
-      <div className="card animate-fadeInUp">
+      <div className="card glass animate-fadeInUp border border-cyan-500/10 shadow-lg">
         <h2 className="font-display text-xl font-bold text-white mb-2">Suggestions d'action</h2>
         <ul className="list-disc pl-6 text-ink-dim text-sm space-y-1">
           <li>Relancer les parents en retard automatiquement.</li>

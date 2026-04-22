@@ -205,11 +205,13 @@ export function LoginPage() {
             
             <div className="relative z-10 space-y-4">
               <div className="flex items-center gap-4">
-                <img 
-                  src={schoolBranding.logoSrc} 
-                  alt={`Logo ${schoolBranding.schoolName}`} 
-                  className="h-16 w-16 rounded-xl border-2 border-white/30 bg-white/10 p-2 shadow-lg" 
-                />
+                <div className="logo-glass h-16 w-16 rounded-xl flex items-center justify-center border-2 border-white/30 shadow-lg">
+                  <img 
+                    src={schoolBranding.logoSrc} 
+                    alt={`Logo ${schoolBranding.schoolName}`} 
+                    className="h-12 w-12 object-contain" 
+                  />
+                </div>
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/80">{schoolBranding.shortName}</p>
                   <h1 className="font-display text-2xl font-bold text-white leading-tight">{schoolBranding.schoolName}</h1>

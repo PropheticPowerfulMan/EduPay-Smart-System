@@ -101,13 +101,13 @@ export function ParentTrackingPage() {
   }
 
   return (
-    <div className="space-y-8 pb-8">
-      <div className="animate-fadeInDown">
+    <div className="space-y-8 pb-8 animate-fadeInUp">
+      <div className="animate-fadeInDown glass px-8 py-6 rounded-2xl shadow-xl border border-brand-500/20">
         <h1 className="font-display text-3xl font-bold text-white">{t("parentTracking")}</h1>
         <p className="text-ink-dim mt-2">{t("parentFinancialDeepSubtitle")}</p>
       </div>
 
-      <div className="card animate-fadeInUp">
+      <div className="card glass animate-fadeInUp border border-brand-500/10 shadow-lg">
         <div className="space-y-4">
           <div>
             <p className="text-sm text-ink-dim mb-1">{t("parentName")}</p>
@@ -127,26 +127,26 @@ export function ParentTrackingPage() {
       </div>
 
       <div className="grid gap-6 md:grid-cols-4">
-        <div className="card">
+        <div className="card glass border border-brand-500/10 shadow-lg">
           <p className="text-ink-dim text-sm mb-2">{t("expectedTotal")}</p>
           <p className="font-display text-2xl font-bold text-brand-300">{formatMoney(summary.totalExpected)}</p>
         </div>
-        <div className="card">
+        <div className="card glass border border-emerald-500/10 shadow-lg">
           <p className="text-ink-dim text-sm mb-2">{t("paidTotal")}</p>
           <p className="font-display text-2xl font-bold text-emerald-400">{formatMoney(summary.totalPaid)}</p>
         </div>
-        <div className="card">
+        <div className="card glass border border-red-500/10 shadow-lg">
           <p className="text-ink-dim text-sm mb-2">{t("debtTotal")}</p>
           <p className="font-display text-2xl font-bold text-red-400">{formatMoney(summary.totalDebt)}</p>
         </div>
-        <div className="card">
+        <div className="card glass border border-cyan-500/10 shadow-lg">
           <p className="text-ink-dim text-sm mb-2">{t("parentCompletionRate")}</p>
           <p className="font-display text-2xl font-bold text-cyan-300">{summary.completionRate.toFixed(1)}%</p>
         </div>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <div className="card lg:col-span-2">
+        <div className="card glass lg:col-span-2 border border-brand-500/10 shadow-lg">
           <h2 className="font-display text-xl font-bold text-white mb-5">{t("financialObligations")}</h2>
           <div className="grid md:grid-cols-3 gap-4">
             <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 p-4">
@@ -171,7 +171,7 @@ export function ParentTrackingPage() {
           <p className="mt-3 text-sm text-ink-dim">{t("financialHealthHint")}</p>
         </div>
 
-        <div className="card">
+        <div className="card glass border border-emerald-500/10 shadow-lg">
           <h2 className="font-display text-xl font-bold text-white mb-4">{t("recentPayments")}</h2>
           <div className="space-y-3">
             {summary.paymentTimeline.length === 0 && (
@@ -190,7 +190,7 @@ export function ParentTrackingPage() {
 
       <div className="space-y-6">
         {summary.studentsMetrics.map((student, idx) => (
-          <div key={student.id} className="card animate-fadeInUp" style={{ animationDelay: `${idx * 0.1}s` }}>
+          <div key={student.id} className="card glass animate-fadeInUp border border-brand-500/10 shadow-lg" style={{ animationDelay: `${idx * 0.1}s` }}>
             <div className="space-y-6">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>

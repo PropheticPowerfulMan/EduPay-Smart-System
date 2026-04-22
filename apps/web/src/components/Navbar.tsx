@@ -17,11 +17,13 @@ export function Navbar() {
           {/* Logo Section */}
           <div className="flex items-center gap-4">
             <div className="relative">
-              <img 
-                src={schoolBranding.logoSrc} 
-                alt={`Logo ${schoolBranding.schoolName}`} 
-                className="h-12 w-12 rounded-xl bg-gradient-to-br from-brand-500 to-brand-600 p-2 shadow-lg hover:shadow-brand-glow transition-all duration-300" 
-              />
+              <div className="logo-glass h-12 w-12 rounded-xl flex items-center justify-center shadow-lg">
+                <img 
+                  src={schoolBranding.logoSrc} 
+                  alt={`Logo ${schoolBranding.schoolName}`} 
+                  className="h-10 w-10 object-contain" 
+                />
+              </div>
               <div className="absolute inset-0 rounded-xl bg-gradient-to-br from-brand-500 to-transparent opacity-0 group-hover:opacity-20 transition-all"></div>
             </div>
             <div className="hidden sm:block">
