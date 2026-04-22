@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "packageManager": "pnpm@9.15.9",
   "scripts": {
+    "setup:dev": "pnpm install && pnpm --filter \"@edupay/api\" prisma:generate",
     "dev": "pnpm --filter \"@edupay/web\" --filter \"@edupay/api\" --parallel dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",

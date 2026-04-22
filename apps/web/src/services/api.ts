@@ -1,17 +1,40 @@
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/$/, "");
+
+function resolveApiUrl(path: string): string {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return API_BASE_URL ? `${API_BASE_URL}${normalizedPath}` : normalizedPath;
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const token = localStorage.getItem("edupay_token");
-  const response = await fetch(path, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(init?.headers || {})
-    }
-  });
+  const url = resolveApiUrl(path);
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(init?.headers || {})
+      }
+    });
+  } catch {
+    throw new Error("Impossible de joindre l'API. Verifiez que le backend tourne sur http://localhost:4000.");
+  }
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: "Erreur API" }));
-    throw new Error(error.message || "Erreur API");
+    const errorFromJson = await response.json().catch(() => null) as { message?: string } | null;
+    if (errorFromJson?.message) {
+      throw new Error(errorFromJson.message);
+    }
+
+    const errorText = await response.text().catch(() => "");
+    throw new Error(errorText || `Erreur API (${response.status})`);
   }
 
   // Handle endpoints that return 204 No Content (e.g. DELETE)

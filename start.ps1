@@ -38,35 +38,18 @@ $choice = Read-Host "Enter choice (1-4)"
 switch ($choice) {
     "1" {
         Write-Host ""
-        Write-Host "🎬 Starting Development Mode (No Database)..." -ForegroundColor Green
-        Write-Host "Opening 2 terminals:" -ForegroundColor Cyan
+        Write-Host "🎬 Starting Development Mode..." -ForegroundColor Green
+        Write-Host "One command starts Web + API:" -ForegroundColor Cyan
+        Write-Host "  pnpm dev" -ForegroundColor Yellow
         Write-Host ""
-        
-        Write-Host "Terminal 1 - API Backend:" -ForegroundColor Yellow
-        Write-Host "  cd apps/api && npm run dev" -ForegroundColor Cyan
-        Write-Host ""
-        
-        Write-Host "Terminal 2 - Frontend:" -ForegroundColor Yellow
-        Write-Host "  cd apps/web && npm run dev" -ForegroundColor Cyan
-        Write-Host ""
-        
-        Write-Host "Press Enter to open first terminal..." -ForegroundColor Magenta
-        Read-Host
-        
-        # Open Terminal 1
-        Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd apps\api; npm run dev"
-        
-        Write-Host "Press Enter to open second terminal..." -ForegroundColor Magenta
-        Read-Host
-        
-        # Open Terminal 2
-        Start-Process powershell -ArgumentList "-NoExit", "-Command", "cd apps\web; npm run dev"
-        
-        Write-Host ""
-        Write-Host "✅ Terminals opened!" -ForegroundColor Green
-        Write-Host "   Frontend: http://localhost:5173" -ForegroundColor Cyan
+
+        Start-Process powershell -ArgumentList "-NoExit", "-Command", "pnpm dev"
+
+        Write-Host "✅ Development terminal opened!" -ForegroundColor Green
+        Write-Host "   Web: http://localhost:5173 (or next free port)" -ForegroundColor Cyan
         Write-Host "   API: http://localhost:4000" -ForegroundColor Cyan
         Write-Host "   Login: admin@school.com / password123" -ForegroundColor Yellow
+        Write-Host "   Parent: parent@school.com / password123" -ForegroundColor Yellow
     }
     
     "2" {
