@@ -13,12 +13,18 @@ type Overview = {
 export function DashboardPage() {
   const { t } = useI18n();
   const [data, setData] = useState<Overview | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api<Overview>("/api/analytics/overview").then(setData).catch(() => undefined);
+    api<Overview>("/api/analytics/overview")
+      .then(setData)
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
   }, []);
 
-  if (!data) return (
+  const display: Overview = data ?? { totalRevenue: 0, monthlyRevenue: 0, paymentSuccessRate: 0, outstandingDebt: 0 };
+
+  if (loading) return (
     <div className="flex items-center justify-center h-screen">
       <div className="animate-pulse">
         <div className="h-12 w-12 bg-gradient-to-r from-brand-500 to-accent rounded-lg"></div>
@@ -29,28 +35,28 @@ export function DashboardPage() {
   const kpis = [
     { 
       label: t("totalRevenue"), 
-      value: `$${data.totalRevenue.toLocaleString()}`, 
+      value: `$${display.totalRevenue.toLocaleString()}`, 
       icon: "💰", 
       gradient: "from-blue-500 to-blue-600",
       color: "text-blue-400"
     },
     { 
       label: t("monthlyRevenue"), 
-      value: `$${data.monthlyRevenue.toLocaleString()}`, 
+      value: `$${display.monthlyRevenue.toLocaleString()}`, 
       icon: "📈", 
       gradient: "from-emerald-500 to-emerald-600",
       color: "text-emerald-400"
     },
     { 
       label: t("successRate"), 
-      value: `${data.paymentSuccessRate.toFixed(1)}%`, 
+      value: `${display.paymentSuccessRate.toFixed(1)}%`, 
       icon: "✓", 
       gradient: "from-amber-500 to-amber-600",
       color: "text-amber-400"
     },
     { 
       label: t("outstandingDebt"), 
-      value: `$${data.outstandingDebt.toLocaleString()}`, 
+      value: `$${display.outstandingDebt.toLocaleString()}`, 
       icon: "⚠", 
       gradient: "from-red-500 to-red-600",
       color: "text-red-400"
@@ -101,9 +107,9 @@ export function DashboardPage() {
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={[
-                { name: t("totalRevenue"), value: data.totalRevenue },
-                { name: t("monthlyRevenue"), value: data.monthlyRevenue },
-                { name: t("outstandingDebt"), value: data.outstandingDebt }
+                { name: t("totalRevenue"), value: display.totalRevenue },
+                { name: t("monthlyRevenue"), value: display.monthlyRevenue },
+                { name: t("outstandingDebt"), value: display.outstandingDebt }
               ]}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.1)" />
                 <XAxis dataKey="name" stroke="#cbd5e1" style={{ fontSize: "12px" }} />
@@ -134,8 +140,8 @@ export function DashboardPage() {
               <PieChart>
                 <Pie
                   data={[
-                    { name: t("success"), value: data.paymentSuccessRate, fill: "#10b981" },
-                    { name: t("risk"), value: 100 - data.paymentSuccessRate, fill: "#ef4444" }
+                    { name: t("success"), value: display.paymentSuccessRate, fill: "#10b981" },
+                    { name: t("risk"), value: 100 - display.paymentSuccessRate, fill: "#ef4444" }
                   ]}
                   dataKey="value"
                   cx="50%"
