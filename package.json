@@ -2,9 +2,9 @@
   "name": "edupay-smart-system",
   "private": true,
   "version": "1.0.0",
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@9.15.9",
   "scripts": {
-    "dev": "pnpm -r --parallel dev",
+    "dev": "pnpm --filter \"@edupay/web\" --filter \"@edupay/api\" --parallel dev",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint"
@@ -12,8 +12,5 @@
   "workspaces": [
     "apps/*",
     "packages/*"
-  ],
-  "dependencies": {
-    "node": "^24.15.0"
-  }
+  ]
 }
