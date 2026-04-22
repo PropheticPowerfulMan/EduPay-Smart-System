@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Bar, BarChart, CartesianGrid, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useI18n } from "../i18n";
 import { api } from "../services/api";
+import { useAdminDashboardAlerts } from "../hooks/useAdminDashboardAlerts";
 
 type Overview = {
   totalRevenue: number;
@@ -14,6 +15,7 @@ export function DashboardPage() {
   const { t } = useI18n();
   const [data, setData] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
+  const alerts = useAdminDashboardAlerts();
 
   useEffect(() => {
     api<Overview>("/api/analytics/overview")
@@ -181,6 +183,42 @@ export function DashboardPage() {
             <p className="font-semibold text-brand-300">100%</p>
           </div>
         </div>
+      </div>
+
+      {/* Alertes intelligentes */}
+      {alerts.length > 0 && (
+        <div className="space-y-3 animate-fadeInDown">
+          {alerts.map((a, i) => (
+            <div key={i} className={`rounded-lg border-l-4 p-4 shadow-lg ${
+              a.type === "danger" ? "border-red-500 bg-red-900/20 text-red-200" :
+              a.type === "warning" ? "border-amber-500 bg-amber-900/20 text-amber-200" :
+              a.type === "info" ? "border-cyan-500 bg-cyan-900/20 text-cyan-200" :
+              "border-emerald-500 bg-emerald-900/20 text-emerald-200"
+            }`}>
+              <div className="flex items-center gap-3">
+                <span className="font-bold text-lg">{a.title}</span>
+                {a.actionLabel && a.onAction && (
+                  <button onClick={a.onAction} className="ml-auto px-3 py-1 rounded bg-brand-600 hover:bg-brand-700 text-white text-xs font-semibold">
+                    {a.actionLabel}
+                  </button>
+                )}
+              </div>
+              <p className="mt-1 text-sm">{a.message}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Suggestions d'action */}
+      <div className="card animate-fadeInUp">
+        <h2 className="font-display text-xl font-bold text-white mb-2">Suggestions d'action</h2>
+        <ul className="list-disc pl-6 text-ink-dim text-sm space-y-1">
+          <li>Relancer les parents en retard automatiquement.</li>
+          <li>Vérifier les transactions suspectes dans l'audit.</li>
+          <li>Planifier une sauvegarde si la dernière date est ancienne.</li>
+          <li>Analyser la projection de trésorerie pour anticiper les risques.</li>
+          <li>Consulter le rapport de couverture par classe et par niveau.</li>
+        </ul>
       </div>
     </div>
   );
