@@ -4,8 +4,8 @@ import { z } from "zod";
 dotenv.config();
 
 const envSchema = z.object({
-  DATABASE_URL: z.string().min(1),
-  JWT_SECRET: z.string().min(16),
+  DATABASE_URL: z.string().default(""),
+  JWT_SECRET: z.string().min(8).default("dev-secret-change-in-production-please"),
   JWT_EXPIRES_IN: z.string().default("1d"),
   API_PORT: z.string().default("4000"),
   AI_SERVICE_URL: z.string().url().default("http://localhost:8000"),

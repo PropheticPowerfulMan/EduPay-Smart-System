@@ -39,6 +39,6 @@ app.use("/api/ai", aiRouter);
 app.use("/api/classes", classRouter);
 app.use("/api/export", exportRouter);
 
-app.listen(Number(env.API_PORT), () => {
-  console.log(`API running on port ${env.API_PORT}`);
+app.listen(Number(process.env.PORT ?? env.API_PORT), "0.0.0.0", () => {
+  console.log(`API running on port ${process.env.PORT ?? env.API_PORT}`);
 });
