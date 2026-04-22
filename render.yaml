@@ -1,3 +1,10 @@
+databases:
+  - name: edupay-postgres
+    engine: postgres
+    majorVersion: "16"
+    plan: free
+    region: oregon
+
 services:
   # ============================
   # FRONTEND - React + Vite
@@ -66,13 +73,3 @@ services:
           name: edupay-web
           type: web
           property: url
-
-# ============================
-# DATABASE - PostgreSQL
-# ============================
-databases:
-  - name: edupay-postgres
-    engine: postgres
-    version: "16"
-    plan: free
-    region: oregon
