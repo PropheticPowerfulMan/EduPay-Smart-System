@@ -6,30 +6,35 @@ export default {
     extend: {
       colors: {
         slate: {
-          950: "#0f172a",
-          900: "#1a2847",
-          800: "#252d4a",
-          700: "#2c3659",
+          950: "#051018",
+          900: "#0b1a24",
+          800: "#102b3a",
+          700: "#1a4355",
         },
         brand: {
-          50: "#e0e7ff",
-          100: "#c7d2fe",
-          500: "#6366f1",
-          600: "#4f46e5",
-          700: "#4338ca",
-          900: "#312e81"
+          50: "#ecfeff",
+          100: "#cffafe",
+          200: "#a5f3fc",
+          300: "#7de8ff",
+          400: "#28c7ec",
+          500: "#14b8de",
+          600: "#0786ad",
+          700: "#0e7490",
+          800: "#155e75",
+          900: "#164e63"
         },
-        ink: "#f1f5f9",
-        "ink-dim": "#cbd5e1"
+        ink: "#f8fbff",
+        "ink-dim": "#a7c2cf",
+        danger: "#fb7185"
       },
       fontFamily: {
-        display: ["Montserrat", "sans-serif"],
-        body: ["Poppins", "Nunito Sans", "sans-serif"]
+        display: ["-apple-system", "BlinkMacSystemFont", "Segoe UI", "Noto Sans", "Helvetica", "Arial", "sans-serif"],
+        body: ["-apple-system", "BlinkMacSystemFont", "Segoe UI", "Noto Sans", "Helvetica", "Arial", "sans-serif"]
       },
       boxShadow: {
-        plate: "0 10px 30px rgba(11, 46, 89, 0.15)",
-        xl: "0 20px 40px rgba(0, 0, 0, 0.3)",
-        glow: "0 0 20px rgba(99, 102, 241, 0.5)"
+        plate: "0 20px 56px rgba(0, 0, 0, 0.3)",
+        xl: "0 26px 72px rgba(0, 0, 0, 0.38)",
+        glow: "0 0 0 3px rgba(20, 184, 222, 0.22), 0 0 30px rgba(20, 184, 222, 0.18)"
       },
       animation: {
         "fadeInUp": "fadeInUp 0.6s ease-out",
@@ -56,8 +61,8 @@ export default {
           "100%": { opacity: "1", transform: "translateX(0)" }
         },
         "pulse-glow": {
-          "0%, 100%": { boxShadow: "0 0 20px rgba(99, 102, 241, 0.5)" },
-          "50%": { boxShadow: "0 0 40px rgba(99, 102, 241, 0.8)" }
+          "0%, 100%": { boxShadow: "0 0 22px rgba(20, 184, 222, 0.34)" },
+          "50%": { boxShadow: "0 0 46px rgba(125, 232, 255, 0.48)" }
         }
       },
       backdropBlur: {

@@ -1,4 +1,14 @@
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/$/, "");
+const TOKEN_STORAGE_KEY = "edupay_token";
+const ROLE_STORAGE_KEY = "edupay_role";
+const NAME_STORAGE_KEY = "edupay_name";
+
+function clearLocalSession() {
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
+  localStorage.removeItem(ROLE_STORAGE_KEY);
+  localStorage.removeItem(NAME_STORAGE_KEY);
+  localStorage.removeItem("edupay_fullName");
+}
 
 function resolveApiUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) {
@@ -10,7 +20,7 @@ function resolveApiUrl(path: string): string {
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = localStorage.getItem("edupay_token");
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
   const url = resolveApiUrl(path);
 
   let response: Response;
@@ -24,10 +34,16 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       }
     });
   } catch {
-    throw new Error("Impossible de joindre l'API. Verifiez que le backend tourne sur http://localhost:4000.");
+    throw new Error("Impossible de joindre l'API. Verifiez que le backend est demarre.");
   }
 
   if (!response.ok) {
+    if (response.status === 401) {
+      clearLocalSession();
+      window.location.replace("/login");
+      throw new Error("Session expiree. Veuillez vous reconnecter.");
+    }
+
     const errorFromJson = await response.json().catch(() => null) as { message?: string } | null;
     if (errorFromJson?.message) {
       throw new Error(errorFromJson.message);

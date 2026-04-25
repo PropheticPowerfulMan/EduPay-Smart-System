@@ -5,7 +5,6 @@ import helmet from "helmet";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
-import bcrypt from "bcrypt";
 import { z } from "zod";
 
 const env = {
@@ -27,7 +26,7 @@ const mockUsers = [
   {
     id: "user-1",
     email: "admin@school.com",
-    passwordHash: bcrypt.hashSync("password123", 10),
+    password: "password123",
     role: "ADMIN",
     fullName: "Admin User",
     schoolId: "school-1"
@@ -35,7 +34,7 @@ const mockUsers = [
   {
     id: "user-2",
     email: "parent@school.com",
-    passwordHash: bcrypt.hashSync("password123", 10),
+    password: "password123",
     role: "PARENT",
     fullName: "Marie Dupont",
     schoolId: "school-1"
@@ -89,8 +88,7 @@ app.post("/api/auth/login", async (req, res) => {
   const payload = loginSchema.parse(req.body);
   const user = mockUsers.find((u) => u.email === payload.email);
   if (!user) return res.status(401).json({ message: "Invalid credentials" });
-  const ok = await bcrypt.compare(payload.password, user.passwordHash);
-  if (!ok) return res.status(401).json({ message: "Invalid credentials" });
+  if (payload.password !== user.password) return res.status(401).json({ message: "Invalid credentials" });
   const token = jwt.sign({ sub: user.id, role: user.role, schoolId: user.schoolId }, env.JWT_SECRET);
   return res.json({ token, role: user.role, fullName: user.fullName });
 });

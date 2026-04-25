@@ -39,11 +39,11 @@ switch ($choice) {
     "1" {
         Write-Host ""
         Write-Host "🎬 Starting Development Mode..." -ForegroundColor Green
-        Write-Host "One command starts Web + API:" -ForegroundColor Cyan
-        Write-Host "  pnpm dev" -ForegroundColor Yellow
+        Write-Host "One command starts Web + demo API:" -ForegroundColor Cyan
+        Write-Host "  pnpm dev:demo" -ForegroundColor Yellow
         Write-Host ""
 
-        Start-Process powershell -ArgumentList "-NoExit", "-Command", "pnpm dev"
+        Start-Process powershell -ArgumentList "-NoExit", "-Command", "pnpm dev:demo"
 
         Write-Host "✅ Development terminal opened!" -ForegroundColor Green
         Write-Host "   Web: http://localhost:5173 (or next free port)" -ForegroundColor Cyan

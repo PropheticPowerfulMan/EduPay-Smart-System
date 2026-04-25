@@ -16,11 +16,11 @@ function getHomePathByRole(role: Role | null) {
 
 function ProtectedLayout() {
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-slate-950 text-ink">
       <Navbar />
-      <main className="flex">
+      <main className="mx-auto flex w-full max-w-[1440px] gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <Sidebar />
-        <section className="flex-1 p-6 md:p-8 max-w-7xl">
+        <section className="min-w-0 flex-1">
           <Outlet />
         </section>
       </main>
