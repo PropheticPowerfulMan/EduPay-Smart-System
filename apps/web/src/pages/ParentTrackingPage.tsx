@@ -1,9 +1,36 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Line,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from "recharts";
+import {
+  AlertTriangle,
+  BrainCircuit,
+  CalendarClock,
+  CheckCircle2,
+  Gauge,
+  Lightbulb,
+  ShieldCheck,
+  Target,
+  TrendingUp,
+  WalletCards
+} from "lucide-react";
 import { useI18n } from "../i18n";
 import { api } from "../services/api";
 
-type Payment = { amount: number; status: string; createdAt: string };
-type Student = { id: string; fullName: string; annualFee: number; payments: Payment[] };
+type Payment = { amount: number; status: string; createdAt: string; reason?: string };
+type Student = { id: string; fullName: string; className?: string; classId?: string; annualFee: number; payments: Payment[] };
 type ParentData = { fullName: string; phone: string; email: string; students: Student[] };
 
 type MonthRow = {
@@ -13,13 +40,79 @@ type MonthRow = {
   status: "PAID" | "PARTIAL" | "NOT_PAID";
 };
 
-const months = ["Jan", "Fev", "Mar", "Avr", "Mai", "Jun", "Jul", "Aou", "Sep", "Oct"];
+type Insight = {
+  title: string;
+  body: string;
+  tone: "good" | "warn" | "danger" | "info";
+};
+
 const SCHOOL_MONTHS = 10;
+const monthNames = ["Jan", "Fév", "Mar", "Avr", "Mai", "Jun", "Jul", "Aoû", "Sep", "Oct"];
+const pieColors = ["#22c55e", "#f59e0b", "#ef4444"];
+
+function asNumber(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function clamp(value: number, min = 0, max = 100) {
+  return Math.min(max, Math.max(min, value));
+}
 
 function statusMeta(status: MonthRow["status"], t: (key: string) => string) {
-  if (status === "PAID") return { label: t("statusPaid"), color: "text-emerald-400" };
-  if (status === "PARTIAL") return { label: t("statusPartial"), color: "text-amber-400" };
-  return { label: t("statusNotPaid"), color: "text-red-400" };
+  if (status === "PAID") return { label: t("statusPaid"), color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/30" };
+  if (status === "PARTIAL") return { label: t("statusPartial"), color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/30" };
+  return { label: t("statusNotPaid"), color: "text-red-400", bg: "bg-red-500/10 border-red-500/30" };
+}
+
+function parsePaymentDate(payment: Payment) {
+  const date = payment.createdAt ? new Date(payment.createdAt) : new Date();
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+function monthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthLabel(date: Date, lang: string) {
+  return date.toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US", { month: "short" }).replace(".", "");
+}
+
+function buildMonthlyTrend(payments: Array<Payment & { studentName: string }>, expectedPerMonth: number, lang: string) {
+  const now = new Date();
+  return Array.from({ length: 6 }, (_v, index) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+    const key = monthKey(date);
+    const paid = payments
+      .filter((p) => p.status === "COMPLETED" && monthKey(parsePaymentDate(p)) === key)
+      .reduce((sum, p) => sum + asNumber(p.amount), 0);
+    return {
+      month: monthLabel(date, lang),
+      payé: paid,
+      attendu: expectedPerMonth,
+      écart: Math.max(expectedPerMonth - paid, 0)
+    };
+  });
+}
+
+function linearForecast(values: number[]) {
+  if (values.length < 2) return values[0] ?? 0;
+  const n = values.length;
+  const sumX = values.reduce((sum, _v, i) => sum + i, 0);
+  const sumY = values.reduce((sum, v) => sum + v, 0);
+  const sumXY = values.reduce((sum, v, i) => sum + i * v, 0);
+  const sumXX = values.reduce((sum, _v, i) => sum + i * i, 0);
+  const denominator = n * sumXX - sumX * sumX;
+  const slope = denominator === 0 ? 0 : (n * sumXY - sumX * sumY) / denominator;
+  const intercept = (sumY - slope * sumX) / n;
+  return Math.max(0, intercept + slope * n);
+}
+
+function insightToneClasses(tone: Insight["tone"]) {
+  if (tone === "good") return "border-emerald-500/25 bg-emerald-500/10 text-emerald-100";
+  if (tone === "warn") return "border-amber-500/25 bg-amber-500/10 text-amber-100";
+  if (tone === "danger") return "border-red-500/25 bg-red-500/10 text-red-100";
+  return "border-cyan-500/25 bg-cyan-500/10 text-cyan-100";
 }
 
 export function ParentTrackingPage() {
@@ -30,241 +123,541 @@ export function ParentTrackingPage() {
     api<ParentData>("/api/parents/me").then(setData).catch(() => undefined);
   }, []);
 
-  const formatMoney = (value: number) => `${new Intl.NumberFormat(lang === "fr" ? "fr-FR" : "en-US").format(Math.round(value))} FC`;
+  const moneyFormatter = useMemo(
+    () => new Intl.NumberFormat(lang === "fr" ? "fr-FR" : "en-US", { maximumFractionDigits: 0 }),
+    [lang]
+  );
+  const formatMoney = (value: number) => `${moneyFormatter.format(Math.round(value))} FC`;
 
   const summary = useMemo(() => {
     if (!data) return null;
 
-    const totalExpected = data.students.reduce((s, st) => s + st.annualFee, 0);
-    const totalPaid = data.students.reduce((s, st) => s + st.payments.reduce((ps, p) => ps + (p.status === "COMPLETED" ? p.amount : 0), 0), 0);
-    const totalDebt = Math.max(totalExpected - totalPaid, 0);
-    const completionRate = totalExpected > 0 ? (totalPaid / totalExpected) * 100 : 0;
+    const allPayments = data.students.flatMap((student) =>
+      student.payments.map((payment) => ({ ...payment, studentName: student.fullName }))
+    );
+    const completedPayments = allPayments.filter((p) => p.status === "COMPLETED");
+    const pendingPayments = allPayments.filter((p) => p.status === "PENDING");
+    const failedPayments = allPayments.filter((p) => p.status === "FAILED");
 
+    const totalExpected = data.students.reduce((sum, student) => sum + asNumber(student.annualFee), 0);
+    const totalPaid = completedPayments.reduce((sum, payment) => sum + asNumber(payment.amount), 0);
+    const pendingAmount = pendingPayments.reduce((sum, payment) => sum + asNumber(payment.amount), 0);
+    const failedAmount = failedPayments.reduce((sum, payment) => sum + asNumber(payment.amount), 0);
+    const totalDebt = Math.max(totalExpected - totalPaid, 0);
+    const completionRate = totalExpected > 0 ? clamp((totalPaid / totalExpected) * 100) : 0;
     const expectedPerMonth = totalExpected / SCHOOL_MONTHS;
     const coveredMonths = expectedPerMonth > 0 ? totalPaid / expectedPerMonth : 0;
-    const obligationsMonthsLate = Math.max(SCHOOL_MONTHS - coveredMonths, 0);
+    const unpaidMonthEquivalent = Math.max(SCHOOL_MONTHS - coveredMonths, 0);
     const nextInstallment = totalDebt > 0 ? Math.min(expectedPerMonth, totalDebt) : 0;
+    const monthlyTrend = buildMonthlyTrend(allPayments, expectedPerMonth, lang);
+    const forecastNextMonth = linearForecast(monthlyTrend.map((p) => p.payé));
+    const currentMonthPaid = monthlyTrend.at(-1)?.payé ?? 0;
+    const previousMonthPaid = monthlyTrend.at(-2)?.payé ?? 0;
+    const trendRate = previousMonthPaid > 0
+      ? ((currentMonthPaid - previousMonthPaid) / previousMonthPaid) * 100
+      : currentMonthPaid > 0 ? 100 : 0;
 
-    const paymentTimeline = data.students
-      .flatMap((st) => st.payments.map((p) => ({ ...p, studentName: st.fullName })))
-      .filter((p) => p.status === "COMPLETED")
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    const paymentTimeline = completedPayments
+      .sort((a, b) => parsePaymentDate(b).getTime() - parsePaymentDate(a).getTime())
       .slice(0, 6);
 
-    const studentsMetrics = data.students.map((st) => {
-      const monthlyExpected = st.annualFee / SCHOOL_MONTHS;
-      const paid = st.payments.reduce((s, p) => s + (p.status === "COMPLETED" ? p.amount : 0), 0);
-      const debt = Math.max(st.annualFee - paid, 0);
-      const progress = st.annualFee > 0 ? Math.min((paid / st.annualFee) * 100, 100) : 0;
+    const studentsMetrics = data.students.map((student) => {
+      const annualFee = asNumber(student.annualFee);
+      const monthlyExpected = annualFee / SCHOOL_MONTHS;
+      const completed = student.payments.filter((p) => p.status === "COMPLETED");
+      const paid = completed.reduce((sum, p) => sum + asNumber(p.amount), 0);
+      const debt = Math.max(annualFee - paid, 0);
+      const progress = annualFee > 0 ? clamp((paid / annualFee) * 100) : 0;
+      const lastPayment = completed
+        .map((p) => parsePaymentDate(p))
+        .sort((a, b) => b.getTime() - a.getTime())[0];
+      const daysSincePayment = lastPayment
+        ? Math.max(0, Math.floor((Date.now() - lastPayment.getTime()) / 86_400_000))
+        : null;
 
-      const monthRows: MonthRow[] = months.map((m, monthIdx) => {
+      const monthRows: MonthRow[] = monthNames.map((monthName, monthIndex) => {
         const expected = monthlyExpected;
-        const paidForMonth = Math.min(Math.max(paid - monthIdx * monthlyExpected, 0), monthlyExpected);
+        const paidForMonth = Math.min(Math.max(paid - monthIndex * monthlyExpected, 0), monthlyExpected);
         const status: MonthRow["status"] = paidForMonth >= expected ? "PAID" : paidForMonth > 0 ? "PARTIAL" : "NOT_PAID";
-        return { monthName: m, expected, paid: paidForMonth, status };
+        return { monthName, expected, paid: paidForMonth, status };
       });
 
-      const missingMonths = monthRows.filter((r) => r.status !== "PAID").length;
+      const missingMonths = monthRows.filter((row) => row.status !== "PAID").length;
+      const risk = clamp(
+        (debt / Math.max(annualFee, 1)) * 55 +
+        missingMonths * 3.5 +
+        (daysSincePayment === null ? 18 : Math.min(daysSincePayment / 4, 18))
+      );
 
       return {
-        ...st,
+        ...student,
+        annualFee,
         paid,
         debt,
         progress,
         monthlyExpected,
         missingMonths,
-        monthRows
+        monthRows,
+        daysSincePayment,
+        risk
       };
     });
+
+    const worstStudent = [...studentsMetrics].sort((a, b) => b.risk - a.risk)[0];
+    const bestStudent = [...studentsMetrics].sort((a, b) => b.progress - a.progress)[0];
+    const paymentVelocity = monthlyTrend.reduce((sum, row) => sum + row.payé, 0) / Math.max(monthlyTrend.length, 1);
+    const monthsToClearDebt = paymentVelocity > 0 ? totalDebt / paymentVelocity : totalDebt > 0 ? Infinity : 0;
+    const debtRatio = totalExpected > 0 ? totalDebt / totalExpected : 0;
+    const incidentRatio = allPayments.length > 0 ? (pendingPayments.length + failedPayments.length) / allPayments.length : 0;
+    const aiScore = clamp(100 - debtRatio * 52 - incidentRatio * 16 - Math.max(-trendRate, 0) * 0.2 - unpaidMonthEquivalent * 2.1);
+    const riskLevel = aiScore >= 82 ? "Situation saine" : aiScore >= 62 ? "À surveiller" : aiScore >= 42 ? "Risque élevé" : "Risque critique";
+    const recommendedMonthly = totalDebt > 0
+      ? Math.max(nextInstallment, totalDebt / Math.max(1, Math.ceil(Math.min(monthsToClearDebt, SCHOOL_MONTHS))))
+      : 0;
+
+    const insights: Insight[] = [];
+    if (completionRate >= 90) {
+      insights.push({
+        tone: "good",
+        title: "Excellent niveau de couverture",
+        body: "Le dossier financier est presque totalement réglé. Conservez ce rythme pour éviter les pénalités de fin d'année."
+      });
+    } else if (completionRate >= 60) {
+      insights.push({
+        tone: "warn",
+        title: "Règlement partiel à stabiliser",
+        body: `Il reste ${formatMoney(totalDebt)} à couvrir. Un paiement régulier de ${formatMoney(recommendedMonthly)} aiderait à terminer sans pression.`
+      });
+    } else {
+      insights.push({
+        tone: "danger",
+        title: "Priorité au plan de rattrapage",
+        body: `Le taux de couverture est de ${completionRate.toFixed(1)} %. L'IA recommande de prioriser les mensualités fixes.`
+      });
+    }
+
+    if (worstStudent && worstStudent.debt > 0) {
+      insights.push({
+        tone: worstStudent.risk >= 65 ? "danger" : "info",
+        title: `Attention sur ${worstStudent.fullName}`,
+        body: `Dette restante : ${formatMoney(worstStudent.debt)}. Score de risque estimé : ${worstStudent.risk.toFixed(0)} %.`
+      });
+    }
+
+    if (trendRate < -15) {
+      insights.push({
+        tone: "warn",
+        title: "Baisse du rythme de paiement",
+        body: `Le mois courant est en recul de ${Math.abs(trendRate).toFixed(1)} % par rapport au mois précédent.`
+      });
+    } else if (trendRate > 10) {
+      insights.push({
+        tone: "good",
+        title: "Rythme de paiement en amélioration",
+        body: `Les paiements progressent de ${trendRate.toFixed(1)} % par rapport au mois précédent.`
+      });
+    }
+
+    if (pendingAmount > 0) {
+      insights.push({
+        tone: "info",
+        title: "Paiements en attente",
+        body: `${formatMoney(pendingAmount)} sont encore en attente de validation. Vérifiez leur confirmation avec l'école.`
+      });
+    }
+
+    const allocationData = studentsMetrics.map((student) => ({
+      name: student.fullName.split(" ")[0],
+      payé: student.paid,
+      reste: student.debt,
+      couverture: student.progress
+    }));
+
+    const statusDistribution = [
+      { name: "Réglé", value: totalPaid },
+      { name: "En attente", value: pendingAmount },
+      { name: "Reste", value: totalDebt }
+    ].filter((item) => item.value > 0);
 
     return {
       totalExpected,
       totalPaid,
+      pendingAmount,
+      failedAmount,
       totalDebt,
       completionRate,
       expectedPerMonth,
-      obligationsMonthsLate,
+      coveredMonths,
+      unpaidMonthEquivalent,
       nextInstallment,
+      forecastNextMonth,
+      trendRate,
       paymentTimeline,
-      studentsMetrics
+      studentsMetrics,
+      monthlyTrend,
+      aiScore,
+      riskLevel,
+      recommendedMonthly,
+      monthsToClearDebt,
+      insights,
+      allocationData,
+      statusDistribution,
+      bestStudent,
+      worstStudent
     };
-  }, [data]);
+  }, [data, lang, moneyFormatter]);
 
   if (!data || !summary) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex h-screen items-center justify-center">
         <div className="animate-pulse">
-          <div className="h-12 w-12 bg-gradient-to-r from-brand-500 to-accent rounded-lg"></div>
+          <div className="h-12 w-12 rounded-lg bg-gradient-to-r from-brand-500 to-accent" />
         </div>
       </div>
     );
   }
 
+  const aiTone = summary.aiScore >= 82
+    ? "from-emerald-500 to-cyan-500"
+    : summary.aiScore >= 62
+      ? "from-amber-500 to-cyan-500"
+      : "from-red-500 to-amber-500";
+
   return (
     <div className="space-y-8 pb-8 animate-fadeInUp">
-      <div className="animate-fadeInDown glass px-8 py-6 rounded-2xl shadow-xl border border-brand-500/20">
-        <h1 className="font-display text-3xl font-bold text-white">{t("parentTracking")}</h1>
-        <p className="text-ink-dim mt-2">{t("parentFinancialDeepSubtitle")}</p>
-      </div>
-
-      <div className="card glass animate-fadeInUp border border-brand-500/10 shadow-lg">
-        <div className="space-y-4">
+      <div className="glass rounded-2xl border border-brand-500/20 px-8 py-6 shadow-xl animate-fadeInDown">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm text-ink-dim mb-1">{t("parentName")}</p>
-            <p className="font-display text-2xl font-bold text-white">{data.fullName}</p>
+            <p className="text-xs font-bold uppercase tracking-[0.22em] text-brand-300">Espace parent intelligent</p>
+            <h1 className="mt-2 font-display text-3xl font-bold text-white">{t("parentTracking")}</h1>
+            <p className="mt-2 max-w-3xl text-sm text-ink-dim">{t("parentFinancialDeepSubtitle")}</p>
           </div>
-          <div className="grid md:grid-cols-2 gap-4">
-            <div>
-              <p className="text-sm text-ink-dim mb-1">{t("parentPhone")}</p>
-              <p className="font-semibold text-white">{data.phone}</p>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-5 py-4">
+            <div className="flex items-center gap-3">
+              <BrainCircuit className="h-6 w-6 text-cyan-300" />
+              <div>
+                <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Score IA</p>
+                <p className="font-mono text-2xl font-black text-white">{summary.aiScore.toFixed(0)}/100</p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm text-ink-dim mb-1">{t("email")}</p>
-              <p className="font-semibold text-white">{data.email}</p>
-            </div>
+            <p className="mt-2 text-xs font-semibold text-cyan-200">{summary.riskLevel}</p>
           </div>
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-4">
+      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="card glass border border-brand-500/10 shadow-lg">
-          <p className="text-ink-dim text-sm mb-2">{t("expectedTotal")}</p>
-          <p className="font-display text-2xl font-bold text-brand-300">{formatMoney(summary.totalExpected)}</p>
-        </div>
-        <div className="card glass border border-emerald-500/10 shadow-lg">
-          <p className="text-ink-dim text-sm mb-2">{t("paidTotal")}</p>
-          <p className="font-display text-2xl font-bold text-emerald-400">{formatMoney(summary.totalPaid)}</p>
-        </div>
-        <div className="card glass border border-red-500/10 shadow-lg">
-          <p className="text-ink-dim text-sm mb-2">{t("debtTotal")}</p>
-          <p className="font-display text-2xl font-bold text-red-400">{formatMoney(summary.totalDebt)}</p>
-        </div>
-        <div className="card glass border border-cyan-500/10 shadow-lg">
-          <p className="text-ink-dim text-sm mb-2">{t("parentCompletionRate")}</p>
-          <p className="font-display text-2xl font-bold text-cyan-300">{summary.completionRate.toFixed(1)}%</p>
-        </div>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="card glass lg:col-span-2 border border-brand-500/10 shadow-lg">
-          <h2 className="font-display text-xl font-bold text-white mb-5">{t("financialObligations")}</h2>
-          <div className="grid md:grid-cols-3 gap-4">
-            <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 p-4">
-              <p className="text-xs text-ink-dim uppercase tracking-[0.1em]">{t("monthlyInstallment")}</p>
-              <p className="mt-2 text-lg font-bold text-white">{formatMoney(summary.expectedPerMonth)}</p>
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm text-ink-dim">{t("parentName")}</p>
+              <p className="font-display text-2xl font-bold text-white">{data.fullName}</p>
+              <p className="mt-2 text-sm text-ink-dim">{data.phone} · {data.email}</p>
             </div>
-            <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 p-4">
-              <p className="text-xs text-ink-dim uppercase tracking-[0.1em]">{t("nextInstallment")}</p>
-              <p className="mt-2 text-lg font-bold text-amber-300">{formatMoney(summary.nextInstallment)}</p>
-            </div>
-            <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 p-4">
-              <p className="text-xs text-ink-dim uppercase tracking-[0.1em]">{t("estimatedLateMonths")}</p>
-              <p className="mt-2 text-lg font-bold text-rose-300">{summary.obligationsMonthsLate.toFixed(1)}</p>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                { label: "Enfants", value: String(data.students.length), icon: Target, color: "text-brand-300" },
+                { label: "Mois couverts", value: summary.coveredMonths.toFixed(1), icon: CalendarClock, color: "text-cyan-300" },
+                { label: "Risque max", value: `${(summary.worstStudent?.risk ?? 0).toFixed(0)}%`, icon: AlertTriangle, color: "text-amber-300" },
+                { label: "Meilleur suivi", value: `${(summary.bestStudent?.progress ?? 0).toFixed(0)}%`, icon: CheckCircle2, color: "text-emerald-300" }
+              ].map((item) => (
+                <div key={item.label} className="rounded-xl border border-white/10 bg-slate-900/30 p-3">
+                  <item.icon className={`h-4 w-4 ${item.color}`} />
+                  <p className="mt-2 text-xs text-ink-dim">{item.label}</p>
+                  <p className={`font-mono text-lg font-bold ${item.color}`}>{item.value}</p>
+                </div>
+              ))}
             </div>
           </div>
-          <div className="mt-5 h-2 rounded-full bg-slate-700/50 overflow-hidden">
+        </div>
+
+        <div className="card glass border border-cyan-500/10 shadow-lg">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-xl font-bold text-white">Diagnostic IA</h2>
+              <p className="mt-1 text-sm text-ink-dim">Synthèse automatique de votre situation de paiement.</p>
+            </div>
+            <Gauge className="h-7 w-7 text-cyan-300" />
+          </div>
+          <div className="mt-5 h-3 overflow-hidden rounded-full bg-slate-800">
             <div
-              className="h-full bg-gradient-to-r from-emerald-500 to-cyan-500 transition-all duration-700"
-              style={{ width: `${Math.min(summary.completionRate, 100)}%` }}
+              className={`h-full rounded-full bg-gradient-to-r ${aiTone} transition-all duration-700`}
+              style={{ width: `${summary.aiScore}%` }}
             />
           </div>
-          <p className="mt-3 text-sm text-ink-dim">{t("financialHealthHint")}</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div>
+              <p className="text-xs text-ink-dim">Prochain mois prévu</p>
+              <p className="font-mono text-sm font-bold text-cyan-200">{formatMoney(summary.forecastNextMonth)}</p>
+            </div>
+            <div>
+              <p className="text-xs text-ink-dim">Tendance</p>
+              <p className={`font-mono text-sm font-bold ${summary.trendRate >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                {summary.trendRate >= 0 ? "+" : ""}{summary.trendRate.toFixed(1)}%
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-ink-dim">Mensualité conseillée</p>
+              <p className="font-mono text-sm font-bold text-amber-200">{formatMoney(summary.recommendedMonthly)}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: t("expectedTotal"), value: formatMoney(summary.totalExpected), icon: WalletCards, color: "text-brand-300", border: "border-brand-500/10" },
+          { label: t("paidTotal"), value: formatMoney(summary.totalPaid), icon: CheckCircle2, color: "text-emerald-300", border: "border-emerald-500/10" },
+          { label: t("debtTotal"), value: formatMoney(summary.totalDebt), icon: AlertTriangle, color: "text-red-300", border: "border-red-500/10" },
+          { label: t("parentCompletionRate"), value: `${summary.completionRate.toFixed(1)}%`, icon: TrendingUp, color: "text-cyan-300", border: "border-cyan-500/10" }
+        ].map((card) => (
+          <div key={card.label} className={`card glass shadow-lg ${card.border}`}>
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-ink-dim">{card.label}</p>
+              <card.icon className={`h-5 w-5 ${card.color}`} />
+            </div>
+            <p className={`mt-3 font-display text-2xl font-bold ${card.color}`}>{card.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-3">
+        <div className="card glass border border-brand-500/10 shadow-lg xl:col-span-2">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-xl font-bold text-white">Évolution mensuelle</h2>
+              <p className="mt-1 text-sm text-ink-dim">Comparaison entre les paiements reçus et l'objectif mensuel.</p>
+            </div>
+            <div className="rounded-full border border-white/10 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-cyan-200">
+              Objectif : {formatMoney(summary.expectedPerMonth)} / mois
+            </div>
+          </div>
+          <div className="mt-5 h-72">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={summary.monthlyTrend}>
+                <defs>
+                  <linearGradient id="parentPaid" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stopColor="#22c55e" stopOpacity={0.35} />
+                    <stop offset="100%" stopColor="#22c55e" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="#334155" strokeDasharray="3 3" opacity={0.4} />
+                <XAxis dataKey="month" stroke="#94a3b8" fontSize={12} />
+                <YAxis stroke="#94a3b8" fontSize={12} tickFormatter={(v) => `${Math.round(Number(v) / 1000)}k`} />
+                <Tooltip
+                  contentStyle={{ background: "#0f172a", border: "1px solid rgba(148,163,184,.25)", borderRadius: 8, color: "#fff" }}
+                  formatter={(value: number) => formatMoney(value)}
+                />
+                <Area type="monotone" dataKey="payé" stroke="#22c55e" fill="url(#parentPaid)" strokeWidth={3} />
+                <Line type="monotone" dataKey="attendu" stroke="#38bdf8" strokeDasharray="5 5" strokeWidth={2} dot={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
         </div>
 
         <div className="card glass border border-emerald-500/10 shadow-lg">
-          <h2 className="font-display text-xl font-bold text-white mb-4">{t("recentPayments")}</h2>
-          <div className="space-y-3">
-            {summary.paymentTimeline.length === 0 && (
-              <p className="text-sm text-ink-dim">{t("noPaymentsYet")}</p>
-            )}
-            {summary.paymentTimeline.map((payment, idx) => (
-              <div key={`${payment.studentName}-${idx}`} className="rounded-lg border border-slate-700/50 bg-slate-900/30 p-3">
-                <p className="text-sm font-semibold text-white">{payment.studentName}</p>
-                <p className="text-xs text-ink-dim mt-1">{new Date(payment.createdAt).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}</p>
-                <p className="text-sm text-emerald-300 font-bold mt-1">{formatMoney(payment.amount)}</p>
+          <h2 className="font-display text-xl font-bold text-white">Répartition financière</h2>
+          <p className="mt-1 text-sm text-ink-dim">Vue rapide entre payé, attente et reste à payer.</p>
+          <div className="mt-5 h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={summary.statusDistribution} dataKey="value" nameKey="name" innerRadius={55} outerRadius={85} paddingAngle={3}>
+                  {summary.statusDistribution.map((_entry, index) => (
+                    <Cell key={index} fill={pieColors[index % pieColors.length]} />
+                  ))}
+                </Pie>
+                <Tooltip
+                  contentStyle={{ background: "#0f172a", border: "1px solid rgba(148,163,184,.25)", borderRadius: 8, color: "#fff" }}
+                  formatter={(value: number) => formatMoney(value)}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="space-y-2">
+            {summary.statusDistribution.map((item, index) => (
+              <div key={item.name} className="flex items-center justify-between text-sm">
+                <span className="flex items-center gap-2 text-ink-dim">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ background: pieColors[index % pieColors.length] }} />
+                  {item.name}
+                </span>
+                <span className="font-mono font-bold text-white">{formatMoney(item.value)}</span>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="space-y-6">
-        {summary.studentsMetrics.map((student, idx) => (
-          <div key={student.id} className="card glass animate-fadeInUp border border-brand-500/10 shadow-lg" style={{ animationDelay: `${idx * 0.1}s` }}>
-            <div className="space-y-6">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-display text-xl font-bold text-white">{student.fullName}</h3>
-                  <p className="text-sm text-ink-dim mt-1">
-                    {t("annualFees")}: <span className="text-brand-300 font-semibold">{formatMoney(student.annualFee)}</span>
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 rounded-full border border-slate-700/50 bg-slate-900/40 px-3 py-1.5">
-                  <span className="text-xs text-ink-dim">{t("remainingDebt")}</span>
-                  <span className="text-sm font-bold text-rose-300">{formatMoney(student.debt)}</span>
-                </div>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-3">
-                <div className="rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
-                  <p className="text-xs text-ink-dim">{t("paidTotal")}</p>
-                  <p className="text-lg font-bold text-emerald-300 mt-1">{formatMoney(student.paid)}</p>
-                </div>
-                <div className="rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
-                  <p className="text-xs text-ink-dim">{t("monthlyInstallment")}</p>
-                  <p className="text-lg font-bold text-cyan-300 mt-1">{formatMoney(student.monthlyExpected)}</p>
-                </div>
-                <div className="rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
-                  <p className="text-xs text-ink-dim">{t("unpaidMonths")}</p>
-                  <p className="text-lg font-bold text-amber-300 mt-1">{student.missingMonths}</p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <p className="text-ink-dim">{t("financialProgress")}</p>
-                  <p className="font-semibold text-brand-300">{student.progress.toFixed(1)}%</p>
-                </div>
-                <div className="h-2 rounded-full bg-slate-700/50 overflow-hidden">
-                  <div
-                    className="h-full bg-gradient-to-r from-brand-600 to-brand-500 transition-all duration-500"
-                    style={{ width: `${Math.min(student.progress, 100)}%` }}
-                  />
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-700/50">
-                      <th className="text-left py-3 px-2 text-ink-dim font-semibold">{t("month")}</th>
-                      <th className="text-left py-3 px-2 text-ink-dim font-semibold">{t("expected")}</th>
-                      <th className="text-left py-3 px-2 text-ink-dim font-semibold">{t("paid")}</th>
-                      <th className="text-left py-3 px-2 text-ink-dim font-semibold">{t("status")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {student.monthRows.map((row) => {
-                      const status = statusMeta(row.status, t);
-                      return (
-                        <tr key={row.monthName} className="border-b border-slate-700/30 hover:bg-slate-800/30 transition-colors">
-                          <td className="py-3 px-2 text-white font-medium">{row.monthName}</td>
-                          <td className="py-3 px-2 text-ink-dim">{formatMoney(row.expected)}</td>
-                          <td className="py-3 px-2 text-white font-semibold">{formatMoney(row.paid)}</td>
-                          <td className={`py-3 px-2 font-semibold ${status.color}`}>
-                            <span className="inline-block px-2 py-1 rounded-full bg-slate-800/50 border border-current/30">
-                              {status.label}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+      <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+        <div className="card glass border border-cyan-500/10 shadow-lg">
+          <div className="flex items-center gap-3">
+            <Lightbulb className="h-6 w-6 text-amber-300" />
+            <div>
+              <h2 className="font-display text-xl font-bold text-white">Recommandations IA</h2>
+              <p className="text-sm text-ink-dim">Actions prioritaires générées à partir de vos paiements.</p>
             </div>
           </div>
-        ))}
+          <div className="mt-5 space-y-3">
+            {summary.insights.map((insight) => (
+              <div key={insight.title} className={`rounded-xl border p-4 ${insightToneClasses(insight.tone)}`}>
+                <p className="font-bold">{insight.title}</p>
+                <p className="mt-1 text-sm opacity-90">{insight.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card glass border border-brand-500/10 shadow-lg">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-xl font-bold text-white">Plan de paiement conseillé</h2>
+              <p className="mt-1 text-sm text-ink-dim">Simulation automatique pour ramener le dossier à zéro.</p>
+            </div>
+            <ShieldCheck className="h-7 w-7 text-emerald-300" />
+          </div>
+          <div className="mt-5 grid gap-4 md:grid-cols-3">
+            <div className="rounded-xl border border-white/10 bg-slate-900/30 p-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">{t("nextInstallment")}</p>
+              <p className="mt-2 font-mono text-lg font-bold text-amber-300">{formatMoney(summary.nextInstallment)}</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-slate-900/30 p-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Mensualité IA</p>
+              <p className="mt-2 font-mono text-lg font-bold text-cyan-300">{formatMoney(summary.recommendedMonthly)}</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-slate-900/30 p-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Délai estimé</p>
+              <p className="mt-2 font-mono text-lg font-bold text-white">
+                {Number.isFinite(summary.monthsToClearDebt) ? `${Math.ceil(summary.monthsToClearDebt)} mois` : "À définir"}
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={summary.allocationData}>
+                <CartesianGrid stroke="#334155" strokeDasharray="3 3" opacity={0.35} />
+                <XAxis dataKey="name" stroke="#94a3b8" fontSize={12} />
+                <YAxis stroke="#94a3b8" fontSize={12} tickFormatter={(v) => `${Math.round(Number(v) / 1000)}k`} />
+                <Tooltip
+                  contentStyle={{ background: "#0f172a", border: "1px solid rgba(148,163,184,.25)", borderRadius: 8, color: "#fff" }}
+                  formatter={(value: number) => formatMoney(value)}
+                />
+                <Bar dataKey="payé" stackId="a" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="reste" stackId="a" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+        <div className="card glass border border-emerald-500/10 shadow-lg">
+          <h2 className="font-display text-xl font-bold text-white mb-4">{t("recentPayments")}</h2>
+          <div className="space-y-3">
+            {summary.paymentTimeline.length === 0 && (
+              <p className="text-sm text-ink-dim">{t("noPaymentsYet")}</p>
+            )}
+            {summary.paymentTimeline.map((payment, index) => (
+              <div key={`${payment.studentName}-${index}`} className="rounded-lg border border-slate-700/50 bg-slate-900/30 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-white">{payment.studentName}</p>
+                    <p className="mt-1 text-xs text-ink-dim">
+                      {parsePaymentDate(payment).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}
+                    </p>
+                  </div>
+                  <p className="text-sm font-bold text-emerald-300">{formatMoney(payment.amount)}</p>
+                </div>
+                {payment.reason && <p className="mt-2 text-xs text-ink-dim">{payment.reason}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {summary.studentsMetrics.map((student, index) => (
+            <div key={student.id} className="card glass border border-brand-500/10 shadow-lg animate-fadeInUp" style={{ animationDelay: `${index * 0.08}s` }}>
+              <div className="space-y-6">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-300">
+                      {student.className || student.classId || "Classe non renseignée"}
+                    </p>
+                    <h3 className="mt-1 font-display text-xl font-bold text-white">{student.fullName}</h3>
+                    <p className="mt-1 text-sm text-ink-dim">
+                      {t("annualFees")}: <span className="font-semibold text-brand-300">{formatMoney(student.annualFee)}</span>
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 rounded-full border border-slate-700/50 bg-slate-900/40 px-3 py-1.5">
+                    <span className="text-xs text-ink-dim">{t("remainingDebt")}</span>
+                    <span className="text-sm font-bold text-rose-300">{formatMoney(student.debt)}</span>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-4">
+                  <div className="rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
+                    <p className="text-xs text-ink-dim">{t("paidTotal")}</p>
+                    <p className="mt-1 text-lg font-bold text-emerald-300">{formatMoney(student.paid)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
+                    <p className="text-xs text-ink-dim">{t("monthlyInstallment")}</p>
+                    <p className="mt-1 text-lg font-bold text-cyan-300">{formatMoney(student.monthlyExpected)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
+                    <p className="text-xs text-ink-dim">{t("unpaidMonths")}</p>
+                    <p className="mt-1 text-lg font-bold text-amber-300">{student.missingMonths}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
+                    <p className="text-xs text-ink-dim">Risque IA</p>
+                    <p className={`mt-1 text-lg font-bold ${student.risk >= 65 ? "text-red-300" : student.risk >= 35 ? "text-amber-300" : "text-emerald-300"}`}>
+                      {student.risk.toFixed(0)}%
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <p className="text-ink-dim">{t("financialProgress")}</p>
+                    <p className="font-semibold text-brand-300">{student.progress.toFixed(1)}%</p>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-700/50">
+                    <div
+                      className="h-full bg-gradient-to-r from-brand-600 to-brand-500 transition-all duration-500"
+                      style={{ width: `${student.progress}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-700/50">
+                        <th className="px-2 py-3 text-left font-semibold text-ink-dim">{t("month")}</th>
+                        <th className="px-2 py-3 text-left font-semibold text-ink-dim">{t("expected")}</th>
+                        <th className="px-2 py-3 text-left font-semibold text-ink-dim">{t("paid")}</th>
+                        <th className="px-2 py-3 text-left font-semibold text-ink-dim">{t("status")}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {student.monthRows.map((row) => {
+                        const status = statusMeta(row.status, t);
+                        return (
+                          <tr key={row.monthName} className="border-b border-slate-700/30 transition-colors hover:bg-slate-800/30">
+                            <td className="px-2 py-3 font-medium text-white">{row.monthName}</td>
+                            <td className="px-2 py-3 text-ink-dim">{formatMoney(row.expected)}</td>
+                            <td className="px-2 py-3 font-semibold text-white">{formatMoney(row.paid)}</td>
+                            <td className={`px-2 py-3 font-semibold ${status.color}`}>
+                              <span className={`inline-block rounded-full border px-2 py-1 ${status.bg}`}>
+                                {status.label}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
