@@ -2,8 +2,10 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\
 const TOKEN_STORAGE_KEY = "edupay_token";
 const ROLE_STORAGE_KEY = "edupay_role";
 const NAME_STORAGE_KEY = "edupay_name";
+const SESSION_ACTIVE_KEY = "edupay_session_active";
 
 function clearLocalSession() {
+  sessionStorage.removeItem(SESSION_ACTIVE_KEY);
   localStorage.removeItem(TOKEN_STORAGE_KEY);
   localStorage.removeItem(ROLE_STORAGE_KEY);
   localStorage.removeItem(NAME_STORAGE_KEY);

@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
+import { schoolBranding } from "../config/branding";
 import { useI18n } from "../i18n";
 import { api } from "../services/api";
 
@@ -192,7 +193,12 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
     reason: escapeHtml(r.reason),
     amountWords: escapeHtml(r.amountWords),
     method: escapeHtml(getMethodLabel(r.method)),
-    status: escapeHtml(getStatusLabel(r.status))
+    status: escapeHtml(getStatusLabel(r.status)),
+    schoolName: escapeHtml(schoolBranding.schoolName),
+    shortName: escapeHtml(schoolBranding.shortName),
+    appName: escapeHtml(schoolBranding.appName),
+    tagline: escapeHtml(schoolBranding.tagline),
+    logoSrc: escapeHtml(schoolBranding.logoSrc)
   };
   const security = buildReceiptSecurity(r);
   const risk = analyzeReceiptRisk(r);
@@ -208,12 +214,15 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family: Arial, Helvetica, sans-serif; color:#101827; background:#fff; font-size:10.5px; }
     .receipt { position:relative; width:196mm; min-height:134mm; margin:0 auto; border:1.2mm double #123047; padding:7mm; overflow:hidden; }
-    .watermark { position:absolute; inset:18mm 12mm auto; text-align:center; font-size:31mm; font-weight:900; letter-spacing:5mm; color:rgba(18,48,71,.035); transform:rotate(-10deg); pointer-events:none; }
+    .receipt:before { content:""; position:absolute; inset:0; background:linear-gradient(135deg, rgba(18,48,71,.05), transparent 32%, rgba(180,83,9,.05)); pointer-events:none; }
+    .watermark { position:absolute; inset:19mm 12mm auto; text-align:center; font-size:30mm; font-weight:900; letter-spacing:4mm; color:rgba(18,48,71,.035); transform:rotate(-10deg); pointer-events:none; }
     .micro { position:absolute; left:5mm; right:5mm; bottom:2.5mm; color:#94a3b8; font-size:5.6px; letter-spacing:.8px; white-space:nowrap; overflow:hidden; }
-    .top { display:grid; grid-template-columns:1.1fr .9fr; gap:8mm; border-bottom:2px solid #123047; padding-bottom:4mm; }
+    .top { position:relative; display:grid; grid-template-columns:1.1fr .9fr; gap:8mm; border-bottom:2px solid #123047; padding-bottom:4mm; }
+    .brand { display:flex; gap:4mm; align-items:center; }
+    .logo { width:18mm; height:18mm; border:1px solid #123047; border-radius:2mm; padding:1.4mm; object-fit:contain; background:#fff; }
     .school { font-family:Georgia, 'Times New Roman', serif; font-size:17px; font-weight:800; color:#123047; letter-spacing:.6px; }
     .sub { margin-top:1mm; color:#64748b; font-size:9px; text-transform:uppercase; letter-spacing:1.1px; }
-    .official { margin-top:4mm; display:inline-block; border:1px solid #123047; padding:1.5mm 4mm; font-weight:800; letter-spacing:2px; text-transform:uppercase; }
+    .official { margin-top:3mm; display:inline-block; border:1px solid #123047; padding:1.5mm 4mm; font-weight:800; letter-spacing:2px; text-transform:uppercase; }
     .tx { text-align:right; }
     .tx-label { color:#64748b; font-size:8px; text-transform:uppercase; letter-spacing:1.6px; }
     .tx-value { margin-top:1mm; font-family:'Courier New', monospace; font-size:13px; font-weight:900; color:#123047; }
@@ -235,7 +244,8 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
     .box-title { font-size:8px; font-weight:900; color:#475569; text-transform:uppercase; letter-spacing:.9px; }
     .line { border-top:1px solid #475569; padding-top:1mm; text-align:center; font-size:7.5px; color:#64748b; }
     .stamp { align-items:center; justify-content:center; text-align:center; border-style:solid; }
-    .stamp-circle { width:19mm; height:19mm; border:1px solid #123047; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#123047; font-size:7px; font-weight:900; margin:auto; }
+    .stamp-circle { width:19mm; height:19mm; border:1px solid #123047; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:auto; background:#fff; overflow:hidden; }
+    .stamp-circle img { width:15mm; height:15mm; object-fit:contain; opacity:.88; }
     .warning { margin-top:3mm; border-left:3px solid #b45309; background:#fffbeb; color:#78350f; padding:2mm; font-size:8px; }
     .footer { margin-top:4mm; display:flex; justify-content:space-between; color:#64748b; font-size:8px; border-top:1px solid #dbe4ef; padding-top:2mm; }
     @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } .receipt { margin:0; } }
@@ -243,12 +253,15 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
 </head>
 <body>
 <div class="receipt">
-  <div class="watermark">EDUPAY</div>
+  <div class="watermark">${safe.shortName}</div>
   <div class="top">
-    <div>
-      <div class="school">EduPay Smart School</div>
-      <div class="sub">Systeme interne de gestion des paiements scolaires</div>
-      <div class="official">Recu officiel A5</div>
+    <div class="brand">
+      <img class="logo" src="${safe.logoSrc}" alt="${safe.schoolName}"/>
+      <div>
+        <div class="school">${safe.schoolName}</div>
+        <div class="sub">${safe.tagline} - ${safe.appName}</div>
+        <div class="official">Recu officiel A5</div>
+      </div>
     </div>
     <div class="tx">
       <div class="tx-label">Transaction</div>
@@ -290,14 +303,14 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
         </div>
         <div class="box stamp">
           <div class="box-title">Sceau de l'ecole</div>
-          <div class="stamp-circle">SCEAU<br/>OFFICIEL</div>
+          <div class="stamp-circle"><img src="${safe.logoSrc}" alt="${safe.shortName}"/></div>
         </div>
       </div>
     </div>
   </div>
 
   <div class="footer">
-    <span>EduPay Smart System - Norme interne A5-RCT-01</span>
+    <span>${safe.schoolName} - ${safe.appName} - Norme interne A5-RCT-01</span>
     <span>Ref: ${safe.tx} - ${new Date().toLocaleDateString("fr-FR")}</span>
   </div>
   <div class="micro">${microText} ${microText} ${microText}</div>
@@ -560,14 +573,24 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
 
   return (
     <div className={`relative mx-auto w-full max-w-4xl overflow-hidden rounded-xl border-4 border-double border-slate-300 bg-white p-5 text-slate-950 shadow-2xl ${compact ? "scale-[0.98]" : ""}`}>
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(18,48,71,0.05),transparent_35%,rgba(180,83,9,0.06))]" />
       <div className="pointer-events-none absolute inset-x-8 top-20 -rotate-6 text-center text-7xl font-black tracking-[0.28em] text-slate-900/[0.035]">
-        EDUPAY
+        {schoolBranding.shortName}
       </div>
       <div className="relative grid gap-4 border-b-2 border-slate-800 pb-4 sm:grid-cols-[1.1fr_0.9fr]">
-        <div>
-          <p className="font-serif text-xl font-black tracking-wide text-slate-900">EduPay Smart School</p>
-          <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Systeme interne de gestion des paiements scolaires</p>
-          <span className="mt-3 inline-flex border border-slate-900 px-4 py-1 text-[11px] font-black uppercase tracking-[0.22em]">Recu officiel A5</span>
+        <div className="flex items-center gap-4">
+          <img
+            src={schoolBranding.logoSrc}
+            alt={`Logo ${schoolBranding.schoolName}`}
+            className="h-20 w-20 rounded-lg border border-slate-900 bg-white object-contain p-1.5"
+          />
+          <div>
+            <p className="font-serif text-xl font-black tracking-wide text-slate-900">{schoolBranding.schoolName}</p>
+            <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+              {schoolBranding.tagline} - {schoolBranding.appName}
+            </p>
+            <span className="mt-3 inline-flex border border-slate-900 px-4 py-1 text-[11px] font-black uppercase tracking-[0.22em]">Recu officiel A5</span>
+          </div>
         </div>
         <div className="text-left sm:text-right">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Transaction</p>
@@ -630,8 +653,8 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
             </div>
             <div className="flex min-h-24 flex-col items-center justify-between border border-slate-600 p-3 text-center">
               <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Sceau de l'ecole</p>
-              <div className="flex h-16 w-16 items-center justify-center rounded-full border border-slate-900 text-[10px] font-black text-slate-900">
-                SCEAU<br />OFFICIEL
+              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-slate-900 bg-white p-1">
+                <img src={schoolBranding.logoSrc} alt={schoolBranding.shortName} className="h-full w-full object-contain opacity-90" />
               </div>
             </div>
           </div>
@@ -639,7 +662,7 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
       </div>
 
       <div className="relative mt-4 flex flex-wrap justify-between gap-2 border-t border-slate-300 pt-2 text-[10px] font-semibold text-slate-500">
-        <span>EduPay Smart System - Norme interne A5-RCT-01</span>
+        <span>{schoolBranding.schoolName} - {schoolBranding.appName} - Norme interne A5-RCT-01</span>
         <span>{buildReceiptMicroText(receipt)}</span>
       </div>
     </div>
