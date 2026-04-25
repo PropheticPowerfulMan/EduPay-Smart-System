@@ -2,6 +2,7 @@ import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { Sidebar } from "./components/Sidebar";
 import { AIAssistantPage } from "./pages/AIAssistantPage";
+import { AdminParentPaymentsPage } from "./pages/AdminParentPaymentsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ParentTrackingPage } from "./pages/ParentTrackingPage";
@@ -62,6 +63,7 @@ export function App() {
           <Route index element={<RoleHome />} />
           <Route element={<RoleRoute allowedRoles={["ADMIN", "ACCOUNTANT"]} />}>
             <Route path="payments" element={<PaymentsPage />} />
+            <Route path="parent-payments" element={<AdminParentPaymentsPage />} />
             <Route path="ai" element={<AIAssistantPage />} />
             <Route path="parents" element={<ParentsManagementPage />} />
           </Route>
