@@ -13,7 +13,7 @@ function generateTxNumber(): string {
 
 /* --- French number to words (70/80/90 corrects) -------------------------- */
 function n2wFr(n: number): string {
-  if (n === 0) return "zero";
+  if (n === 0) return "zéro";
   if (n < 0) return "moins " + n2wFr(-n);
   const u = [
     "", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf",
@@ -95,7 +95,7 @@ function amountToWords(amount: number, lang: "fr" | "en"): string {
   const dollarLabel = intPart <= 1 ? "dollar" : "dollars";
   if (decNum === 0) return `${intWords} ${dollarLabel}`;
   const decWords = fn(decNum);
-  const centLabel = lang === "fr" ? "cent-milliemes" : "hundred-thousandths";
+  const centLabel = lang === "fr" ? "cent-millièmes" : "hundred-thousandths";
   return `${intWords} ${dollarLabel} et ${decWords} ${centLabel}`;
 }
 
@@ -147,22 +147,22 @@ function buildSecurityMatrix(hash: string) {
 
 function analyzeReceiptRisk(r: Pick<PaymentRecord, "parentFullName" | "reason" | "amount" | "status" | "method">) {
   const flags: string[] = [];
-  if (r.amount >= 5000) flags.push("Montant eleve: double validation conseillee");
-  if (r.status !== "COMPLETED") flags.push("Statut non regle: ne pas liberer de quittance definitive");
-  if (r.parentFullName.trim().split(/\s+/).length < 2) flags.push("Identite courte: verifier le dossier parent");
+  if (r.amount >= 5000) flags.push("Montant élevé : double validation conseillée");
+  if (r.status !== "COMPLETED") flags.push("Statut non réglé : ne pas libérer de quittance définitive");
+  if (r.parentFullName.trim().split(/\s+/).length < 2) flags.push("Identité courte : vérifier le dossier parent");
   if (r.reason.trim().length < 8) flags.push("Motif trop court pour un audit robuste");
-  if (r.method !== "CASH") flags.push("Paiement mobile: verifier la reference operateur");
+  if (r.method !== "CASH") flags.push("Paiement mobile : vérifier la référence opérateur");
   const score = Math.min(100, flags.length * 22 + (r.amount >= 10000 ? 18 : 0));
   return {
     score,
-    level: score >= 60 ? "Verification renforcee" : score >= 25 ? "Controle standard" : "Faible risque",
+    level: score >= 60 ? "Vérification renforcée" : score >= 25 ? "Contrôle standard" : "Faible risque",
     flags
   };
 }
 
 function getMethodLabel(method: string) {
   const methodLabel: Record<string, string> = {
-    CASH: "Cash / Especes",
+    CASH: "Cash / Espèces",
     AIRTEL_MONEY: "Airtel Money",
     MPESA: "M-Pesa",
     ORANGE_MONEY: "Orange Money",
@@ -172,9 +172,9 @@ function getMethodLabel(method: string) {
 
 function getStatusLabel(status: string) {
   const statusLabel: Record<string, string> = {
-    COMPLETED: "Regle",
+    COMPLETED: "Réglé",
     PENDING: "En attente",
-    FAILED: "Echoue",
+    FAILED: "Échoué",
   };
   return statusLabel[status] ?? status;
 }
@@ -184,7 +184,7 @@ function buildReceiptMicroText(r: PaymentRecord) {
   return `EDUPAY-A5-OFFICIAL ${r.transactionNumber} ${sec.verificationCode} ${r.amount.toFixed(5)}USD ${r.status}`;
 }
 
-/* --- Recu individuel HTML (A5 paysage) ------------------------------------ */
+/* --- Reçu individuel HTML (A5 paysage) ------------------------------------ */
 function buildReceiptHtml(r: PaymentRecord, lang: string): string {
   const safe = {
     tx: escapeHtml(r.transactionNumber),
@@ -208,7 +208,7 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
 <html lang="${lang}">
 <head>
   <meta charset="UTF-8"/>
-  <title>Recu A5 ${safe.tx}</title>
+  <title>Reçu A5 ${safe.tx}</title>
   <style>
     @page { size: A5 landscape; margin: 7mm; }
     * { margin:0; padding:0; box-sizing:border-box; }
@@ -260,13 +260,13 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
       <div>
         <div class="school">${safe.schoolName}</div>
         <div class="sub">${safe.tagline} - ${safe.appName}</div>
-        <div class="official">Recu officiel A5</div>
+        <div class="official">Reçu officiel A5</div>
       </div>
     </div>
     <div class="tx">
       <div class="tx-label">Transaction</div>
       <div class="tx-value">${safe.tx}</div>
-      <div class="tx-label" style="margin-top:2mm">Verification</div>
+      <div class="tx-label" style="margin-top:2mm">Vérification</div>
       <div class="tx-value">${security.verificationCode}</div>
     </div>
   </div>
@@ -276,10 +276,10 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
       <div class="field"><div class="label">Date et heure</div><div class="value">${safe.date}</div></div>
       <div class="field"><div class="label">Parent</div><div class="value parent">${safe.parent}</div></div>
       <div class="field"><div class="label">Motif</div><div class="value">${safe.reason}</div></div>
-      <div class="field"><div class="label">Methode</div><div class="value">${safe.method}</div></div>
+      <div class="field"><div class="label">Méthode</div><div class="value">${safe.method}</div></div>
       <div class="field"><div class="label">Statut</div><div class="value">${safe.status}</div></div>
       <div class="amount">
-        <div class="amount-label">Montant recu en dollars americains</div>
+        <div class="amount-label">Montant reçu en dollars américains</div>
         <div class="amount-value">$ ${r.amount.toFixed(5)}</div>
         <div class="words"><strong>En toutes lettres:</strong> ${safe.amountWords}</div>
       </div>
@@ -287,14 +287,14 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
 
     <div>
       <div class="security">
-        <div class="tx-label">Bloc securite</div>
+        <div class="tx-label">Bloc sécurité</div>
         <div class="matrix">${matrixCells}</div>
         <div class="field" style="grid-template-columns:23mm 1fr"><div class="label">Hash</div><div class="value">${security.hash}</div></div>
         <div class="field" style="grid-template-columns:23mm 1fr"><div class="label">Sceau</div><div class="value">${security.sealCode}</div></div>
-        <div class="field" style="grid-template-columns:23mm 1fr"><div class="label">Controle</div><div class="value">${risk.level}</div></div>
+        <div class="field" style="grid-template-columns:23mm 1fr"><div class="label">Contrôle</div><div class="value">${risk.level}</div></div>
       </div>
       <div class="warning">
-        Toute modification du montant, du parent, du statut ou du motif invalide le code de verification. Recu valable uniquement avec signature du caissier et sceau de l'ecole.
+        Toute modification du montant, du parent, du statut ou du motif invalide le code de vérification. Reçu valable uniquement avec signature du caissier et sceau de l'école.
       </div>
       <div class="seal-row">
         <div class="box">
@@ -302,7 +302,7 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
           <div class="line">Nom, signature et date</div>
         </div>
         <div class="box stamp">
-          <div class="box-title">Sceau de l'ecole</div>
+          <div class="box-title">Sceau de l'école</div>
           <div class="stamp-circle"><img src="${safe.logoSrc}" alt="${safe.shortName}"/></div>
         </div>
       </div>
@@ -318,7 +318,7 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
 </body>
 </html>`;
 }
-/* --- Etat financier HTML (general ou par parent) -------------------------- */
+/* --- État financier HTML (général ou par parent) -------------------------- */
 function buildReportHtml(payments: PaymentRecord[], filterParent?: string): string {
   const filtered = filterParent
     ? payments.filter((p) => p.parentFullName.toLowerCase().includes(filterParent.toLowerCase()))
@@ -336,13 +336,13 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
   const failedTotal    = filtered.filter((p) => p.status === "FAILED").reduce((s, p) => s + p.amount, 0);
 
   const methodLabel: Record<string, string> = {
-    CASH: "Cash / Especes", AIRTEL_MONEY: "Airtel Money", MPESA: "M-Pesa", ORANGE_MONEY: "Orange Money",
+    CASH: "Cash / Espèces", AIRTEL_MONEY: "Airtel Money", MPESA: "M-Pesa", ORANGE_MONEY: "Orange Money",
   };
   const statusColor: Record<string, string> = {
     COMPLETED: "#16a34a", PENDING: "#d97706", FAILED: "#dc2626",
   };
   const statusLabel: Record<string, string> = {
-    COMPLETED: "Regle", PENDING: "En attente", FAILED: "Echoue",
+    COMPLETED: "Réglé", PENDING: "En attente", FAILED: "Échoué",
   };
 
   const byMethod = filtered.reduce<Record<string, number>>((acc, p) => {
@@ -396,7 +396,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
     </div>`;
   }).join("");
 
-  const title = filterParent ? `Etat financier - ${filterParent}` : "Etat general des paiements";
+  const title = filterParent ? `État financier - ${filterParent}` : "État général des paiements";
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -414,10 +414,10 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
   <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px double #1e3a5f; padding-bottom:14px; margin-bottom:20px;">
     <div>
       <div style="font-size:20px; font-weight:bold; color:#1e3a5f; letter-spacing:1px">EduPay Smart School</div>
-      <div style="font-size:11px; color:#64748b; margin-top:3px">Systeme de gestion des paiements - Tous montants en USD (Dollars Americains)</div>
+      <div style="font-size:11px; color:#64748b; margin-top:3px">Système de gestion des paiements - Tous montants en USD (dollars américains)</div>
     </div>
     <div style="text-align:right;">
-      <div style="font-size:11px; color:#64748b">Imprime le</div>
+      <div style="font-size:11px; color:#64748b">Imprimé le</div>
       <div style="font-weight:bold; font-size:13px">${new Date().toLocaleDateString("fr-FR", { dateStyle: "long" })}</div>
       <div style="font-size:11px; color:#64748b">${new Date().toLocaleTimeString("fr-FR")}</div>
     </div>
@@ -429,12 +429,12 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
 
   <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px; margin-bottom:24px;">
     <div style="border:1px solid #e2e8f0; border-radius:6px; padding:12px 14px; background:#f8fafc;">
-      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Total encaisse (USD)</div>
+      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Total encaissé (USD)</div>
       <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${grandTotal.toFixed(5)}</div>
       <div style="font-size:9px; color:#94a3b8; margin-top:2px;">${filtered.length} transaction${filtered.length > 1 ? "s" : ""}</div>
     </div>
     <div style="border:1px solid #d1fae5; border-radius:6px; padding:12px 14px; background:#f0fdf4;">
-      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Paiements regles</div>
+      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Paiements réglés</div>
       <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#16a34a;">$ ${completedTotal.toFixed(5)}</div>
     </div>
     <div style="border:1px solid #fef3c7; border-radius:6px; padding:12px 14px; background:#fffbeb;">
@@ -442,14 +442,14 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
       <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#d97706;">$ ${pendingTotal.toFixed(5)}</div>
     </div>
     <div style="border:1px solid #fee2e2; border-radius:6px; padding:12px 14px; background:#fef2f2;">
-      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Echoues</div>
+      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Échoués</div>
       <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#dc2626;">$ ${failedTotal.toFixed(5)}</div>
     </div>
   </div>
 
   ${Object.keys(byMethod).length > 0 ? `
   <div style="margin-bottom:24px;">
-    <div style="font-weight:bold; font-size:12px; text-transform:uppercase; letter-spacing:1px; color:#1e3a5f; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">Repartition par mode de paiement</div>
+    <div style="font-weight:bold; font-size:12px; text-transform:uppercase; letter-spacing:1px; color:#1e3a5f; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">Répartition par mode de paiement</div>
     <table style="border-collapse:collapse; font-size:12px; border:1px solid #e2e8f0;">
       <thead style="background:#f1f5f9;"><tr>
         <th style="padding:6px 10px; text-align:left; font-size:10px; text-transform:uppercase; color:#475569">Mode</th>
@@ -459,14 +459,14 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
     </table>
   </div>` : ""}
 
-  ${parentBlocks || '<p style="color:#64748b; text-align:center; padding:40px">Aucun paiement trouve.</p>'}
+  ${parentBlocks || '<p style="color:#64748b; text-align:center; padding:40px">Aucun paiement trouvé.</p>'}
 
   <div style="border-top:3px double #1e3a5f; padding-top:16px; display:flex; justify-content:flex-end; align-items:center; gap:20px; margin-top:12px;">
-    <span style="font-size:14px; font-weight:bold; text-transform:uppercase; letter-spacing:1px;">TOTAL GENERAL (USD)</span>
+    <span style="font-size:14px; font-weight:bold; text-transform:uppercase; letter-spacing:1px;">TOTAL GÉNÉRAL (USD)</span>
     <span style="font-size:22px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${grandTotal.toFixed(5)}</span>
   </div>
   <div style="margin-top:28px; text-align:center; font-size:10px; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:14px;">
-    Document genere officiellement par <strong>EduPay Smart System</strong> -
+    Document généré officiellement par <strong>EduPay Smart System</strong> -
     ${new Date().toLocaleString("fr-FR")}
   </div>
 </body>
@@ -521,16 +521,34 @@ function savePayments(ps: PaymentRecord[]) {
 }
 
 const METHOD_OPTIONS = [
-  { value: "CASH",         label: "Cash / Especes" },
+  { value: "CASH",         label: "Cash / Espèces" },
   { value: "AIRTEL_MONEY", label: "Airtel Money" },
   { value: "MPESA",        label: "M-Pesa" },
   { value: "ORANGE_MONEY", label: "Orange Money" },
 ];
 
 const STATUS_OPTIONS = [
-  { value: "COMPLETED", label: "Regle" },
+  { value: "COMPLETED", label: "Réglé" },
   { value: "PENDING",   label: "En attente" },
-  { value: "FAILED",    label: "Echoue" },
+  { value: "FAILED",    label: "Échoué" },
+];
+
+const PAYMENT_REASON_SUGGESTIONS = [
+  "Frais scolaires - 1er trimestre",
+  "Frais scolaires - 2e trimestre",
+  "Frais scolaires - 3e trimestre",
+  "Inscription annuelle",
+  "Réinscription annuelle",
+  "Frais d'examen",
+  "Frais de bulletin",
+  "Frais d'uniforme",
+  "Frais de transport scolaire",
+  "Frais de cantine",
+  "Frais de bibliothèque",
+  "Frais d'activités parascolaires",
+  "Sortie pédagogique",
+  "Rattrapage des arriérés",
+  "Avance sur frais scolaires",
 ];
 
 /* --- Badge statut --------------------------------------------------------- */
@@ -541,7 +559,7 @@ function StatusBadge({ status }: { status: string }) {
     FAILED:    "bg-red-500/15 text-red-300 border-red-500/30",
   };
   const lbl: Record<string, string> = {
-    COMPLETED: "Regle", PENDING: "En attente", FAILED: "Echoue",
+    COMPLETED: "Réglé", PENDING: "En attente", FAILED: "Échoué",
   };
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cfg[status] ?? "bg-slate-700 text-slate-300 border-slate-600"}`}>
@@ -586,16 +604,16 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
           />
           <div>
             <p className="font-serif text-xl font-black tracking-wide text-slate-900">{schoolBranding.schoolName}</p>
-            <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
+          <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
               {schoolBranding.tagline} - {schoolBranding.appName}
             </p>
-            <span className="mt-3 inline-flex border border-slate-900 px-4 py-1 text-[11px] font-black uppercase tracking-[0.22em]">Recu officiel A5</span>
+            <span className="mt-3 inline-flex border border-slate-900 px-4 py-1 text-[11px] font-black uppercase tracking-[0.22em]">Reçu officiel A5</span>
           </div>
         </div>
         <div className="text-left sm:text-right">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Transaction</p>
           <p className="mt-1 font-mono text-sm font-black text-slate-900">{receipt.transactionNumber}</p>
-          <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Verification</p>
+          <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Vérification</p>
           <p className="mt-1 font-mono text-sm font-black text-slate-900">{security.verificationCode}</p>
         </div>
       </div>
@@ -606,7 +624,7 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
             ["Date et heure", receipt.date],
             ["Parent", receipt.parentFullName],
             ["Motif", receipt.reason],
-            ["Methode", getMethodLabel(receipt.method)],
+            ["Méthode", getMethodLabel(receipt.method)],
             ["Statut", getStatusLabel(receipt.status)]
           ].map(([label, value]) => (
             <div key={label} className="grid grid-cols-[120px_1fr] gap-3 border-b border-dotted border-slate-300 py-2">
@@ -615,7 +633,7 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
             </div>
           ))}
           <div className="mt-4 border-2 border-slate-900 bg-slate-50 p-4">
-            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Montant recu en dollars americains</p>
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Montant reçu en dollars américains</p>
             <p className="mt-1 font-mono text-3xl font-black text-slate-900">$ {receipt.amount.toFixed(5)}</p>
             <p className="mt-3 border-t border-slate-300 pt-2 text-xs italic text-slate-700">
               <strong>En toutes lettres:</strong> {receipt.amountWords}
@@ -627,7 +645,7 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
           <div className="border border-slate-900 p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Bloc securite</p>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Bloc sécurité</p>
                 <p className="mt-2 text-xs font-bold text-slate-700">Hash: <span className="font-mono text-slate-950">{security.hash}</span></p>
                 <p className="text-xs font-bold text-slate-700">Sceau: <span className="font-mono text-slate-950">{security.sealCode}</span></p>
               </div>
@@ -643,7 +661,7 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
           </div>
 
           <div className="mt-3 border-l-4 border-amber-600 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
-            Toute modification du montant, du parent, du statut ou du motif invalide le code de verification.
+            Toute modification du montant, du parent, du statut ou du motif invalide le code de vérification.
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-3">
@@ -652,7 +670,7 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
               <p className="border-t border-slate-500 pt-1 text-center text-[10px] text-slate-500">Nom, signature et date</p>
             </div>
             <div className="flex min-h-24 flex-col items-center justify-between border border-slate-600 p-3 text-center">
-              <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Sceau de l'ecole</p>
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Sceau de l'école</p>
               <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-slate-900 bg-white p-1">
                 <img src={schoolBranding.logoSrc} alt={schoolBranding.shortName} className="h-full w-full object-contain opacity-90" />
               </div>
@@ -684,7 +702,7 @@ export function PaymentsPage() {
   const [searchQuery, setSearchQuery]       = useState("");
   const [filterStatus, setFilterStatus]     = useState("ALL");
   const [filterMethod, setFilterMethod]     = useState("ALL");
-  // Etat
+  // État
   const [reportSearch, setReportSearch]     = useState("");
 
   useEffect(() => { savePayments(payments); }, [payments]);
@@ -760,7 +778,7 @@ export function PaymentsPage() {
         }),
       });
       record.id = created?.payment?.id ?? record.id;
-    } catch { /* Mode demo - recu genere meme sans base de donnees */ }
+    } catch { /* Mode démo - reçu généré même sans base de données */ }
 
     setPayments((prev) => [record, ...prev]);
     setSaving(false);
@@ -788,7 +806,7 @@ export function PaymentsPage() {
         const labels: Record<string, string> = {
           form:    "+ " + t("newPaymentBtn"),
           history: "Historique (" + payments.length + ")",
-          report:  "Etat des Paiements",
+          report:  "État des paiements",
         };
         return (
           <button
@@ -813,7 +831,7 @@ export function PaymentsPage() {
               : "border border-slate-600 text-ink-dim hover:text-white hover:border-slate-400"
           }`}
         >
-          Dernier recu
+          Dernier reçu
         </button>
       )}
     </div>
@@ -823,8 +841,8 @@ export function PaymentsPage() {
   const StatsBanner = () => (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
       {[
-        { label: "Total encaisse",   value: fmtUsd(stats.total),     color: "text-brand-300"   },
-        { label: "Regles",           value: fmtUsd(stats.completed), color: "text-emerald-300" },
+        { label: "Total encaissé",   value: fmtUsd(stats.total),     color: "text-brand-300"   },
+        { label: "Réglés",           value: fmtUsd(stats.completed), color: "text-emerald-300" },
         { label: "En attente",       value: fmtUsd(stats.pending),   color: "text-amber-300"   },
         { label: "Transactions",     value: String(stats.count),     color: "text-white"       },
       ].map((s) => (
@@ -877,7 +895,7 @@ export function PaymentsPage() {
             onClick={() => setView("report")}
             className="px-5 py-3 rounded-xl border border-slate-600 text-ink-dim hover:text-white hover:border-slate-400 transition-all font-semibold text-sm"
           >
-            Etat des paiements
+            État des paiements
           </button>
         </div>
       </div>
@@ -892,7 +910,7 @@ export function PaymentsPage() {
       <div className="space-y-6 pb-10">
         <div className="animate-fadeInDown">
           <h1 className="font-display text-3xl font-bold text-white">Historique des Paiements</h1>
-          <p className="text-ink-dim mt-2 text-sm">Tous les paiements enregistres - Montants en dollars americains (USD)</p>
+          <p className="text-ink-dim mt-2 text-sm">Tous les paiements enregistrés - Montants en dollars américains (USD)</p>
         </div>
         <NavBar />
         <StatsBanner />
@@ -904,7 +922,7 @@ export function PaymentsPage() {
               <label className="text-xs font-bold uppercase tracking-wide text-ink-dim block mb-2">Recherche</label>
               <input
                 type="text"
-                placeholder="Nom, motif, numero..."
+                placeholder="Nom, motif, numéro..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full"
@@ -930,7 +948,7 @@ export function PaymentsPage() {
         {/* Tableau */}
         <div className="card overflow-x-auto">
           {filteredPayments.length === 0 ? (
-            <p className="text-center text-ink-dim py-12">Aucun paiement trouve.</p>
+            <p className="text-center text-ink-dim py-12">Aucun paiement trouvé.</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
@@ -959,7 +977,7 @@ export function PaymentsPage() {
                     <td className="py-3 px-3 last:pr-0">
                       <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
-                          title="Imprimer le recu"
+                          title="Imprimer le reçu"
                           onClick={() => printHtml(buildReceiptHtml(p, lang))}
                           className="p-1.5 rounded bg-brand-600/20 text-brand-300 hover:bg-brand-600/40 transition-colors"
                         >
@@ -1010,7 +1028,7 @@ export function PaymentsPage() {
               onClick={() => printHtml(buildReportHtml(filteredPayments))}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-brand-500/40 text-brand-300 hover:bg-brand-600/20 transition-all text-sm font-semibold"
             >
-              <PrintIcon /> Imprimer la liste filtree
+              <PrintIcon /> Imprimer la liste filtrée
             </button>
           </div>
         )}
@@ -1019,7 +1037,7 @@ export function PaymentsPage() {
   }
 
   /* ------------------------------------------------------------------------
-     VUE ETAT DES PAIEMENTS
+     VUE ÉTAT DES PAIEMENTS
   ------------------------------------------------------------------------ */
   if (view === "report") {
     const reportPayments = reportSearch
@@ -1037,9 +1055,9 @@ export function PaymentsPage() {
     return (
       <div className="space-y-6 pb-10">
         <div className="animate-fadeInDown">
-          <h1 className="font-display text-3xl font-bold text-white">Etat des Paiements</h1>
+          <h1 className="font-display text-3xl font-bold text-white">État des paiements</h1>
           <p className="text-ink-dim mt-2 text-sm">
-            Situation financiere {reportSearch ? `- ${reportSearch}` : "generale"} - Tous les montants en USD
+            Situation financière {reportSearch ? `- ${reportSearch}` : "générale"} - Tous les montants en USD
           </p>
         </div>
         <NavBar />
@@ -1049,7 +1067,7 @@ export function PaymentsPage() {
         <div className="card flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-1">
             <label className="text-xs font-bold uppercase tracking-wide text-ink-dim block mb-2">
-              Filtrer par parent (laisser vide = etat general)
+              Filtrer par parent (laisser vide = état général)
             </label>
             <input
               type="text"
@@ -1064,13 +1082,13 @@ export function PaymentsPage() {
             className="flex items-center gap-2 px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold transition-all active:scale-95 shadow-lg shadow-brand-500/20 whitespace-nowrap"
           >
             <PrintIcon className="w-5 h-5" />
-            {reportSearch ? `Imprimer l'etat de ${reportSearch}` : "Imprimer l'etat general"}
+            {reportSearch ? `Imprimer l'état de ${reportSearch}` : "Imprimer l'état général"}
           </button>
         </div>
 
         {/* Cartes par parent */}
         {Object.keys(byParent).length === 0 ? (
-          <div className="card text-center py-12 text-ink-dim">Aucun paiement enregistre.</div>
+          <div className="card text-center py-12 text-ink-dim">Aucun paiement enregistré.</div>
         ) : (
           Object.entries(byParent).map(([parent, recs]) => {
             const parentTotal  = recs.reduce((s, r) => s + r.amount, 0);
@@ -1092,7 +1110,7 @@ export function PaymentsPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-ink-dim uppercase tracking-wide">Total paye</p>
+                    <p className="text-xs text-ink-dim uppercase tracking-wide">Total payé</p>
                     <p className="font-mono font-bold text-xl text-brand-300">$ {parentTotal.toFixed(5)}</p>
                   </div>
                 </div>
@@ -1100,7 +1118,7 @@ export function PaymentsPage() {
                 {/* Mini stats parent */}
                 <div className="grid grid-cols-3 gap-3 mb-4">
                   <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
-                    <p className="text-xs text-ink-dim mb-1">Regle</p>
+                    <p className="text-xs text-ink-dim mb-1">Réglé</p>
                     <p className="font-mono text-sm font-bold text-emerald-300">$ {completedAmt.toFixed(5)}</p>
                   </div>
                   <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
@@ -1108,7 +1126,7 @@ export function PaymentsPage() {
                     <p className="font-mono text-sm font-bold text-amber-300">$ {pendingAmt.toFixed(5)}</p>
                   </div>
                   <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
-                    <p className="text-xs text-ink-dim mb-1">Echoues</p>
+                    <p className="text-xs text-ink-dim mb-1">Échoués</p>
                     <p className="font-mono text-sm font-bold text-red-300">$ {failedAmt.toFixed(5)}</p>
                   </div>
                 </div>
@@ -1138,7 +1156,7 @@ export function PaymentsPage() {
                           <td className="py-2.5 px-2"><StatusBadge status={r.status} /></td>
                           <td className="py-2.5 px-2 last:pr-0">
                             <button
-                              title="Imprimer le recu"
+                              title="Imprimer le reçu"
                               onClick={() => printHtml(buildReceiptHtml(r, lang))}
                               className="p-1.5 rounded bg-brand-600/20 text-brand-300 hover:bg-brand-600/40 transition-colors"
                             >
@@ -1164,7 +1182,7 @@ export function PaymentsPage() {
                     onClick={() => printHtml(buildReportHtml(payments, parent))}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg border border-brand-500/40 text-brand-300 hover:bg-brand-600/20 transition-all text-sm font-semibold"
                   >
-                    <PrintIcon /> Imprimer l'etat de {parent}
+                    <PrintIcon /> Imprimer l'état de {parent}
                   </button>
                 </div>
               </div>
@@ -1180,7 +1198,7 @@ export function PaymentsPage() {
             </p>
             <div className="text-right">
               <p className="font-mono text-2xl font-bold text-brand-300">$ {reportTotal.toFixed(5)}</p>
-              <p className="text-xs text-ink-dim mt-0.5">Dollars americains (USD)</p>
+              <p className="text-xs text-ink-dim mt-0.5">Dollars américains (USD)</p>
             </div>
           </div>
         )}
@@ -1243,12 +1261,34 @@ export function PaymentsPage() {
               {t("reason")} <span className="text-danger">*</span>
             </label>
             <input
+              list="payment-reason-suggestions"
               type="text"
               value={form.reason}
               onChange={(e) => setField("reason", e.target.value)}
               placeholder="Ex. Frais scolaires 1er trimestre 2026"
               className={`w-full ${fieldErrors.reason ? "border-danger" : ""}`}
             />
+            <datalist id="payment-reason-suggestions">
+              {PAYMENT_REASON_SUGGESTIONS.map((reason) => (
+                <option key={reason} value={reason} />
+              ))}
+            </datalist>
+            <div className="flex flex-wrap gap-2 pt-1">
+              {PAYMENT_REASON_SUGGESTIONS.slice(0, 8).map((reason) => (
+                <button
+                  key={reason}
+                  type="button"
+                  onClick={() => setField("reason", reason)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    form.reason === reason
+                      ? "border-brand-500 bg-brand-500/20 text-white"
+                      : "border-slate-600 text-ink-dim hover:border-brand-400 hover:text-white"
+                  }`}
+                >
+                  {reason}
+                </button>
+              ))}
+            </div>
             {fieldErrors.reason && <p className="text-xs text-danger">{fieldErrors.reason}</p>}
           </div>
 
