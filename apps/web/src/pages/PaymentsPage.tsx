@@ -12,7 +12,7 @@ function generateTxNumber(): string {
 
 /* --- French number to words (70/80/90 corrects) -------------------------- */
 function n2wFr(n: number): string {
-  if (n === 0) return "zéro";
+  if (n === 0) return "zero";
   if (n < 0) return "moins " + n2wFr(-n);
   const u = [
     "", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf",
@@ -84,7 +84,7 @@ function n2wEn(n: number): string {
   return r ? `${n2wEn(m)} million ${n2wEn(r)}` : `${n2wEn(m)} million`;
 }
 
-/* --- Amount ? words (5 décimales) --------------------------------------- */
+/* --- Amount to words (5 decimals) ---------------------------------------- */
 function amountToWords(amount: number, lang: "fr" | "en"): string {
   const intPart = Math.floor(amount);
   const decStr = amount.toFixed(5).split(".")[1] ?? "00000";
@@ -94,7 +94,7 @@ function amountToWords(amount: number, lang: "fr" | "en"): string {
   const dollarLabel = intPart <= 1 ? "dollar" : "dollars";
   if (decNum === 0) return `${intWords} ${dollarLabel}`;
   const decWords = fn(decNum);
-  const centLabel = lang === "fr" ? "cent-millièmes" : "hundred-thousandths";
+  const centLabel = lang === "fr" ? "cent-milliemes" : "hundred-thousandths";
   return `${intWords} ${dollarLabel} et ${decWords} ${centLabel}`;
 }
 
@@ -103,112 +103,209 @@ function fmtUsd(n: number): string {
   return `$ ${n.toFixed(5)}`;
 }
 
-/* --- Reçu individuel HTML (A4) ------------------------------------------- */
-function buildReceiptHtml(r: PaymentRecord, lang: string): string {
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function makeSecurityHash(input: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(16).toUpperCase().padStart(8, "0");
+}
+
+function buildReceiptSecurity(r: Pick<PaymentRecord, "transactionNumber" | "date" | "parentFullName" | "reason" | "amount" | "method" | "status">) {
+  const payload = [
+    r.transactionNumber,
+    r.date,
+    r.parentFullName.trim().toUpperCase(),
+    r.reason.trim().toUpperCase(),
+    r.amount.toFixed(5),
+    r.method,
+    r.status
+  ].join("|");
+  const hash = makeSecurityHash(payload);
+  return {
+    hash,
+    verificationCode: `EDP-${hash.slice(0, 4)}-${hash.slice(4, 8)}`,
+    sealCode: makeSecurityHash(`${hash}|EduPay|A5|Official`).slice(0, 6)
+  };
+}
+
+function buildSecurityMatrix(hash: string) {
+  const bits = hash.split("").map((c) => parseInt(c, 16).toString(2).padStart(4, "0")).join("");
+  return Array.from({ length: 64 }, (_v, i) => bits[i % bits.length] === "1");
+}
+
+function analyzeReceiptRisk(r: Pick<PaymentRecord, "parentFullName" | "reason" | "amount" | "status" | "method">) {
+  const flags: string[] = [];
+  if (r.amount >= 5000) flags.push("Montant eleve: double validation conseillee");
+  if (r.status !== "COMPLETED") flags.push("Statut non regle: ne pas liberer de quittance definitive");
+  if (r.parentFullName.trim().split(/\s+/).length < 2) flags.push("Identite courte: verifier le dossier parent");
+  if (r.reason.trim().length < 8) flags.push("Motif trop court pour un audit robuste");
+  if (r.method !== "CASH") flags.push("Paiement mobile: verifier la reference operateur");
+  const score = Math.min(100, flags.length * 22 + (r.amount >= 10000 ? 18 : 0));
+  return {
+    score,
+    level: score >= 60 ? "Verification renforcee" : score >= 25 ? "Controle standard" : "Faible risque",
+    flags
+  };
+}
+
+function getMethodLabel(method: string) {
   const methodLabel: Record<string, string> = {
-    CASH: "Cash / Espèces",
+    CASH: "Cash / Especes",
     AIRTEL_MONEY: "Airtel Money",
     MPESA: "M-Pesa",
     ORANGE_MONEY: "Orange Money",
   };
+  return methodLabel[method] ?? method;
+}
+
+function getStatusLabel(status: string) {
   const statusLabel: Record<string, string> = {
-    COMPLETED: "Réglé ?",
-    PENDING: "En attente ?",
-    FAILED: "Échoué ?",
+    COMPLETED: "Regle",
+    PENDING: "En attente",
+    FAILED: "Echoue",
   };
+  return statusLabel[status] ?? status;
+}
+
+function buildReceiptMicroText(r: PaymentRecord) {
+  const sec = buildReceiptSecurity(r);
+  return `EDUPAY-A5-OFFICIAL ${r.transactionNumber} ${sec.verificationCode} ${r.amount.toFixed(5)}USD ${r.status}`;
+}
+
+/* --- Recu individuel HTML (A5 paysage) ------------------------------------ */
+function buildReceiptHtml(r: PaymentRecord, lang: string): string {
+  const safe = {
+    tx: escapeHtml(r.transactionNumber),
+    date: escapeHtml(r.date),
+    parent: escapeHtml(r.parentFullName),
+    reason: escapeHtml(r.reason),
+    amountWords: escapeHtml(r.amountWords),
+    method: escapeHtml(getMethodLabel(r.method)),
+    status: escapeHtml(getStatusLabel(r.status))
+  };
+  const security = buildReceiptSecurity(r);
+  const risk = analyzeReceiptRisk(r);
+  const matrixCells = buildSecurityMatrix(security.hash).map((on) => `<span class="${on ? "on" : ""}"></span>`).join("");
+  const microText = escapeHtml(buildReceiptMicroText(r));
   return `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
   <meta charset="UTF-8"/>
-  <title>Reçu ${r.transactionNumber}</title>
+  <title>Recu A5 ${safe.tx}</title>
   <style>
-    @page { size: A4 portrait; margin: 18mm 20mm; }
+    @page { size: A5 landscape; margin: 7mm; }
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family: 'Times New Roman', Georgia, serif; color: #0d1b2a; background: #fff; font-size: 13px; }
-    .page { max-width: 760px; margin: 0 auto; }
-    .header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom: 3px double #1e3a5f; padding-bottom:14px; margin-bottom:20px; }
-    .school-name { font-size:20px; font-weight:bold; color:#1e3a5f; letter-spacing:1px; }
-    .school-sub  { font-size:11px; color:#64748b; margin-top:3px; }
-    .tx-badge { border:2px solid #1e3a5f; padding:8px 14px; text-align:center; border-radius:4px; }
-    .tx-badge-label { font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:#64748b; }
-    .tx-badge-value { font-size:15px; font-weight:bold; color:#1e3a5f; margin-top:4px; font-family:monospace; }
-    .receipt-title { text-align:center; font-size:18px; font-weight:bold; letter-spacing:3px; text-transform:uppercase; border:2px solid #0d1b2a; padding:10px 0; margin-bottom:24px; }
-    .field { display:flex; align-items:flex-start; border-bottom:1px dotted #cbd5e1; padding:9px 0; }
-    .field-label { width:210px; flex-shrink:0; font-weight:bold; font-size:11px; text-transform:uppercase; letter-spacing:0.8px; color:#475569; padding-right:12px; padding-top:2px; }
-    .field-value { flex:1; font-size:14px; color:#0d1b2a; }
-    .field-value.accent { font-size:17px; font-weight:bold; color:#1e3a5f; }
-    .amount-block { border:2px solid #1e3a5f; border-radius:6px; padding:16px 20px; margin:20px 0; background:#f8fafc; }
-    .amount-block-top { font-size:10px; text-transform:uppercase; letter-spacing:1.5px; color:#64748b; margin-bottom:8px; }
-    .amount-figure { font-size:30px; font-weight:bold; color:#1e3a5f; font-family:'Courier New', monospace; }
-    .amount-words-line { margin-top:10px; padding-top:10px; border-top:1px solid #e2e8f0; font-style:italic; font-size:13px; color:#334155; }
-    .amount-words-line strong { font-style:normal; font-weight:bold; }
-    .sig-section { display:grid; grid-template-columns:1fr 1fr; gap:28px; margin-top:44px; }
-    .sig-box { border:1px solid #475569; padding:14px; min-height:110px; display:flex; flex-direction:column; }
-    .sig-box-title { font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#475569; font-weight:bold; border-bottom:1px solid #e2e8f0; padding-bottom:8px; margin-bottom:8px; }
-    .footer { margin-top:28px; text-align:center; font-size:10px; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:14px; }
-    .footer strong { color:#475569; }
-    @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
+    body { font-family: Arial, Helvetica, sans-serif; color:#101827; background:#fff; font-size:10.5px; }
+    .receipt { position:relative; width:196mm; min-height:134mm; margin:0 auto; border:1.2mm double #123047; padding:7mm; overflow:hidden; }
+    .watermark { position:absolute; inset:18mm 12mm auto; text-align:center; font-size:31mm; font-weight:900; letter-spacing:5mm; color:rgba(18,48,71,.035); transform:rotate(-10deg); pointer-events:none; }
+    .micro { position:absolute; left:5mm; right:5mm; bottom:2.5mm; color:#94a3b8; font-size:5.6px; letter-spacing:.8px; white-space:nowrap; overflow:hidden; }
+    .top { display:grid; grid-template-columns:1.1fr .9fr; gap:8mm; border-bottom:2px solid #123047; padding-bottom:4mm; }
+    .school { font-family:Georgia, 'Times New Roman', serif; font-size:17px; font-weight:800; color:#123047; letter-spacing:.6px; }
+    .sub { margin-top:1mm; color:#64748b; font-size:9px; text-transform:uppercase; letter-spacing:1.1px; }
+    .official { margin-top:4mm; display:inline-block; border:1px solid #123047; padding:1.5mm 4mm; font-weight:800; letter-spacing:2px; text-transform:uppercase; }
+    .tx { text-align:right; }
+    .tx-label { color:#64748b; font-size:8px; text-transform:uppercase; letter-spacing:1.6px; }
+    .tx-value { margin-top:1mm; font-family:'Courier New', monospace; font-size:13px; font-weight:900; color:#123047; }
+    .grid { display:grid; grid-template-columns:1.25fr .75fr; gap:6mm; margin-top:5mm; }
+    .field { display:grid; grid-template-columns:33mm 1fr; gap:3mm; padding:2.2mm 0; border-bottom:1px dotted #cbd5e1; }
+    .label { color:#475569; font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:.8px; }
+    .value { font-weight:700; color:#101827; }
+    .parent { font-size:13px; color:#123047; }
+    .amount { margin-top:4mm; border:1.5px solid #123047; background:#f8fafc; padding:4mm; }
+    .amount-label { color:#64748b; font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:1.4px; }
+    .amount-value { margin-top:1mm; font-family:'Courier New', monospace; font-size:24px; font-weight:900; color:#123047; }
+    .words { margin-top:2mm; border-top:1px solid #dbe4ef; padding-top:2mm; font-size:9px; font-style:italic; color:#334155; }
+    .security { border:1px solid #123047; padding:3mm; }
+    .matrix { display:grid; grid-template-columns:repeat(8, 1fr); width:25mm; height:25mm; border:1px solid #123047; padding:1mm; gap:.6mm; margin-left:auto; }
+    .matrix span { background:#e2e8f0; }
+    .matrix span.on { background:#123047; }
+    .seal-row { display:grid; grid-template-columns:1fr 1fr; gap:4mm; margin-top:5mm; }
+    .box { min-height:22mm; border:1px dashed #475569; padding:2mm; display:flex; flex-direction:column; justify-content:space-between; }
+    .box-title { font-size:8px; font-weight:900; color:#475569; text-transform:uppercase; letter-spacing:.9px; }
+    .line { border-top:1px solid #475569; padding-top:1mm; text-align:center; font-size:7.5px; color:#64748b; }
+    .stamp { align-items:center; justify-content:center; text-align:center; border-style:solid; }
+    .stamp-circle { width:19mm; height:19mm; border:1px solid #123047; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#123047; font-size:7px; font-weight:900; margin:auto; }
+    .warning { margin-top:3mm; border-left:3px solid #b45309; background:#fffbeb; color:#78350f; padding:2mm; font-size:8px; }
+    .footer { margin-top:4mm; display:flex; justify-content:space-between; color:#64748b; font-size:8px; border-top:1px solid #dbe4ef; padding-top:2mm; }
+    @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } .receipt { margin:0; } }
   </style>
 </head>
 <body>
-<div class="page">
-  <div class="header">
+<div class="receipt">
+  <div class="watermark">EDUPAY</div>
+  <div class="top">
     <div>
-      <div class="school-name">EduPay Smart School</div>
-      <div class="school-sub">Système de gestion des paiements scolaires</div>
+      <div class="school">EduPay Smart School</div>
+      <div class="sub">Systeme interne de gestion des paiements scolaires</div>
+      <div class="official">Recu officiel A5</div>
     </div>
-    <div class="tx-badge">
-      <div class="tx-badge-label">N° de Transaction</div>
-      <div class="tx-badge-value">${r.transactionNumber}</div>
-    </div>
-  </div>
-  <div class="receipt-title">Reçu de Paiement Officiel</div>
-  <div class="field">
-    <span class="field-label">Date &amp; Heure</span>
-    <span class="field-value">${r.date}</span>
-  </div>
-  <div class="field">
-    <span class="field-label">Nom du Parent</span>
-    <span class="field-value accent">${r.parentFullName}</span>
-  </div>
-  <div class="field">
-    <span class="field-label">Motif du Paiement</span>
-    <span class="field-value">${r.reason}</span>
-  </div>
-  <div class="field">
-    <span class="field-label">Mode de Paiement</span>
-    <span class="field-value">${methodLabel[r.method] ?? r.method}</span>
-  </div>
-  <div class="field">
-    <span class="field-label">Statut</span>
-    <span class="field-value">${statusLabel[r.status] ?? r.status}</span>
-  </div>
-  <div class="amount-block">
-    <div class="amount-block-top">Montant réglé — Dollars Américains (USD)</div>
-    <div class="amount-figure">$ ${r.amount.toFixed(5)}</div>
-    <div class="amount-words-line">
-      <strong>En toutes lettres :</strong> ${r.amountWords}
+    <div class="tx">
+      <div class="tx-label">Transaction</div>
+      <div class="tx-value">${safe.tx}</div>
+      <div class="tx-label" style="margin-top:2mm">Verification</div>
+      <div class="tx-value">${security.verificationCode}</div>
     </div>
   </div>
-  <div class="sig-section">
-    <div class="sig-box">
-      <div class="sig-box-title">Signature du Responsable</div>
+
+  <div class="grid">
+    <div>
+      <div class="field"><div class="label">Date et heure</div><div class="value">${safe.date}</div></div>
+      <div class="field"><div class="label">Parent</div><div class="value parent">${safe.parent}</div></div>
+      <div class="field"><div class="label">Motif</div><div class="value">${safe.reason}</div></div>
+      <div class="field"><div class="label">Methode</div><div class="value">${safe.method}</div></div>
+      <div class="field"><div class="label">Statut</div><div class="value">${safe.status}</div></div>
+      <div class="amount">
+        <div class="amount-label">Montant recu en dollars americains</div>
+        <div class="amount-value">$ ${r.amount.toFixed(5)}</div>
+        <div class="words"><strong>En toutes lettres:</strong> ${safe.amountWords}</div>
+      </div>
     </div>
-    <div class="sig-box">
-      <div class="sig-box-title">Cachet de l'École</div>
+
+    <div>
+      <div class="security">
+        <div class="tx-label">Bloc securite</div>
+        <div class="matrix">${matrixCells}</div>
+        <div class="field" style="grid-template-columns:23mm 1fr"><div class="label">Hash</div><div class="value">${security.hash}</div></div>
+        <div class="field" style="grid-template-columns:23mm 1fr"><div class="label">Sceau</div><div class="value">${security.sealCode}</div></div>
+        <div class="field" style="grid-template-columns:23mm 1fr"><div class="label">Controle</div><div class="value">${risk.level}</div></div>
+      </div>
+      <div class="warning">
+        Toute modification du montant, du parent, du statut ou du motif invalide le code de verification. Recu valable uniquement avec signature du caissier et sceau de l'ecole.
+      </div>
+      <div class="seal-row">
+        <div class="box">
+          <div class="box-title">Signature du caissier</div>
+          <div class="line">Nom, signature et date</div>
+        </div>
+        <div class="box stamp">
+          <div class="box-title">Sceau de l'ecole</div>
+          <div class="stamp-circle">SCEAU<br/>OFFICIEL</div>
+        </div>
+      </div>
     </div>
   </div>
+
   <div class="footer">
-    Ce reçu a été généré officiellement par le système <strong>EduPay Smart System</strong> &bull;
-    Réf. <strong>${r.transactionNumber}</strong> &bull;
-    ${new Date().toLocaleDateString("fr-FR", { dateStyle: "long" })}
+    <span>EduPay Smart System - Norme interne A5-RCT-01</span>
+    <span>Ref: ${safe.tx} - ${new Date().toLocaleDateString("fr-FR")}</span>
   </div>
+  <div class="micro">${microText} ${microText} ${microText}</div>
 </div>
 </body>
 </html>`;
 }
-
-/* --- État financier HTML (général ou par parent) ------------------------- */
+/* --- Etat financier HTML (general ou par parent) -------------------------- */
 function buildReportHtml(payments: PaymentRecord[], filterParent?: string): string {
   const filtered = filterParent
     ? payments.filter((p) => p.parentFullName.toLowerCase().includes(filterParent.toLowerCase()))
@@ -226,13 +323,13 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
   const failedTotal    = filtered.filter((p) => p.status === "FAILED").reduce((s, p) => s + p.amount, 0);
 
   const methodLabel: Record<string, string> = {
-    CASH: "Cash / Espèces", AIRTEL_MONEY: "Airtel Money", MPESA: "M-Pesa", ORANGE_MONEY: "Orange Money",
+    CASH: "Cash / Especes", AIRTEL_MONEY: "Airtel Money", MPESA: "M-Pesa", ORANGE_MONEY: "Orange Money",
   };
   const statusColor: Record<string, string> = {
     COMPLETED: "#16a34a", PENDING: "#d97706", FAILED: "#dc2626",
   };
   const statusLabel: Record<string, string> = {
-    COMPLETED: "Réglé", PENDING: "En attente", FAILED: "Échoué",
+    COMPLETED: "Regle", PENDING: "En attente", FAILED: "Echoue",
   };
 
   const byMethod = filtered.reduce<Record<string, number>>((acc, p) => {
@@ -266,7 +363,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
       <table style="width:100%; border-collapse:collapse; border:1px solid #e2e8f0; border-top:none; font-size:12px;">
         <thead style="background:#f1f5f9;">
           <tr>
-            <th style="padding:7px 8px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#475569">N° Transaction</th>
+            <th style="padding:7px 8px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#475569">No Transaction</th>
             <th style="padding:7px 8px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#475569">Date</th>
             <th style="padding:7px 8px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#475569">Motif</th>
             <th style="padding:7px 8px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.8px; color:#475569">Mode</th>
@@ -286,7 +383,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
     </div>`;
   }).join("");
 
-  const title = filterParent ? `État Financier — ${filterParent}` : "État Général des Paiements";
+  const title = filterParent ? `Etat financier - ${filterParent}` : "Etat general des paiements";
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -304,10 +401,10 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
   <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px double #1e3a5f; padding-bottom:14px; margin-bottom:20px;">
     <div>
       <div style="font-size:20px; font-weight:bold; color:#1e3a5f; letter-spacing:1px">EduPay Smart School</div>
-      <div style="font-size:11px; color:#64748b; margin-top:3px">Système de gestion des paiements — Tous montants en USD (Dollars Américains)</div>
+      <div style="font-size:11px; color:#64748b; margin-top:3px">Systeme de gestion des paiements - Tous montants en USD (Dollars Americains)</div>
     </div>
     <div style="text-align:right;">
-      <div style="font-size:11px; color:#64748b">Imprimé le</div>
+      <div style="font-size:11px; color:#64748b">Imprime le</div>
       <div style="font-weight:bold; font-size:13px">${new Date().toLocaleDateString("fr-FR", { dateStyle: "long" })}</div>
       <div style="font-size:11px; color:#64748b">${new Date().toLocaleTimeString("fr-FR")}</div>
     </div>
@@ -319,12 +416,12 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
 
   <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px; margin-bottom:24px;">
     <div style="border:1px solid #e2e8f0; border-radius:6px; padding:12px 14px; background:#f8fafc;">
-      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Total encaissé (USD)</div>
+      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Total encaisse (USD)</div>
       <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${grandTotal.toFixed(5)}</div>
       <div style="font-size:9px; color:#94a3b8; margin-top:2px;">${filtered.length} transaction${filtered.length > 1 ? "s" : ""}</div>
     </div>
     <div style="border:1px solid #d1fae5; border-radius:6px; padding:12px 14px; background:#f0fdf4;">
-      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Paiements réglés</div>
+      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Paiements regles</div>
       <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#16a34a;">$ ${completedTotal.toFixed(5)}</div>
     </div>
     <div style="border:1px solid #fef3c7; border-radius:6px; padding:12px 14px; background:#fffbeb;">
@@ -332,14 +429,14 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
       <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#d97706;">$ ${pendingTotal.toFixed(5)}</div>
     </div>
     <div style="border:1px solid #fee2e2; border-radius:6px; padding:12px 14px; background:#fef2f2;">
-      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Échoués</div>
+      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Echoues</div>
       <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#dc2626;">$ ${failedTotal.toFixed(5)}</div>
     </div>
   </div>
 
   ${Object.keys(byMethod).length > 0 ? `
   <div style="margin-bottom:24px;">
-    <div style="font-weight:bold; font-size:12px; text-transform:uppercase; letter-spacing:1px; color:#1e3a5f; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">Répartition par mode de paiement</div>
+    <div style="font-weight:bold; font-size:12px; text-transform:uppercase; letter-spacing:1px; color:#1e3a5f; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">Repartition par mode de paiement</div>
     <table style="border-collapse:collapse; font-size:12px; border:1px solid #e2e8f0;">
       <thead style="background:#f1f5f9;"><tr>
         <th style="padding:6px 10px; text-align:left; font-size:10px; text-transform:uppercase; color:#475569">Mode</th>
@@ -349,14 +446,14 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
     </table>
   </div>` : ""}
 
-  ${parentBlocks || '<p style="color:#64748b; text-align:center; padding:40px">Aucun paiement trouvé.</p>'}
+  ${parentBlocks || '<p style="color:#64748b; text-align:center; padding:40px">Aucun paiement trouve.</p>'}
 
   <div style="border-top:3px double #1e3a5f; padding-top:16px; display:flex; justify-content:flex-end; align-items:center; gap:20px; margin-top:12px;">
-    <span style="font-size:14px; font-weight:bold; text-transform:uppercase; letter-spacing:1px;">TOTAL GÉNÉRAL (USD)</span>
+    <span style="font-size:14px; font-weight:bold; text-transform:uppercase; letter-spacing:1px;">TOTAL GENERAL (USD)</span>
     <span style="font-size:22px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${grandTotal.toFixed(5)}</span>
   </div>
   <div style="margin-top:28px; text-align:center; font-size:10px; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:14px;">
-    Document généré officiellement par <strong>EduPay Smart System</strong> &bull;
+    Document genere officiellement par <strong>EduPay Smart System</strong> -
     ${new Date().toLocaleString("fr-FR")}
   </div>
 </body>
@@ -411,16 +508,16 @@ function savePayments(ps: PaymentRecord[]) {
 }
 
 const METHOD_OPTIONS = [
-  { value: "CASH",         label: "?? Cash / Espèces" },
-  { value: "AIRTEL_MONEY", label: "?? Airtel Money" },
-  { value: "MPESA",        label: "?? M-Pesa" },
-  { value: "ORANGE_MONEY", label: "?? Orange Money" },
+  { value: "CASH",         label: "Cash / Especes" },
+  { value: "AIRTEL_MONEY", label: "Airtel Money" },
+  { value: "MPESA",        label: "M-Pesa" },
+  { value: "ORANGE_MONEY", label: "Orange Money" },
 ];
 
 const STATUS_OPTIONS = [
-  { value: "COMPLETED", label: "? Réglé" },
-  { value: "PENDING",   label: "? En attente" },
-  { value: "FAILED",    label: "? Échoué" },
+  { value: "COMPLETED", label: "Regle" },
+  { value: "PENDING",   label: "En attente" },
+  { value: "FAILED",    label: "Echoue" },
 ];
 
 /* --- Badge statut --------------------------------------------------------- */
@@ -431,7 +528,7 @@ function StatusBadge({ status }: { status: string }) {
     FAILED:    "bg-red-500/15 text-red-300 border-red-500/30",
   };
   const lbl: Record<string, string> = {
-    COMPLETED: "Réglé", PENDING: "En attente", FAILED: "Échoué",
+    COMPLETED: "Regle", PENDING: "En attente", FAILED: "Echoue",
   };
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cfg[status] ?? "bg-slate-700 text-slate-300 border-slate-600"}`}>
@@ -440,7 +537,7 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-/* --- Icône imprimante ----------------------------------------------------- */
+/* --- Icone imprimante ----------------------------------------------------- */
 function PrintIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
     <svg className={className} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -448,6 +545,104 @@ function PrintIcon({ className = "w-4 h-4" }: { className?: string }) {
       <rect x="3" y="9" width="18" height="10" rx="2" />
       <path d="M6 19v-5h12v5" />
     </svg>
+  );
+}
+
+function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord; compact?: boolean }) {
+  const security = buildReceiptSecurity(receipt);
+  const risk = analyzeReceiptRisk(receipt);
+  const matrix = buildSecurityMatrix(security.hash);
+  const riskTone = risk.score >= 60
+    ? "border-red-500/40 bg-red-500/10 text-red-200"
+    : risk.score >= 25
+      ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
+      : "border-emerald-500/40 bg-emerald-500/10 text-emerald-200";
+
+  return (
+    <div className={`relative mx-auto w-full max-w-4xl overflow-hidden rounded-xl border-4 border-double border-slate-300 bg-white p-5 text-slate-950 shadow-2xl ${compact ? "scale-[0.98]" : ""}`}>
+      <div className="pointer-events-none absolute inset-x-8 top-20 -rotate-6 text-center text-7xl font-black tracking-[0.28em] text-slate-900/[0.035]">
+        EDUPAY
+      </div>
+      <div className="relative grid gap-4 border-b-2 border-slate-800 pb-4 sm:grid-cols-[1.1fr_0.9fr]">
+        <div>
+          <p className="font-serif text-xl font-black tracking-wide text-slate-900">EduPay Smart School</p>
+          <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Systeme interne de gestion des paiements scolaires</p>
+          <span className="mt-3 inline-flex border border-slate-900 px-4 py-1 text-[11px] font-black uppercase tracking-[0.22em]">Recu officiel A5</span>
+        </div>
+        <div className="text-left sm:text-right">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Transaction</p>
+          <p className="mt-1 font-mono text-sm font-black text-slate-900">{receipt.transactionNumber}</p>
+          <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Verification</p>
+          <p className="mt-1 font-mono text-sm font-black text-slate-900">{security.verificationCode}</p>
+        </div>
+      </div>
+
+      <div className="relative mt-4 grid gap-5 lg:grid-cols-[1.25fr_0.75fr]">
+        <div>
+          {[
+            ["Date et heure", receipt.date],
+            ["Parent", receipt.parentFullName],
+            ["Motif", receipt.reason],
+            ["Methode", getMethodLabel(receipt.method)],
+            ["Statut", getStatusLabel(receipt.status)]
+          ].map(([label, value]) => (
+            <div key={label} className="grid grid-cols-[120px_1fr] gap-3 border-b border-dotted border-slate-300 py-2">
+              <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</span>
+              <span className={`text-sm font-bold ${label === "Parent" ? "text-slate-950" : "text-slate-700"}`}>{value}</span>
+            </div>
+          ))}
+          <div className="mt-4 border-2 border-slate-900 bg-slate-50 p-4">
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Montant recu en dollars americains</p>
+            <p className="mt-1 font-mono text-3xl font-black text-slate-900">$ {receipt.amount.toFixed(5)}</p>
+            <p className="mt-3 border-t border-slate-300 pt-2 text-xs italic text-slate-700">
+              <strong>En toutes lettres:</strong> {receipt.amountWords}
+            </p>
+          </div>
+        </div>
+
+        <div>
+          <div className="border border-slate-900 p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Bloc securite</p>
+                <p className="mt-2 text-xs font-bold text-slate-700">Hash: <span className="font-mono text-slate-950">{security.hash}</span></p>
+                <p className="text-xs font-bold text-slate-700">Sceau: <span className="font-mono text-slate-950">{security.sealCode}</span></p>
+              </div>
+              <div className="grid h-20 w-20 grid-cols-8 gap-0.5 border border-slate-900 bg-white p-1">
+                {matrix.map((on, idx) => (
+                  <span key={idx} className={on ? "bg-slate-900" : "bg-slate-200"} />
+                ))}
+              </div>
+            </div>
+            <div className={`mt-3 rounded-md border px-3 py-2 text-xs font-bold ${riskTone}`}>
+              {risk.level} - score {risk.score}/100
+            </div>
+          </div>
+
+          <div className="mt-3 border-l-4 border-amber-600 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
+            Toute modification du montant, du parent, du statut ou du motif invalide le code de verification.
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="flex min-h-24 flex-col justify-between border border-dashed border-slate-600 p-3">
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Signature du caissier</p>
+              <p className="border-t border-slate-500 pt-1 text-center text-[10px] text-slate-500">Nom, signature et date</p>
+            </div>
+            <div className="flex min-h-24 flex-col items-center justify-between border border-slate-600 p-3 text-center">
+              <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Sceau de l'ecole</p>
+              <div className="flex h-16 w-16 items-center justify-center rounded-full border border-slate-900 text-[10px] font-black text-slate-900">
+                SCEAU<br />OFFICIEL
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="relative mt-4 flex flex-wrap justify-between gap-2 border-t border-slate-300 pt-2 text-[10px] font-semibold text-slate-500">
+        <span>EduPay Smart System - Norme interne A5-RCT-01</span>
+        <span>{buildReceiptMicroText(receipt)}</span>
+      </div>
+    </div>
   );
 }
 
@@ -466,14 +661,14 @@ export function PaymentsPage() {
   const [searchQuery, setSearchQuery]       = useState("");
   const [filterStatus, setFilterStatus]     = useState("ALL");
   const [filterMethod, setFilterMethod]     = useState("ALL");
-  // État
+  // Etat
   const [reportSearch, setReportSearch]     = useState("");
 
   useEffect(() => { savePayments(payments); }, [payments]);
 
   const amountNum = parseFloat(form.amount) || 0;
   const amountWords = useMemo(() => {
-    if (amountNum <= 0) return "—";
+    if (amountNum <= 0) return "-";
     return amountToWords(amountNum, lang as "fr" | "en");
   }, [amountNum, lang]);
 
@@ -542,7 +737,7 @@ export function PaymentsPage() {
         }),
       });
       record.id = created?.payment?.id ?? record.id;
-    } catch { /* Mode démo — reçu généré même sans base de données */ }
+    } catch { /* Mode demo - recu genere meme sans base de donnees */ }
 
     setPayments((prev) => [record, ...prev]);
     setSaving(false);
@@ -569,8 +764,8 @@ export function PaymentsPage() {
       {(["form", "history", "report"] as View[]).map((v) => {
         const labels: Record<string, string> = {
           form:    "+ " + t("newPaymentBtn"),
-          history: "?? Historique (" + payments.length + ")",
-          report:  "?? État des Paiements",
+          history: "Historique (" + payments.length + ")",
+          report:  "Etat des Paiements",
         };
         return (
           <button
@@ -595,7 +790,7 @@ export function PaymentsPage() {
               : "border border-slate-600 text-ink-dim hover:text-white hover:border-slate-400"
           }`}
         >
-          ?? Dernier reçu
+          Dernier recu
         </button>
       )}
     </div>
@@ -605,8 +800,8 @@ export function PaymentsPage() {
   const StatsBanner = () => (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
       {[
-        { label: "Total encaissé",   value: fmtUsd(stats.total),     color: "text-brand-300"   },
-        { label: "Réglés",           value: fmtUsd(stats.completed), color: "text-emerald-300" },
+        { label: "Total encaisse",   value: fmtUsd(stats.total),     color: "text-brand-300"   },
+        { label: "Regles",           value: fmtUsd(stats.completed), color: "text-emerald-300" },
         { label: "En attente",       value: fmtUsd(stats.pending),   color: "text-amber-300"   },
         { label: "Transactions",     value: String(stats.count),     color: "text-white"       },
       ].map((s) => (
@@ -620,7 +815,7 @@ export function PaymentsPage() {
   );
 
   /* ------------------------------------------------------------------------
-     VUE REÇU
+     VUE RECU
   ------------------------------------------------------------------------ */
   if (view === "receipt" && currentReceipt) {
     const r = currentReceipt;
@@ -639,70 +834,7 @@ export function PaymentsPage() {
           </button>
         </div>
 
-        <div className="card overflow-hidden">
-          {/* En-tête */}
-          <div className="flex items-start justify-between border-b border-slate-700 pb-6 mb-6">
-            <div>
-              <h2 className="font-display text-xl font-bold text-white">EduPay Smart School</h2>
-              <p className="text-xs text-ink-dim mt-1">{t("paymentsSubtitle")}</p>
-            </div>
-            <div className="text-right border border-brand-500/50 rounded-lg px-4 py-2 bg-brand-500/10">
-              <p className="text-xs text-ink-dim uppercase tracking-widest mb-1">{t("txNumber")}</p>
-              <p className="font-mono text-sm font-bold text-brand-300">{r.transactionNumber}</p>
-            </div>
-          </div>
-
-          <div className="text-center py-3 mb-6 border border-slate-600 rounded-lg">
-            <p className="text-sm font-bold uppercase tracking-[0.3em] text-white">Reçu de Paiement Officiel</p>
-          </div>
-
-          {/* Champs */}
-          <div className="space-y-0 divide-y divide-slate-800">
-            {([
-              { label: t("date"),           value: r.date },
-              { label: t("parentFullName"), value: r.parentFullName, accent: true },
-              { label: t("reason"),         value: r.reason },
-              { label: t("method"),         value: r.method.replace(/_/g, " ") },
-              { label: "Statut",            value: r.status, badge: true },
-            ] as { label: string; value: string; accent?: boolean; badge?: boolean }[]).map((row) => (
-              <div key={row.label} className="flex items-start gap-4 py-3">
-                <span className="w-44 flex-shrink-0 text-xs font-bold uppercase tracking-wide text-ink-dim pt-0.5">
-                  {row.label}
-                </span>
-                {row.badge
-                  ? <StatusBadge status={row.value} />
-                  : <span className={`flex-1 ${row.accent ? "text-lg font-bold text-white" : "text-sm text-slate-200"}`}>{row.value}</span>
-                }
-              </div>
-            ))}
-          </div>
-
-          {/* Montant */}
-          <div className="mt-6 rounded-xl border-2 border-brand-500/50 bg-brand-500/5 p-5">
-            <p className="text-xs font-bold uppercase tracking-widest text-ink-dim mb-3">{t("amountUsd")}</p>
-            <p className="font-mono text-4xl font-bold text-brand-300">$ {r.amount.toFixed(5)}</p>
-            <div className="mt-4 pt-4 border-t border-slate-700">
-              <p className="text-xs text-ink-dim uppercase tracking-wide mb-1">{t("amountInWords")}</p>
-              <p className="text-sm font-semibold text-emerald-300 italic">{r.amountWords}</p>
-            </div>
-          </div>
-
-          {/* Signature / Cachet */}
-          <div className="mt-8 grid grid-cols-2 gap-6">
-            {[t("signature"), t("schoolStamp")].map((label) => (
-              <div key={label} className="border-2 border-dashed border-slate-600 rounded-xl min-h-32 flex flex-col">
-                <p className="text-xs font-bold uppercase tracking-widest text-ink-dim px-4 pt-3 pb-2 border-b border-slate-700">
-                  {label}
-                </p>
-                <div className="flex-1" />
-              </div>
-            ))}
-          </div>
-
-          <p className="mt-6 text-center text-xs text-ink-dim">
-            {t("receiptFooter")} • {r.transactionNumber} • {new Date().toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}
-          </p>
-        </div>
+        <ReceiptA5Preview receipt={r} />
 
         {/* Actions */}
         <div className="flex flex-wrap gap-3">
@@ -722,7 +854,7 @@ export function PaymentsPage() {
             onClick={() => setView("report")}
             className="px-5 py-3 rounded-xl border border-slate-600 text-ink-dim hover:text-white hover:border-slate-400 transition-all font-semibold text-sm"
           >
-            État des paiements
+            Etat des paiements
           </button>
         </div>
       </div>
@@ -737,7 +869,7 @@ export function PaymentsPage() {
       <div className="space-y-6 pb-10">
         <div className="animate-fadeInDown">
           <h1 className="font-display text-3xl font-bold text-white">Historique des Paiements</h1>
-          <p className="text-ink-dim mt-2 text-sm">Tous les paiements enregistrés — Montants en dollars américains (USD)</p>
+          <p className="text-ink-dim mt-2 text-sm">Tous les paiements enregistres - Montants en dollars americains (USD)</p>
         </div>
         <NavBar />
         <StatsBanner />
@@ -749,7 +881,7 @@ export function PaymentsPage() {
               <label className="text-xs font-bold uppercase tracking-wide text-ink-dim block mb-2">Recherche</label>
               <input
                 type="text"
-                placeholder="Nom, motif, numéro..."
+                placeholder="Nom, motif, numero..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full"
@@ -775,12 +907,12 @@ export function PaymentsPage() {
         {/* Tableau */}
         <div className="card overflow-x-auto">
           {filteredPayments.length === 0 ? (
-            <p className="text-center text-ink-dim py-12">Aucun paiement trouvé.</p>
+            <p className="text-center text-ink-dim py-12">Aucun paiement trouve.</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-700">
-                  {["N° Transaction", "Date", "Parent", "Motif", "Mode", "Montant (USD)", "Statut", "Actions"].map((h) => (
+                  {["No Transaction", "Date", "Parent", "Motif", "Mode", "Montant (USD)", "Statut", "Actions"].map((h) => (
                     <th key={h} className="text-left text-xs font-bold uppercase tracking-wide text-ink-dim py-3 px-3 first:pl-0 last:pr-0">
                       {h}
                     </th>
@@ -804,7 +936,7 @@ export function PaymentsPage() {
                     <td className="py-3 px-3 last:pr-0">
                       <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
-                          title="Imprimer le reçu"
+                          title="Imprimer le recu"
                           onClick={() => printHtml(buildReceiptHtml(p, lang))}
                           className="p-1.5 rounded bg-brand-600/20 text-brand-300 hover:bg-brand-600/40 transition-colors"
                         >
@@ -855,7 +987,7 @@ export function PaymentsPage() {
               onClick={() => printHtml(buildReportHtml(filteredPayments))}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-brand-500/40 text-brand-300 hover:bg-brand-600/20 transition-all text-sm font-semibold"
             >
-              <PrintIcon /> Imprimer la liste filtrée
+              <PrintIcon /> Imprimer la liste filtree
             </button>
           </div>
         )}
@@ -864,7 +996,7 @@ export function PaymentsPage() {
   }
 
   /* ------------------------------------------------------------------------
-     VUE ÉTAT DES PAIEMENTS
+     VUE ETAT DES PAIEMENTS
   ------------------------------------------------------------------------ */
   if (view === "report") {
     const reportPayments = reportSearch
@@ -882,9 +1014,9 @@ export function PaymentsPage() {
     return (
       <div className="space-y-6 pb-10">
         <div className="animate-fadeInDown">
-          <h1 className="font-display text-3xl font-bold text-white">État des Paiements</h1>
+          <h1 className="font-display text-3xl font-bold text-white">Etat des Paiements</h1>
           <p className="text-ink-dim mt-2 text-sm">
-            Situation financière {reportSearch ? `— ${reportSearch}` : "générale"} • Tous les montants en USD
+            Situation financiere {reportSearch ? `- ${reportSearch}` : "generale"} - Tous les montants en USD
           </p>
         </div>
         <NavBar />
@@ -894,7 +1026,7 @@ export function PaymentsPage() {
         <div className="card flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-1">
             <label className="text-xs font-bold uppercase tracking-wide text-ink-dim block mb-2">
-              Filtrer par parent (laisser vide = état général)
+              Filtrer par parent (laisser vide = etat general)
             </label>
             <input
               type="text"
@@ -909,13 +1041,13 @@ export function PaymentsPage() {
             className="flex items-center gap-2 px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold transition-all active:scale-95 shadow-lg shadow-brand-500/20 whitespace-nowrap"
           >
             <PrintIcon className="w-5 h-5" />
-            {reportSearch ? `Imprimer l'état de ${reportSearch}` : "Imprimer l'état général"}
+            {reportSearch ? `Imprimer l'etat de ${reportSearch}` : "Imprimer l'etat general"}
           </button>
         </div>
 
         {/* Cartes par parent */}
         {Object.keys(byParent).length === 0 ? (
-          <div className="card text-center py-12 text-ink-dim">Aucun paiement enregistré.</div>
+          <div className="card text-center py-12 text-ink-dim">Aucun paiement enregistre.</div>
         ) : (
           Object.entries(byParent).map(([parent, recs]) => {
             const parentTotal  = recs.reduce((s, r) => s + r.amount, 0);
@@ -925,7 +1057,7 @@ export function PaymentsPage() {
 
             return (
               <div key={parent} className="card">
-                {/* En-tête parent */}
+                {/* En-tete parent */}
                 <div className="flex items-center justify-between border-b border-slate-700 pb-4 mb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-brand-600/30 flex items-center justify-center text-brand-300 font-bold text-lg">
@@ -937,7 +1069,7 @@ export function PaymentsPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-ink-dim uppercase tracking-wide">Total payé</p>
+                    <p className="text-xs text-ink-dim uppercase tracking-wide">Total paye</p>
                     <p className="font-mono font-bold text-xl text-brand-300">$ {parentTotal.toFixed(5)}</p>
                   </div>
                 </div>
@@ -945,7 +1077,7 @@ export function PaymentsPage() {
                 {/* Mini stats parent */}
                 <div className="grid grid-cols-3 gap-3 mb-4">
                   <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
-                    <p className="text-xs text-ink-dim mb-1">Réglé</p>
+                    <p className="text-xs text-ink-dim mb-1">Regle</p>
                     <p className="font-mono text-sm font-bold text-emerald-300">$ {completedAmt.toFixed(5)}</p>
                   </div>
                   <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
@@ -953,7 +1085,7 @@ export function PaymentsPage() {
                     <p className="font-mono text-sm font-bold text-amber-300">$ {pendingAmt.toFixed(5)}</p>
                   </div>
                   <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
-                    <p className="text-xs text-ink-dim mb-1">Échoués</p>
+                    <p className="text-xs text-ink-dim mb-1">Echoues</p>
                     <p className="font-mono text-sm font-bold text-red-300">$ {failedAmt.toFixed(5)}</p>
                   </div>
                 </div>
@@ -963,7 +1095,7 @@ export function PaymentsPage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-700">
-                        {["N° Transaction", "Date", "Motif", "Mode", "Montant USD", "Statut", ""].map((h) => (
+                        {["No Transaction", "Date", "Motif", "Mode", "Montant USD", "Statut", ""].map((h) => (
                           <th key={h} className="text-left text-xs font-bold uppercase tracking-wide text-ink-dim py-2 px-2 first:pl-0 last:pr-0">
                             {h}
                           </th>
@@ -983,7 +1115,7 @@ export function PaymentsPage() {
                           <td className="py-2.5 px-2"><StatusBadge status={r.status} /></td>
                           <td className="py-2.5 px-2 last:pr-0">
                             <button
-                              title="Imprimer le reçu"
+                              title="Imprimer le recu"
                               onClick={() => printHtml(buildReceiptHtml(r, lang))}
                               className="p-1.5 rounded bg-brand-600/20 text-brand-300 hover:bg-brand-600/40 transition-colors"
                             >
@@ -1009,7 +1141,7 @@ export function PaymentsPage() {
                     onClick={() => printHtml(buildReportHtml(payments, parent))}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg border border-brand-500/40 text-brand-300 hover:bg-brand-600/20 transition-all text-sm font-semibold"
                   >
-                    <PrintIcon /> Imprimer l'état de {parent}
+                    <PrintIcon /> Imprimer l'etat de {parent}
                   </button>
                 </div>
               </div>
@@ -1017,15 +1149,15 @@ export function PaymentsPage() {
           })
         )}
 
-        {/* Total général */}
+        {/* Total general */}
         {Object.keys(byParent).length > 0 && (
           <div className="card flex items-center justify-between border-2 border-brand-500/30">
             <p className="text-sm font-bold text-ink-dim uppercase tracking-widest">
-              {reportSearch ? `Total — ${reportSearch}` : "TOTAL GÉNÉRAL"}
+              {reportSearch ? `Total - ${reportSearch}` : "TOTAL GENERAL"}
             </p>
             <div className="text-right">
               <p className="font-mono text-2xl font-bold text-brand-300">$ {reportTotal.toFixed(5)}</p>
-              <p className="text-xs text-ink-dim mt-0.5">Dollars américains (USD)</p>
+              <p className="text-xs text-ink-dim mt-0.5">Dollars americains (USD)</p>
             </div>
           </div>
         )}
@@ -1049,7 +1181,7 @@ export function PaymentsPage() {
       <div className="card animate-fadeInUp">
         <h2 className="font-display text-xl font-bold text-white mb-6">{t("paymentDetails")}</h2>
 
-        {/* Numéro de transaction auto */}
+        {/* Numero de transaction auto */}
         <div className="mb-6 p-4 rounded-xl bg-slate-900/60 border border-brand-500/30 flex items-center justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-ink-dim mb-1">{t("txNumber")}</p>
@@ -1160,7 +1292,7 @@ export function PaymentsPage() {
             </div>
           </div>
 
-          {/* Montant en toutes lettres — temps réel */}
+          {/* Montant en toutes lettres - temps reel */}
           <div className="rounded-xl border border-brand-500/30 bg-brand-500/5 p-4">
             <p className="text-xs font-bold uppercase tracking-widest text-ink-dim mb-2">{t("amountInWords")}</p>
             {amountNum > 0 ? (
