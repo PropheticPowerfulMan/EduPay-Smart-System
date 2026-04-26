@@ -731,7 +731,7 @@ export function PaymentsPage() {
     const next = !paymentNotificationsEnabled;
     setPaymentNotificationsEnabled(next);
     localStorage.setItem(PAYMENT_NOTIFICATION_STORAGE_KEY, String(next));
-    setNotificationStatus(next ? "Notifications de paiement activees." : "Notifications de paiement desactivees.");
+    setNotificationStatus(next ? t("paymentNotificationsEnabled") : t("paymentNotificationsDisabled"));
     try {
       const saved = await api<{ paymentNotificationsEnabled: boolean }>("/api/payments/settings/notifications", {
         method: "PUT",
@@ -740,8 +740,8 @@ export function PaymentsPage() {
       setPaymentNotificationsEnabled(saved.paymentNotificationsEnabled);
       localStorage.setItem(PAYMENT_NOTIFICATION_STORAGE_KEY, String(saved.paymentNotificationsEnabled));
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Reglage conserve localement.";
-      setNotificationStatus(`Reglage local applique. API: ${message}`);
+      const message = error instanceof Error ? error.message : t("localSettingSaved");
+      setNotificationStatus(t("localSettingApplied").replace("{{message}}", message));
     }
   };
 
@@ -1263,9 +1263,9 @@ export function PaymentsPage() {
 
       <div className="card flex flex-col gap-4 border border-cyan-500/20 bg-cyan-500/5 md:flex-row md:items-center md:justify-between">
         <div>
-          <p className="text-sm font-bold text-white">Notifications parent apres paiement</p>
+          <p className="text-sm font-bold text-white">{t("paymentNotificationsTitle")}</p>
           <p className="mt-1 text-xs text-ink-dim">
-            Quand ce systeme est actif, chaque paiement envoie automatiquement un email et un SMS au parent avec le detail de la transaction.
+            {t("paymentNotificationsHelp")}
           </p>
           {notificationStatus && <p className="mt-2 text-xs font-semibold text-cyan-200">{notificationStatus}</p>}
         </div>
@@ -1278,7 +1278,7 @@ export function PaymentsPage() {
               : "bg-slate-700/60 text-ink-dim border border-slate-600"
           }`}
         >
-          {paymentNotificationsEnabled ? "Active" : "Desactive"}
+          {paymentNotificationsEnabled ? t("enabled") : t("disabled")}
         </button>
       </div>
 

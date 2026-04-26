@@ -12,7 +12,7 @@ export function Sidebar() {
     : [
         { to: "/", label: t("navDashboard"), icon: "D" },
         { to: "/payments", label: t("navPayments"), icon: "$" },
-        { to: "/parent-payments", label: "Suivi parents", icon: "S" },
+        { to: "/parent-payments", label: t("navParentPayments"), icon: "S" },
         { to: "/parents", label: t("navParents"), icon: "G" },
         { to: "/ai", label: t("navAI"), icon: "AI" }
       ];

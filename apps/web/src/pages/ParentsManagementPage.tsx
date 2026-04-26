@@ -143,6 +143,7 @@ function Badge({ text, color }: { text: string; color: string }) {
 }
 
 function CredentialsModal({ credentials, onClose }: { credentials: ParentCredentials; onClose: () => void }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   const copyText = `Email: ${credentials.email}\nMot de passe temporaire: ${credentials.temporaryPassword}`;
 
@@ -164,18 +165,18 @@ function CredentialsModal({ credentials, onClose }: { credentials: ParentCredent
             <KeyIcon />
           </div>
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-300">Acces parent genere</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-300">{t("parentAccessGenerated")}</p>
             <h3 className="font-display text-xl font-bold text-white">{credentials.parentName}</h3>
           </div>
         </div>
 
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
-          Les acces ont ete envoyes au parent par email et par SMS quand les coordonnees sont disponibles. Gardez ce mot de passe temporaire uniquement pour assistance ou reinitialisation.
+          {t("parentAccessHelp")}
         </div>
 
         <div className="space-y-3">
           <div className="rounded-xl border border-slate-700/50 bg-slate-900/40 p-4">
-            <p className="text-xs uppercase tracking-wide text-ink-dim">Email de connexion</p>
+            <p className="text-xs uppercase tracking-wide text-ink-dim">{t("loginEmail")}</p>
             <p className="mt-1 font-mono text-sm font-bold text-white">{credentials.email}</p>
           </div>
           <div className="rounded-xl border border-slate-700/50 bg-slate-900/40 p-4">
@@ -423,11 +424,11 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-bold text-white">Photo du parent</p>
-            <p className="mt-1 text-xs text-ink-dim">Ajoutez une photo claire pour reconnaitre rapidement le parent dans les suivis et les recus.</p>
+            <p className="text-sm font-bold text-white">{t("parentPhoto")}</p>
+            <p className="mt-1 text-xs text-ink-dim">{t("parentPhotoHelp")}</p>
           </div>
           <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-brand-500/20 px-4 py-2 text-sm font-semibold text-brand-200 hover:bg-brand-500/30">
-            <CameraIcon /> Choisir
+            <CameraIcon /> {t("choose")}
             <input type="file" accept="image/*" className="hidden" onChange={(event) => handlePhoto(event.target.files?.[0])} />
           </label>
           {form.photoUrl && (
@@ -624,7 +625,7 @@ export function ParentsManagementPage() {
   };
 
   const handleResetPassword = async (parent: Parent) => {
-    if (!window.confirm(`Reinitialiser le mot de passe de ${parent.fullName} ?`)) return;
+    if (!window.confirm(t("resetPasswordConfirm").replace("{{name}}", parent.fullName))) return;
     try {
       setApiError(null);
       const result = await api<{ parentId: string; email: string; temporaryPassword: string }>(`/api/parents/${parent.id}/reset-password`, {
@@ -765,8 +766,8 @@ export function ParentsManagementPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="py-4 px-5 text-ink-dim hidden md:table-cell">{parent.phone || "—"}</td>
-                    <td className="py-4 px-5 text-ink-dim hidden lg:table-cell truncate max-w-[180px]">{parent.email || "—"}</td>
+                    <td className="py-4 px-5 text-ink-dim hidden md:table-cell">{parent.phone || "-"}</td>
+                    <td className="py-4 px-5 text-ink-dim hidden lg:table-cell truncate max-w-[180px]">{parent.email || "-"}</td>
                     <td className="py-4 px-5 text-center">
                       <Badge
                         text={`${parent.students.length} ${parent.students.length === 1 ? t("pmChild") : t("pmChildrenCount")}`}
@@ -784,7 +785,7 @@ export function ParentsManagementPage() {
                           <EditIcon />
                         </button>
                         <button onClick={() => void handleResetPassword(parent)}
-                          className="p-2 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-all active:scale-90" title="Reinitialiser le mot de passe">
+                          className="p-2 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-all active:scale-90" title={t("resetPassword")}>
                           <KeyIcon />
                         </button>
                         <button onClick={() => setDeleteTarget(parent)}

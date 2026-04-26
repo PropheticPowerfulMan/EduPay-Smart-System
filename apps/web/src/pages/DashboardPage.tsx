@@ -322,7 +322,7 @@ function MetricCard({
 }
 
 export function DashboardPage() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [overview, setOverview] = useState<Overview | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [parents, setParents] = useState<Parent[]>([]);
@@ -364,33 +364,39 @@ export function DashboardPage() {
   const risk = severity(analysis.riskScore);
   const recoveryPotential = analysis.debt * 0.38 + analysis.pendingAmount * 0.72;
   const chartStatus = [
-    { name: "Regles", value: analysis.successRate, color: "#10b981" },
-    { name: "Risque", value: 100 - analysis.successRate, color: "#f43f5e" }
+    { name: lang === "fr" ? "Réglés" : "Settled", value: analysis.successRate, color: "#10b981" },
+    { name: lang === "fr" ? "Risque" : "Risk", value: 100 - analysis.successRate, color: "#f43f5e" }
   ];
   const radar = [
-    { axis: "Encaissement", value: clamp(analysis.successRate) },
-    { axis: "Donnees", value: analysis.dataCompleteness },
-    { axis: "Tendance", value: clamp(50 + analysis.trend) },
-    { axis: "Dette", value: clamp(100 - analysis.riskScore) },
-    { axis: "Projection", value: analysis.cashTarget > 0 ? clamp((analysis.forecast / analysis.cashTarget) * 100) : 50 }
+    { axis: lang === "fr" ? "Encaissement" : "Collection", value: clamp(analysis.successRate) },
+    { axis: lang === "fr" ? "Données" : "Data", value: analysis.dataCompleteness },
+    { axis: lang === "fr" ? "Tendance" : "Trend", value: clamp(50 + analysis.trend) },
+    { axis: lang === "fr" ? "Dette" : "Debt", value: clamp(100 - analysis.riskScore) },
+    { axis: lang === "fr" ? "Projection" : "Projection", value: analysis.cashTarget > 0 ? clamp((analysis.forecast / analysis.cashTarget) * 100) : 50 }
   ];
   const decisions = [
     {
-      title: "Relance prioritaire",
+      title: lang === "fr" ? "Relance prioritaire" : "Priority follow-up",
       impact: USD.format(recoveryPotential),
-      detail: `${analysis.highRiskParents.length} familles a traiter en premier selon dette et couverture.`,
+      detail: lang === "fr"
+        ? `${analysis.highRiskParents.length} familles à traiter en premier selon la dette et la couverture.`
+        : `${analysis.highRiskParents.length} families to handle first based on debt and coverage.`,
       tone: "border-red-500/35 bg-red-500/10 text-red-200"
     },
     {
-      title: "Tresorerie previsionnelle",
+      title: lang === "fr" ? "Trésorerie prévisionnelle" : "Cash-flow forecast",
       impact: USD.format(analysis.forecast),
-      detail: `${analysis.trend >= 0 ? "Progression" : "Baisse"} estimee a ${Math.abs(analysis.trend).toFixed(1)}% vs mois precedent.`,
+      detail: lang === "fr"
+        ? `${analysis.trend >= 0 ? "Progression" : "Baisse"} estimée à ${Math.abs(analysis.trend).toFixed(1)} % par rapport au mois précédent.`
+        : `${analysis.trend >= 0 ? "Growth" : "Drop"} estimated at ${Math.abs(analysis.trend).toFixed(1)}% versus the previous month.`,
       tone: "border-cyan-500/35 bg-cyan-500/10 text-cyan-200"
     },
     {
-      title: "Audit technique",
+      title: lang === "fr" ? "Audit technique" : "Technical audit",
       impact: `${analysis.anomalies.length}`,
-      detail: "Transactions incompletes, echouees ou statistiquement atypiques detectees.",
+      detail: lang === "fr"
+        ? "Transactions incomplètes, échouées ou statistiquement atypiques détectées."
+        : "Incomplete, failed or statistically unusual transactions detected.",
       tone: "border-amber-500/35 bg-amber-500/10 text-amber-200"
     }
   ];
@@ -411,17 +417,19 @@ export function DashboardPage() {
       <section className="glass border border-brand-300/15 px-6 py-5 shadow-xl">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-200">Centre de decision intelligent</p>
-            <h1 className="mt-2 font-display text-3xl font-bold text-white">{t("dashboardTitle")} administrateur</h1>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-200">{lang === "fr" ? "Centre de décision intelligent" : "Intelligent decision center"}</p>
+            <h1 className="mt-2 font-display text-3xl font-bold text-white">{lang === "fr" ? `${t("dashboardTitle")} administrateur` : "Administrator dashboard"}</h1>
             <p className="mt-2 max-w-3xl text-sm text-ink-dim">
-              Analyse predictive des paiements, exposition par classe, anomalies operationnelles et actions recommandees pour orienter les decisions futures.
+              {lang === "fr"
+                ? "Analyse prédictive des paiements, exposition par classe, anomalies opérationnelles et actions recommandées pour orienter les décisions futures."
+                : "Predictive payment analysis, class-level exposure, operational anomalies and recommended actions to guide future decisions."}
             </p>
           </div>
           <div className={`rounded-2xl border px-5 py-4 ${risk.bg} ${risk.border}`}>
             <div className="flex items-center gap-3">
               <Gauge className={`h-7 w-7 ${risk.color}`} />
               <div>
-                <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Score de risque global</p>
+                <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">{lang === "fr" ? "Score de risque global" : "Global risk score"}</p>
                 <p className={`font-display text-3xl font-bold ${risk.color}`}>{analysis.riskScore.toFixed(0)}%</p>
                 <p className="text-xs text-ink-dim">{risk.label}</p>
               </div>
@@ -432,30 +440,30 @@ export function DashboardPage() {
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
-          label="Encaissements"
+          label={lang === "fr" ? "Encaissements" : "Collections"}
           value={USD.format(analysis.revenue)}
-          detail={`${analysis.successRate.toFixed(1)}% de paiements regles`}
+          detail={lang === "fr" ? `${analysis.successRate.toFixed(1)} % de paiements réglés` : `${analysis.successRate.toFixed(1)}% of payments settled`}
           tone="border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
           icon={WalletCards}
         />
         <MetricCard
-          label="Projection prochain mois"
+          label={lang === "fr" ? "Projection du prochain mois" : "Next month projection"}
           value={USD.format(analysis.forecast)}
-          detail={analysis.trend >= 0 ? `Tendance +${analysis.trend.toFixed(1)}%` : `Tendance ${analysis.trend.toFixed(1)}%`}
+          detail={analysis.trend >= 0 ? `${lang === "fr" ? "Tendance" : "Trend"} +${analysis.trend.toFixed(1)}%` : `${lang === "fr" ? "Tendance" : "Trend"} ${analysis.trend.toFixed(1)}%`}
           tone="border-cyan-500/30 bg-cyan-500/10 text-cyan-300"
           icon={TrendingUp}
         />
         <MetricCard
-          label="Dette exposee"
+          label={lang === "fr" ? "Dette exposée" : "Exposed debt"}
           value={USD.format(analysis.debt)}
-          detail={`Potentiel recuperable: ${USD.format(recoveryPotential)}`}
+          detail={lang === "fr" ? `Potentiel récupérable : ${USD.format(recoveryPotential)}` : `Recoverable potential: ${USD.format(recoveryPotential)}`}
           tone="border-red-500/30 bg-red-500/10 text-red-300"
           icon={ShieldAlert}
         />
         <MetricCard
-          label="Qualite des donnees"
+          label={lang === "fr" ? "Qualité des données" : "Data quality"}
           value={`${analysis.dataCompleteness.toFixed(0)}%`}
-          detail={`${analysis.anomalies.length} anomalie(s) a auditer`}
+          detail={lang === "fr" ? `${analysis.anomalies.length} anomalie(s) à auditer` : `${analysis.anomalies.length} anomaly/anomalies to audit`}
           tone="border-amber-500/30 bg-amber-500/10 text-amber-300"
           icon={BrainCircuit}
         />
@@ -465,11 +473,11 @@ export function DashboardPage() {
         <div className="card glass border border-brand-500/10 shadow-lg">
           <div className="mb-5 flex items-start justify-between gap-4">
             <div>
-              <h2 className="font-display text-xl font-bold text-white">Trajectoire de tresorerie</h2>
-              <p className="mt-1 text-xs text-ink-dim">Revenus reels, objectif theorique et incidents de paiement sur 6 mois.</p>
+              <h2 className="font-display text-xl font-bold text-white">{lang === "fr" ? "Trajectoire de trésorerie" : "Cash-flow trajectory"}</h2>
+              <p className="mt-1 text-xs text-ink-dim">{lang === "fr" ? "Revenus réels, objectif théorique et incidents de paiement sur 6 mois." : "Actual revenue, theoretical target and payment incidents over 6 months."}</p>
             </div>
             <div className="rounded-xl border border-brand-300/20 bg-white/[0.04] px-3 py-2 text-right">
-              <p className="text-[11px] uppercase tracking-[0.14em] text-ink-dim">Cible mensuelle</p>
+              <p className="text-[11px] uppercase tracking-[0.14em] text-ink-dim">{lang === "fr" ? "Cible mensuelle" : "Monthly target"}</p>
               <p className="font-mono text-sm font-bold text-brand-200">{USD.format(analysis.cashTarget)}</p>
             </div>
           </div>
@@ -524,8 +532,8 @@ export function DashboardPage() {
         <div className="card glass border border-brand-500/10 shadow-lg">
           <div className="mb-5 flex items-center justify-between">
             <div>
-              <h2 className="font-display text-xl font-bold text-white">Classes a exposition elevee</h2>
-              <p className="mt-1 text-xs text-ink-dim">Priorisation par ecart attendu vs regle.</p>
+              <h2 className="font-display text-xl font-bold text-white">{lang === "fr" ? "Classes à exposition élevée" : "High-exposure classes"}</h2>
+              <p className="mt-1 text-xs text-ink-dim">{lang === "fr" ? "Priorisation par écart entre attendu et réglé." : "Prioritization by gap between expected and settled amounts."}</p>
             </div>
             <Target className="h-5 w-5 text-brand-300" />
           </div>
@@ -584,15 +592,15 @@ export function DashboardPage() {
         <div className="card glass border border-brand-500/10 shadow-lg">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="font-display text-xl font-bold text-white">Familles critiques</h2>
-              <p className="mt-1 text-xs text-ink-dim">Liste courte pour action commerciale ou sociale immediate.</p>
+              <h2 className="font-display text-xl font-bold text-white">{lang === "fr" ? "Familles critiques" : "Critical families"}</h2>
+              <p className="mt-1 text-xs text-ink-dim">{lang === "fr" ? "Liste courte pour action commerciale ou sociale immédiate." : "Shortlist for immediate administrative or social action."}</p>
             </div>
             <CalendarClock className="h-5 w-5 text-amber-300" />
           </div>
           <div className="space-y-3">
             {analysis.highRiskParents.length === 0 ? (
               <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/10 p-4 text-sm text-emerald-200">
-                Aucun parent critique identifie avec les donnees actuelles.
+                {lang === "fr" ? "Aucun parent critique identifié avec les données actuelles." : "No critical parent identified with the current data."}
               </div>
             ) : analysis.highRiskParents.map((parent) => (
               <div key={parent.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
@@ -607,8 +615,8 @@ export function DashboardPage() {
                   <div className="h-full rounded-full bg-red-400" style={{ width: `${parent.risk}%` }} />
                 </div>
                 <div className="mt-2 flex justify-between text-xs text-ink-dim">
-                  <span>Paye {USD.format(parent.paid)}</span>
-                  <span>Reste {USD.format(parent.gap)}</span>
+                  <span>{lang === "fr" ? "Payé" : "Paid"} {USD.format(parent.paid)}</span>
+                  <span>{lang === "fr" ? "Reste" : "Remaining"} {USD.format(parent.gap)}</span>
                 </div>
               </div>
             ))}
@@ -618,8 +626,8 @@ export function DashboardPage() {
         <div className="card glass border border-brand-500/10 shadow-lg">
           <div className="mb-4 flex items-center justify-between">
             <div>
-              <h2 className="font-display text-xl font-bold text-white">Plan d'action technique</h2>
-              <p className="mt-1 text-xs text-ink-dim">Recommandations generees par la logique predictive.</p>
+              <h2 className="font-display text-xl font-bold text-white">{lang === "fr" ? "Plan d'action technique" : "Technical action plan"}</h2>
+              <p className="mt-1 text-xs text-ink-dim">{lang === "fr" ? "Recommandations générées par la logique prédictive." : "Recommendations generated by the predictive logic."}</p>
             </div>
             <BrainCircuit className="h-5 w-5 text-brand-300" />
           </div>
@@ -628,8 +636,8 @@ export function DashboardPage() {
               <div className="flex gap-3">
                 <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-300" />
                 <div>
-                  <p className="font-semibold text-white">Automatiser la relance segmentee</p>
-                  <p className="mt-1 text-sm text-ink-dim">Priorite aux familles avec risque superieur a 60%, puis message adapte selon montant, anciennete et historique.</p>
+                  <p className="font-semibold text-white">{lang === "fr" ? "Automatiser la relance segmentée" : "Automate segmented follow-up"}</p>
+                  <p className="mt-1 text-sm text-ink-dim">{lang === "fr" ? "Priorité aux familles avec un risque supérieur à 60 %, puis message adapté selon le montant, l'ancienneté et l'historique." : "Prioritize families above 60% risk, then adapt the message by amount, age and history."}</p>
                 </div>
               </div>
             </div>
@@ -637,8 +645,8 @@ export function DashboardPage() {
               <div className="flex gap-3">
                 <Activity className="mt-0.5 h-5 w-5 flex-shrink-0 text-cyan-300" />
                 <div>
-                  <p className="font-semibold text-white">Surveiller les ruptures de tendance</p>
-                  <p className="mt-1 text-sm text-ink-dim">Si le revenu previsionnel reste sous {USD.format(analysis.cashTarget)} deux mois de suite, reduire les depenses non essentielles.</p>
+                  <p className="font-semibold text-white">{lang === "fr" ? "Surveiller les ruptures de tendance" : "Monitor trend breaks"}</p>
+                  <p className="mt-1 text-sm text-ink-dim">{lang === "fr" ? `Si le revenu prévisionnel reste sous ${USD.format(analysis.cashTarget)} deux mois de suite, réduire les dépenses non essentielles.` : `If forecast revenue stays below ${USD.format(analysis.cashTarget)} for two consecutive months, reduce non-essential expenses.`}</p>
                 </div>
               </div>
             </div>
@@ -646,8 +654,8 @@ export function DashboardPage() {
               <div className="flex gap-3">
                 <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-300" />
                 <div>
-                  <p className="font-semibold text-white">Renforcer la qualite des donnees</p>
-                  <p className="mt-1 text-sm text-ink-dim">Rattacher chaque paiement a un parent et a une classe pour fiabiliser les projections et l'audit.</p>
+                  <p className="font-semibold text-white">{lang === "fr" ? "Renforcer la qualité des données" : "Strengthen data quality"}</p>
+                  <p className="mt-1 text-sm text-ink-dim">{lang === "fr" ? "Rattacher chaque paiement à un parent et à une classe pour fiabiliser les projections et l'audit." : "Link every payment to a parent and a class to make projections and audits reliable."}</p>
                 </div>
               </div>
             </div>

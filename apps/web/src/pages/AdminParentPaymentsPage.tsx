@@ -12,7 +12,6 @@ import {
   YAxis
 } from "recharts";
 import {
-  AlertTriangle,
   BrainCircuit,
   CheckCircle2,
   Search,
@@ -23,6 +22,7 @@ import {
   WalletCards
 } from "lucide-react";
 import { api } from "../services/api";
+import { useI18n } from "../i18n";
 
 type Student = {
   id: string;
@@ -97,14 +97,14 @@ function formatCurrency(value: number) {
   return `$ ${new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(value)}`;
 }
 
-function methodLabel(method?: string) {
-  return method ? method.replace(/_/g, " ") : "Non renseigne";
+function methodLabel(method: string | undefined, fallback: string) {
+  return method ? method.replace(/_/g, " ") : fallback;
 }
 
-function statusLabel(status: string) {
-  if (status === "COMPLETED") return "Regle";
-  if (status === "PENDING") return "En attente";
-  if (status === "FAILED") return "Echoue";
+function statusLabel(status: string, t: (key: string) => string) {
+  if (status === "COMPLETED") return t("statusSettled");
+  if (status === "PENDING") return t("pendingLabel");
+  if (status === "FAILED") return t("statusFailed");
   return status;
 }
 
@@ -114,7 +114,7 @@ function statusTone(status: string) {
   return "border-red-500/30 bg-red-500/10 text-red-300";
 }
 
-function buildMonthlySeries(payments: Payment[], expectedMonthly: number) {
+function buildMonthlySeries(payments: Payment[], expectedMonthly: number, locale: string) {
   const now = new Date();
   return Array.from({ length: 8 }, (_v, index) => {
     const date = new Date(now.getFullYear(), now.getMonth() - (7 - index), 1);
@@ -124,7 +124,7 @@ function buildMonthlySeries(payments: Payment[], expectedMonthly: number) {
     const pending = rows.filter((payment) => payment.status === "PENDING").reduce((sum, payment) => sum + payment.amount, 0);
     const failed = rows.filter((payment) => payment.status === "FAILED").reduce((sum, payment) => sum + payment.amount, 0);
     return {
-      month: date.toLocaleDateString("fr-FR", { month: "short" }).replace(".", ""),
+      month: date.toLocaleDateString(locale, { month: "short" }).replace(".", ""),
       paid,
       pending,
       failed,
@@ -148,6 +148,7 @@ function linearForecast(values: number[]) {
 }
 
 export function AdminParentPaymentsPage() {
+  const { t, lang } = useI18n();
   const [parents, setParents] = useState<Parent[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -192,7 +193,7 @@ export function AdminParentPaymentsPage() {
       const expectedMonthly = expected / SCHOOL_MONTHS;
       const monthsCovered = expectedMonthly > 0 ? paid / expectedMonthly : 0;
       const lateMonths = Math.max(SCHOOL_MONTHS - monthsCovered, 0);
-      const monthly = buildMonthlySeries(rows, expectedMonthly);
+      const monthly = buildMonthlySeries(rows, expectedMonthly, lang === "fr" ? "fr-FR" : "en-US");
       const forecast = linearForecast(monthly.map((point) => point.paid));
       const current = monthly.at(-1)?.paid ?? 0;
       const previous = monthly.at(-2)?.paid ?? 0;
@@ -207,14 +208,14 @@ export function AdminParentPaymentsPage() {
         Math.max(-trend, 0) * 0.18 +
         (daysSincePayment === null ? 14 : Math.min(daysSincePayment / 5, 14))
       );
-      const aiLabel = risk >= 72 ? "Critique" : risk >= 48 ? "A surveiller" : risk >= 25 ? "Stable fragile" : "Sain";
+      const aiLabel = risk >= 72 ? t("riskCritical") : risk >= 48 ? t("riskWatch") : risk >= 25 ? t("riskFragile") : t("riskHealthy");
       const recommendedAction = risk >= 72
-        ? "Contacter le parent et proposer un echeancier signe."
+        ? t("actionCritical")
         : risk >= 48
-          ? "Planifier une relance preventive cette semaine."
+          ? t("actionWatch")
           : debt > 0
-            ? "Surveiller le prochain versement mensuel."
-            : "Dossier a jour, aucune action urgente.";
+            ? t("actionDebt")
+            : t("actionOk");
       const studentRows = parent.students.map((student) => {
         const share = expected > 0 ? asNumber(student.annualFee) / expected : 0;
         const allocatedPaid = paid * share;
@@ -248,7 +249,7 @@ export function AdminParentPaymentsPage() {
         studentRows
       };
     }).sort((a, b) => b.risk - a.risk);
-  }, [parents, payments]);
+  }, [lang, parents, payments, t]);
 
   const filteredParents = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -281,20 +282,20 @@ export function AdminParentPaymentsPage() {
   return (
     <div className="min-w-0 space-y-6 overflow-hidden pb-10">
       <div className="animate-fadeInDown">
-        <p className="text-xs font-bold uppercase tracking-[0.22em] text-brand-300">Administration financiere</p>
-        <h1 className="mt-2 font-display text-3xl font-bold text-white">Suivi a la loupe des parents</h1>
+        <p className="text-xs font-bold uppercase tracking-[0.22em] text-brand-300">{t("adminParentEyebrow")}</p>
+        <h1 className="mt-2 font-display text-3xl font-bold text-white">{t("adminParentTitle")}</h1>
         <p className="mt-2 max-w-3xl text-sm text-ink-dim">
-          Analyse parent par parent avec score IA, evolution mensuelle, dettes, incidents de paiement et actions recommandees.
+          {t("adminParentSubtitle")}
         </p>
       </div>
 
       <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-5">
         {[
-          { label: "Attendu global", value: formatCurrency(global.expected), icon: Target, color: "text-brand-300" },
-          { label: "Encaisse", value: formatCurrency(global.paid), icon: CheckCircle2, color: "text-emerald-300" },
-          { label: "Reste a payer", value: formatCurrency(global.debt), icon: WalletCards, color: "text-red-300" },
-          { label: "Couverture", value: `${global.coverage.toFixed(1)}%`, icon: TrendingUp, color: "text-cyan-300" },
-          { label: "Parents critiques", value: String(global.critical), icon: ShieldAlert, color: "text-amber-300" }
+          { label: t("globalExpected"), value: formatCurrency(global.expected), icon: Target, color: "text-brand-300" },
+          { label: t("collected"), value: formatCurrency(global.paid), icon: CheckCircle2, color: "text-emerald-300" },
+          { label: t("remainingToPay"), value: formatCurrency(global.debt), icon: WalletCards, color: "text-red-300" },
+          { label: t("coverage"), value: `${global.coverage.toFixed(1)}%`, icon: TrendingUp, color: "text-cyan-300" },
+          { label: t("criticalParents"), value: String(global.critical), icon: ShieldAlert, color: "text-amber-300" }
         ].map((item) => (
           <div key={item.label} className="card glass min-w-0 overflow-hidden border border-white/10 shadow-lg">
             <div className="flex items-center justify-between gap-3">
@@ -313,7 +314,7 @@ export function AdminParentPaymentsPage() {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Rechercher un parent, ID, telephone..."
+              placeholder={t("searchParentPlaceholder")}
               className="w-full !pl-10"
             />
           </div>
@@ -345,8 +346,8 @@ export function AdminParentPaymentsPage() {
                   <div className="h-full rounded-full bg-brand-400" style={{ width: `${row.coverage}%` }} />
                 </div>
                 <div className="mt-2 flex min-w-0 justify-between gap-3 text-xs text-ink-dim">
-                  <span className="shrink-0">{row.coverage.toFixed(1)}% couvert</span>
-                  <span className="min-w-0 truncate text-right">{formatCurrency(row.debt)} reste</span>
+                  <span className="shrink-0">{row.coverage.toFixed(1)}% {t("covered")}</span>
+                  <span className="min-w-0 truncate text-right">{formatCurrency(row.debt)} {t("remains")}</span>
                 </div>
               </button>
             ))}
@@ -364,7 +365,7 @@ export function AdminParentPaymentsPage() {
                     </div>
                     <div className="min-w-0">
                       <h2 className="truncate font-display text-2xl font-bold text-white">{selected.parent.fullName}</h2>
-                      <p className="truncate text-sm text-ink-dim">{selected.parent.phone || "Telephone non renseigne"} - {selected.parent.email || "Email non renseigne"}</p>
+                      <p className="truncate text-sm text-ink-dim">{selected.parent.phone || t("phoneMissing")} - {selected.parent.email || t("emailMissing")}</p>
                     </div>
                   </div>
                   <p className="mt-4 max-w-2xl text-sm text-ink-dim">{selected.recommendedAction}</p>
@@ -373,7 +374,7 @@ export function AdminParentPaymentsPage() {
                   <div className="flex items-center gap-3">
                     <BrainCircuit className="h-6 w-6 text-cyan-300" />
                     <div>
-                      <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Risque IA</p>
+                      <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">{t("aiRisk")}</p>
                       <p className="font-mono text-2xl font-black text-white">{selected.risk.toFixed(0)}%</p>
                     </div>
                   </div>
@@ -383,10 +384,10 @@ export function AdminParentPaymentsPage() {
 
               <div className="mt-6 grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {[
-                  ["Attendu", formatCurrency(selected.expected), "text-brand-300"],
-                  ["Paye", formatCurrency(selected.paid), "text-emerald-300"],
-                  ["En attente", formatCurrency(selected.pendingAmount), "text-amber-300"],
-                  ["Dette", formatCurrency(selected.debt), "text-red-300"]
+                  [t("expectedLabel"), formatCurrency(selected.expected), "text-brand-300"],
+                  [t("paidLabel"), formatCurrency(selected.paid), "text-emerald-300"],
+                  [t("pendingLabel"), formatCurrency(selected.pendingAmount), "text-amber-300"],
+                  [t("debtLabel"), formatCurrency(selected.debt), "text-red-300"]
                 ].map(([label, value, color]) => (
                   <div key={label} className="min-w-0 rounded-xl border border-white/10 bg-slate-900/30 p-4">
                     <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">{label}</p>
@@ -400,11 +401,11 @@ export function AdminParentPaymentsPage() {
               <div className="card glass min-w-0 overflow-hidden border border-brand-500/10 shadow-lg">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h3 className="font-display text-xl font-bold text-white">Evolution mensuelle</h3>
-                    <p className="mt-1 text-sm text-ink-dim">Encaissements, attentes et objectif theorique pour ce parent.</p>
+                    <h3 className="font-display text-xl font-bold text-white">{t("monthlyEvolution")}</h3>
+                    <p className="mt-1 text-sm text-ink-dim">{t("monthlyEvolutionHelp")}</p>
                   </div>
                   <span className="rounded-full border border-white/10 bg-slate-900/40 px-3 py-1 text-xs font-semibold text-cyan-200">
-                    Prevision : {formatCurrency(selected.forecast)}
+                    {t("forecast")} : {formatCurrency(selected.forecast)}
                   </span>
                 </div>
                 <div className="mt-5 h-72">
@@ -423,7 +424,7 @@ export function AdminParentPaymentsPage() {
                         contentStyle={{ background: "#0f172a", border: "1px solid rgba(148,163,184,.25)", borderRadius: 8, color: "#fff" }}
                         formatter={(value: number) => formatCurrency(value)}
                       />
-                      <Area type="monotone" dataKey="paid" name="Paye" stroke="#22c55e" fill="url(#adminParentPaid)" strokeWidth={3} />
+                      <Area type="monotone" dataKey="paid" name={t("paidLabel")} stroke="#22c55e" fill="url(#adminParentPaid)" strokeWidth={3} />
                       <Line type="monotone" dataKey="expected" name="Objectif" stroke="#38bdf8" strokeDasharray="5 5" strokeWidth={2} dot={false} />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -431,20 +432,20 @@ export function AdminParentPaymentsPage() {
               </div>
 
               <div className="card glass min-w-0 overflow-hidden border border-amber-500/10 shadow-lg">
-                <h3 className="font-display text-xl font-bold text-white">Lecture IA</h3>
+                <h3 className="font-display text-xl font-bold text-white">{t("aiReading")}</h3>
                 <div className="mt-4 space-y-3">
                   <div className="rounded-xl border border-white/10 bg-slate-900/30 p-4">
-                    <p className="text-xs text-ink-dim">Mois de retard equivalents</p>
+                    <p className="text-xs text-ink-dim">{t("lateMonthsEquivalent")}</p>
                     <p className="mt-1 font-mono text-xl font-bold text-amber-300">{selected.lateMonths.toFixed(1)}</p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-slate-900/30 p-4">
-                    <p className="text-xs text-ink-dim">Dernier paiement</p>
+                    <p className="text-xs text-ink-dim">{t("lastPayment")}</p>
                     <p className="mt-1 font-mono text-xl font-bold text-white">
-                      {selected.daysSincePayment === null ? "Aucun" : `${selected.daysSincePayment} j`}
+                      {selected.daysSincePayment === null ? t("noPayment") : `${selected.daysSincePayment} j`}
                     </p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-slate-900/30 p-4">
-                    <p className="text-xs text-ink-dim">Incidents</p>
+                    <p className="text-xs text-ink-dim">{t("incidents")}</p>
                     <p className="mt-1 font-mono text-xl font-bold text-red-300">{selected.incidents}</p>
                   </div>
                 </div>
@@ -453,7 +454,7 @@ export function AdminParentPaymentsPage() {
 
             <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
               <div className="card glass min-w-0 overflow-hidden border border-emerald-500/10 shadow-lg">
-                <h3 className="font-display text-xl font-bold text-white">Couverture par enfant</h3>
+                <h3 className="font-display text-xl font-bold text-white">{t("childCoverage")}</h3>
                 <div className="mt-5 h-64">
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={selected.studentRows}>
@@ -464,7 +465,7 @@ export function AdminParentPaymentsPage() {
                         contentStyle={{ background: "#0f172a", border: "1px solid rgba(148,163,184,.25)", borderRadius: 8, color: "#fff" }}
                         formatter={(value: number, name) => name === "coverage" ? `${value.toFixed(1)}%` : formatCurrency(value)}
                       />
-                      <Bar dataKey="coverage" name="Couverture" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="coverage" name={t("coverage")} fill="#22c55e" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
@@ -474,7 +475,7 @@ export function AdminParentPaymentsPage() {
                       <div className="flex justify-between gap-3">
                         <div className="min-w-0">
                           <p className="truncate font-semibold text-white">{student.fullName}</p>
-                          <p className="truncate text-xs text-ink-dim">{student.className || student.classId || "Classe non renseignee"}</p>
+                          <p className="truncate text-xs text-ink-dim">{student.className || student.classId || t("classMissing")}</p>
                         </div>
                         <p className="shrink-0 font-mono text-sm font-bold text-brand-300">{student.coverage.toFixed(1)}%</p>
                       </div>
@@ -487,7 +488,7 @@ export function AdminParentPaymentsPage() {
               </div>
 
               <div className="card glass min-w-0 overflow-hidden border border-white/10 shadow-lg">
-                <h3 className="font-display text-xl font-bold text-white">Historique detaille</h3>
+                <h3 className="font-display text-xl font-bold text-white">{t("detailedHistory")}</h3>
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
@@ -502,20 +503,20 @@ export function AdminParentPaymentsPage() {
                     <tbody className="divide-y divide-slate-800">
                       {selected.rows.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="px-3 py-8 text-center text-ink-dim">Aucun paiement rattache a ce parent.</td>
+                          <td colSpan={6} className="px-3 py-8 text-center text-ink-dim">{t("noPaymentForParent")}</td>
                         </tr>
                       ) : selected.rows.map((payment) => (
                         <tr key={payment.id} className="hover:bg-slate-800/30">
                           <td className="whitespace-nowrap px-3 py-3 text-xs text-ink-dim">
-                            {parsePaymentDate(payment).toLocaleDateString("fr-FR")}
+                            {parsePaymentDate(payment).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}
                           </td>
                           <td className="px-3 py-3 font-mono text-xs text-brand-300">{payment.transactionNumber || payment.id}</td>
                           <td className="max-w-[180px] truncate px-3 py-3 text-ink-dim" title={payment.reason}>{payment.reason || "-"}</td>
-                          <td className="px-3 py-3 text-xs text-ink-dim">{methodLabel(payment.method)}</td>
+                          <td className="px-3 py-3 text-xs text-ink-dim">{methodLabel(payment.method, t("notProvided"))}</td>
                           <td className="whitespace-nowrap px-3 py-3 font-mono font-bold text-white">{formatCurrency(payment.amount)}</td>
                           <td className="px-3 py-3">
                             <span className={`rounded-full border px-2 py-1 text-xs font-semibold ${statusTone(payment.status)}`}>
-                              {statusLabel(payment.status)}
+                              {statusLabel(payment.status, t)}
                             </span>
                           </td>
                         </tr>
@@ -528,7 +529,7 @@ export function AdminParentPaymentsPage() {
           </div>
         ) : (
           <div className="card glass border border-white/10 py-16 text-center text-ink-dim">
-            Aucun parent disponible pour l'analyse.
+            {t("noParentForAnalysis")}
           </div>
         )}
       </div>
