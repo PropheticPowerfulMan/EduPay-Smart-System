@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>EduPay Smart System</title>
+    <script>
+      (function () {
+        var repoBase = "/EduPay-Smart-System/";
+        var path = window.location.pathname;
+        if (path.indexOf(repoBase) === 0) {
+          var route = path.slice(repoBase.length);
+          var hash = route ? "#/" + route.replace(/^\/+/, "") : "#/";
+          window.location.replace(repoBase + hash + window.location.search);
+          return;
+        }
+        window.location.replace(repoBase + "#/");
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>
