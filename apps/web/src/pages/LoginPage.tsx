@@ -224,12 +224,12 @@ export function LoginPage() {
           {/* Form Content */}
           <div className="p-8 space-y-6">
             {/* Language Switch */}
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+            <div className="space-y-4">
               <div className="min-w-0">
                 <h2 className="font-display text-2xl font-bold text-white">{t("loginTitle")}</h2>
                 <p className="text-sm text-ink-dim mt-1">{t("loginSubtitle")}</p>
               </div>
-              <div className="flex max-w-full flex-wrap items-center justify-start gap-3 rounded-xl border border-slate-700/40 bg-slate-950/35 p-2 sm:justify-end sm:gap-3.5">
+              <div className="flex max-w-full flex-wrap items-center justify-start gap-3 rounded-xl border border-slate-700/40 bg-slate-950/35 p-2 sm:flex-nowrap sm:gap-3.5">
                 <FontSwitch />
                 <LanguageSwitch />
               </div>
