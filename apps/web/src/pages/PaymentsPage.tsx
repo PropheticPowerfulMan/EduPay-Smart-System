@@ -113,6 +113,15 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#039;");
 }
 
+function plainPrintText(value: string): string {
+  return escapeHtml(
+    value
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^\x20-\x7E]/g, "")
+  );
+}
+
 function makeSecurityHash(input: string): string {
   let hash = 2166136261;
   for (let i = 0; i < input.length; i++) {
@@ -332,26 +341,33 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
     return acc;
   }, {});
 
-  const grandTotal     = filtered.reduce((s, p) => s + p.amount, 0);
+  const grandTotal = filtered.reduce((s, p) => s + p.amount, 0);
   const completedTotal = filtered.filter((p) => p.status === "COMPLETED").reduce((s, p) => s + p.amount, 0);
-  const pendingTotal   = filtered.filter((p) => p.status === "PENDING").reduce((s, p) => s + p.amount, 0);
-  const failedTotal    = filtered.filter((p) => p.status === "FAILED").reduce((s, p) => s + p.amount, 0);
+  const pendingTotal = filtered.filter((p) => p.status === "PENDING").reduce((s, p) => s + p.amount, 0);
+  const failedTotal = filtered.filter((p) => p.status === "FAILED").reduce((s, p) => s + p.amount, 0);
 
   const methodLabel: Record<string, string> = {
-    CASH: "Cash / Espèces", AIRTEL_MONEY: "Airtel Money", MPESA: "M-Pesa", ORANGE_MONEY: "Orange Money",
+    CASH: "Cash / Especes",
+    AIRTEL_MONEY: "Airtel Money",
+    MPESA: "M-Pesa",
+    ORANGE_MONEY: "Orange Money"
   };
   const statusColor: Record<string, string> = {
-    COMPLETED: "#16a34a", PENDING: "#d97706", FAILED: "#dc2626",
+    COMPLETED: "#16a34a",
+    PENDING: "#d97706",
+    FAILED: "#dc2626"
   };
   const statusLabel: Record<string, string> = {
-    COMPLETED: "Réglé", PENDING: "En attente", FAILED: "Échoué",
+    COMPLETED: "Regle",
+    PENDING: "En attente",
+    FAILED: "Echoue"
   };
 
   const brand = {
-    schoolName: escapeHtml(schoolBranding.schoolName),
-    shortName: escapeHtml(schoolBranding.shortName),
-    appName: escapeHtml(schoolBranding.appName),
-    tagline: escapeHtml(schoolBranding.tagline),
+    schoolName: plainPrintText(schoolBranding.schoolName),
+    shortName: plainPrintText(schoolBranding.shortName),
+    appName: plainPrintText(schoolBranding.appName),
+    tagline: plainPrintText(schoolBranding.tagline),
     logoSrc: escapeHtml(schoolBranding.logoSrc)
   };
 
@@ -362,25 +378,26 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
 
   const methodRows = Object.entries(byMethod)
     .map(([m, total]) => `<tr>
-      <td style="padding:5px 10px">${methodLabel[m] ?? m}</td>
+      <td style="padding:5px 10px">${methodLabel[m] ?? plainPrintText(m)}</td>
       <td style="padding:5px 10px; font-family:monospace; font-weight:bold; text-align:right; color:#1e3a5f">$ ${total.toFixed(5)}</td>
     </tr>`)
     .join("");
 
   const parentBlocks = Object.entries(byParent).map(([parent, recs]) => {
+    const parentName = plainPrintText(parent);
     const total = recs.reduce((s, r) => s + r.amount, 0);
     const rows = recs.map((r) => `<tr>
-      <td style="padding:6px 8px; font-family:monospace; font-size:11px; color:#475569">${r.transactionNumber}</td>
-      <td style="padding:6px 8px; font-size:11px; white-space:nowrap">${r.date.split(",").slice(0, 2).join(",")}</td>
-      <td style="padding:6px 8px; font-size:11px">${r.reason}</td>
-      <td style="padding:6px 8px; font-size:11px">${methodLabel[r.method] ?? r.method}</td>
+      <td style="padding:6px 8px; font-family:monospace; font-size:11px; color:#475569">${plainPrintText(r.transactionNumber)}</td>
+      <td style="padding:6px 8px; font-size:11px; white-space:nowrap">${plainPrintText(r.date.split(",").slice(0, 2).join(","))}</td>
+      <td style="padding:6px 8px; font-size:11px">${plainPrintText(r.reason)}</td>
+      <td style="padding:6px 8px; font-size:11px">${methodLabel[r.method] ?? plainPrintText(r.method)}</td>
       <td style="padding:6px 8px; text-align:right; font-family:monospace; font-weight:bold; font-size:12px">$ ${r.amount.toFixed(5)}</td>
-      <td style="padding:6px 8px; text-align:center; font-size:11px; font-weight:bold; color:${statusColor[r.status] ?? "#111"}">${statusLabel[r.status] ?? r.status}</td>
+      <td style="padding:6px 8px; text-align:center; font-size:11px; font-weight:bold; color:${statusColor[r.status] ?? "#111"}">${statusLabel[r.status] ?? plainPrintText(r.status)}</td>
     </tr>`).join("");
 
     return `<div style="margin-bottom:32px; page-break-inside:avoid;">
       <div style="display:flex; justify-content:space-between; align-items:center; background:#1e3a5f; color:#fff; padding:10px 14px; border-radius:4px 4px 0 0;">
-        <div style="font-weight:bold; font-size:14px">${parent}</div>
+        <div style="font-weight:bold; font-size:14px">${parentName}</div>
         <div style="font-family:monospace; font-weight:bold; font-size:14px">Total : $ ${total.toFixed(5)}</div>
       </div>
       <table style="width:100%; border-collapse:collapse; border:1px solid #e2e8f0; border-top:none; font-size:12px;">
@@ -406,7 +423,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
     </div>`;
   }).join("");
 
-  const title = filterParent ? `État financier - ${filterParent}` : "État général des paiements";
+  const title = filterParent ? `Etat financier - ${plainPrintText(filterParent)}` : "Etat general des paiements";
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -416,8 +433,8 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
   <style>
     @page { size: A4 portrait; margin: 15mm 18mm; }
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { position:relative; font-family: Arial, Helvetica, sans-serif; color: #0d1b2a; background: #fff; font-size: 12px; }
-    .page-shell { position:relative; z-index:1; }
+    body { position:relative; font-family: Arial, Helvetica, sans-serif; color:#0d1b2a; background:#fff; font-size:12px; }
+    .page-shell { position:relative; z-index:2; }
     .watermark-text {
       position:fixed;
       inset:0;
@@ -425,10 +442,11 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
       display:flex;
       align-items:center;
       justify-content:center;
-      font-size:118px;
+      font-size:128px;
       font-weight:900;
-      letter-spacing:18px;
-      color:rgba(30,58,95,0.055);
+      letter-spacing:20px;
+      color:rgba(30,58,95,0.14);
+      text-shadow:0 0 1px rgba(30,58,95,0.16);
       transform:rotate(-24deg);
       pointer-events:none;
       user-select:none;
@@ -438,9 +456,10 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
       left:50%;
       top:52%;
       z-index:0;
-      width:420px;
-      max-width:62vw;
-      opacity:0.035;
+      width:440px;
+      max-width:64vw;
+      opacity:0.1;
+      filter:grayscale(100%) contrast(1.12);
       transform:translate(-50%, -50%) rotate(-12deg);
       pointer-events:none;
       user-select:none;
@@ -462,68 +481,68 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
   <div class="watermark-text">${brand.shortName}</div>
   <img class="watermark-logo" src="${brand.logoSrc}" alt=""/>
   <div class="page-shell">
-  <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px double #1e3a5f; padding-bottom:14px; margin-bottom:20px;">
-    <div style="display:flex; align-items:center;">
-      <img class="header-logo" src="${brand.logoSrc}" alt="Logo ${brand.schoolName}"/>
-      <div>
-        <div style="font-size:20px; font-weight:bold; color:#1e3a5f; letter-spacing:1px">${brand.schoolName}</div>
-        <div style="font-size:12px; font-weight:bold; color:#334155; margin-top:2px">${brand.shortName} - ${brand.tagline}</div>
-        <div style="font-size:11px; color:#64748b; margin-top:3px">${brand.appName} - Tous montants en USD (dollars am�ricains)</div>
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px double #1e3a5f; padding-bottom:14px; margin-bottom:20px;">
+      <div style="display:flex; align-items:center;">
+        <img class="header-logo" src="${brand.logoSrc}" alt="Logo ${brand.schoolName}"/>
+        <div>
+          <div style="font-size:20px; font-weight:bold; color:#1e3a5f; letter-spacing:1px">${brand.schoolName}</div>
+          <div style="font-size:12px; font-weight:bold; color:#334155; margin-top:2px">${brand.shortName} - ${brand.tagline}</div>
+          <div style="font-size:11px; color:#64748b; margin-top:3px">${brand.appName} - Tous montants en USD (dollars americains)</div>
+        </div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:11px; color:#64748b">Imprime le</div>
+        <div style="font-weight:bold; font-size:13px">${new Date().toLocaleDateString("fr-FR")}</div>
+        <div style="font-size:11px; color:#64748b">${new Date().toLocaleTimeString("fr-FR")}</div>
       </div>
     </div>
-    <div style="text-align:right;">
-      <div style="font-size:11px; color:#64748b">Imprimé le</div>
-      <div style="font-weight:bold; font-size:13px">${new Date().toLocaleDateString("fr-FR", { dateStyle: "long" })}</div>
-      <div style="font-size:11px; color:#64748b">${new Date().toLocaleTimeString("fr-FR")}</div>
-    </div>
-  </div>
 
-  <div style="text-align:center; font-size:17px; font-weight:bold; letter-spacing:3px; text-transform:uppercase; border:2px solid #0d1b2a; padding:10px 0; margin-bottom:24px;">
-    ${title}
-  </div>
-
-  <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px; margin-bottom:24px;">
-    <div style="border:1px solid #e2e8f0; border-radius:6px; padding:12px 14px; background:#f8fafc;">
-      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Total encaissé (USD)</div>
-      <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${grandTotal.toFixed(5)}</div>
-      <div style="font-size:9px; color:#94a3b8; margin-top:2px;">${filtered.length} transaction${filtered.length > 1 ? "s" : ""}</div>
+    <div style="text-align:center; font-size:17px; font-weight:bold; letter-spacing:3px; text-transform:uppercase; border:2px solid #0d1b2a; padding:10px 0; margin-bottom:24px;">
+      ${title}
     </div>
-    <div style="border:1px solid #d1fae5; border-radius:6px; padding:12px 14px; background:#f0fdf4;">
-      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Paiements réglés</div>
-      <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#16a34a;">$ ${completedTotal.toFixed(5)}</div>
-    </div>
-    <div style="border:1px solid #fef3c7; border-radius:6px; padding:12px 14px; background:#fffbeb;">
-      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">En attente</div>
-      <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#d97706;">$ ${pendingTotal.toFixed(5)}</div>
-    </div>
-    <div style="border:1px solid #fee2e2; border-radius:6px; padding:12px 14px; background:#fef2f2;">
-      <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Échoués</div>
-      <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#dc2626;">$ ${failedTotal.toFixed(5)}</div>
-    </div>
-  </div>
 
-  ${Object.keys(byMethod).length > 0 ? `
-  <div style="margin-bottom:24px;">
-    <div style="font-weight:bold; font-size:12px; text-transform:uppercase; letter-spacing:1px; color:#1e3a5f; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">Répartition par mode de paiement</div>
-    <table style="border-collapse:collapse; font-size:12px; border:1px solid #e2e8f0;">
-      <thead style="background:#f1f5f9;"><tr>
-        <th style="padding:6px 10px; text-align:left; font-size:10px; text-transform:uppercase; color:#475569">Mode</th>
-        <th style="padding:6px 10px; text-align:right; font-size:10px; text-transform:uppercase; color:#475569">Total (USD)</th>
-      </tr></thead>
-      <tbody>${methodRows}</tbody>
-    </table>
-  </div>` : ""}
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px; margin-bottom:24px;">
+      <div style="border:1px solid #e2e8f0; border-radius:6px; padding:12px 14px; background:#f8fafc;">
+        <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Total encaisse (USD)</div>
+        <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${grandTotal.toFixed(5)}</div>
+        <div style="font-size:9px; color:#94a3b8; margin-top:2px;">${filtered.length} transaction${filtered.length > 1 ? "s" : ""}</div>
+      </div>
+      <div style="border:1px solid #d1fae5; border-radius:6px; padding:12px 14px; background:#f0fdf4;">
+        <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Paiements regles</div>
+        <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#16a34a;">$ ${completedTotal.toFixed(5)}</div>
+      </div>
+      <div style="border:1px solid #fef3c7; border-radius:6px; padding:12px 14px; background:#fffbeb;">
+        <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">En attente</div>
+        <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#d97706;">$ ${pendingTotal.toFixed(5)}</div>
+      </div>
+      <div style="border:1px solid #fee2e2; border-radius:6px; padding:12px 14px; background:#fef2f2;">
+        <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Echoues</div>
+        <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#dc2626;">$ ${failedTotal.toFixed(5)}</div>
+      </div>
+    </div>
 
-  ${parentBlocks || '<p style="color:#64748b; text-align:center; padding:40px">Aucun paiement trouvé.</p>'}
+    ${Object.keys(byMethod).length > 0 ? `
+    <div style="margin-bottom:24px;">
+      <div style="font-weight:bold; font-size:12px; text-transform:uppercase; letter-spacing:1px; color:#1e3a5f; margin-bottom:8px; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">Repartition par mode de paiement</div>
+      <table style="border-collapse:collapse; font-size:12px; border:1px solid #e2e8f0;">
+        <thead style="background:#f1f5f9;"><tr>
+          <th style="padding:6px 10px; text-align:left; font-size:10px; text-transform:uppercase; color:#475569">Mode</th>
+          <th style="padding:6px 10px; text-align:right; font-size:10px; text-transform:uppercase; color:#475569">Total (USD)</th>
+        </tr></thead>
+        <tbody>${methodRows}</tbody>
+      </table>
+    </div>` : ""}
 
-  <div style="border-top:3px double #1e3a5f; padding-top:16px; display:flex; justify-content:flex-end; align-items:center; gap:20px; margin-top:12px;">
-    <span style="font-size:14px; font-weight:bold; text-transform:uppercase; letter-spacing:1px;">TOTAL GÉNÉRAL (USD)</span>
-    <span style="font-size:22px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${grandTotal.toFixed(5)}</span>
-  </div>
-  <div style="margin-top:28px; text-align:center; font-size:10px; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:14px;">
-    Document g�n�r� officiellement par <strong>${brand.appName}</strong> pour <strong>${brand.schoolName}</strong> -
-    ${new Date().toLocaleString("fr-FR")}
-  </div>
+    ${parentBlocks || '<p style="color:#64748b; text-align:center; padding:40px">Aucun paiement trouve.</p>'}
+
+    <div style="border-top:3px double #1e3a5f; padding-top:16px; display:flex; justify-content:flex-end; align-items:center; gap:20px; margin-top:12px;">
+      <span style="font-size:14px; font-weight:bold; text-transform:uppercase; letter-spacing:1px;">TOTAL GENERAL (USD)</span>
+      <span style="font-size:22px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${grandTotal.toFixed(5)}</span>
+    </div>
+    <div style="margin-top:28px; text-align:center; font-size:10px; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:14px;">
+      Document genere officiellement par <strong>${brand.appName}</strong> pour <strong>${brand.schoolName}</strong> -
+      ${new Date().toLocaleString("fr-FR")}
+    </div>
   </div>
 </body>
 </html>`;
