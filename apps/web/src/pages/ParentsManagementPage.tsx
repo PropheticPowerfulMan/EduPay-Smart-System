@@ -258,7 +258,7 @@ function DetailModal({ parent, onClose, t }: { parent: Parent; onClose: () => vo
                     <p className="text-xs text-ink-dim">{st.className || st.classId}</p>
                   </div>
                   <span className="text-sm font-bold text-emerald-300">
-                    {new Intl.NumberFormat().format(st.annualFee)} FC
+                    {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(st.annualFee)}
                   </span>
                 </div>
               ))}
@@ -481,9 +481,9 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-xs text-ink-dim">{t("pmAnnualFee")} (FC)</label>
+                <label className="text-xs text-ink-dim">{t("pmAnnualFee")} (USD)</label>
                 <div className="flex gap-2">
-                  <input type="number" value={st.annualFee} onChange={(e) => setStudent(idx, "annualFee", e.target.value)} className="flex-1" placeholder="50000" />
+                  <input type="number" value={st.annualFee} onChange={(e) => setStudent(idx, "annualFee", e.target.value)} className="flex-1" placeholder="500" />
                   <button type="button" onClick={() => removeStudent(idx)}
                     className="p-2 rounded-lg bg-danger/20 border border-danger/40 text-danger hover:bg-danger/30 transition-all active:scale-95">
                     <TrashIcon />

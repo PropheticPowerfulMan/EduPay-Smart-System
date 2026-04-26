@@ -45,7 +45,7 @@ function buildParentWelcomeMessages(parent: any, temporaryPassword: string, logi
     annualFee: Number(student.annualFee || 0)
   }));
   const studentLines = students.length
-    ? students.map((student: any) => `- ${student.fullName} | Classe: ${student.className} | Frais annuels: ${student.annualFee.toLocaleString("fr-FR")} FC`).join("\n")
+    ? students.map((student: any) => `- ${student.fullName} | Classe: ${student.className} | Frais annuels: $ ${student.annualFee.toLocaleString("en-US", { maximumFractionDigits: 2 })}`).join("\n")
     : "- Aucun eleve rattache pour le moment";
 
   const subject = "Vos acces EduPay";

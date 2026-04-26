@@ -124,10 +124,14 @@ export function ParentTrackingPage() {
   }, []);
 
   const moneyFormatter = useMemo(
-    () => new Intl.NumberFormat(lang === "fr" ? "fr-FR" : "en-US", { maximumFractionDigits: 0 }),
+    () => new Intl.NumberFormat(lang === "fr" ? "fr-FR" : "en-US", {
+      style: "currency",
+      currency: "USD",
+      maximumFractionDigits: 2
+    }),
     [lang]
   );
-  const formatMoney = (value: number) => `${moneyFormatter.format(Math.round(value))} FC`;
+  const formatMoney = (value: number) => moneyFormatter.format(value);
 
   const summary = useMemo(() => {
     if (!data) return null;
@@ -324,10 +328,10 @@ export function ParentTrackingPage() {
       : "from-red-500 to-amber-500";
 
   return (
-    <div className="space-y-8 pb-8 animate-fadeInUp">
-      <div className="glass rounded-2xl border border-brand-500/20 px-8 py-6 shadow-xl animate-fadeInDown">
+    <div className="max-w-full space-y-8 overflow-hidden pb-8 animate-fadeInUp">
+      <div className="glass max-w-full overflow-hidden rounded-2xl border border-brand-500/20 px-4 py-6 shadow-xl animate-fadeInDown sm:px-8">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
+          <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-brand-300">Espace parent intelligent</p>
             <h1 className="mt-2 font-display text-3xl font-bold text-white">{t("parentTracking")}</h1>
             <p className="mt-2 max-w-3xl text-sm text-ink-dim">{t("parentFinancialDeepSubtitle")}</p>
@@ -345,32 +349,32 @@ export function ParentTrackingPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <div className="card glass border border-brand-500/10 shadow-lg">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <div className="card glass min-w-0 overflow-hidden border border-brand-500/10 shadow-lg">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
               <p className="text-sm text-ink-dim">{t("parentName")}</p>
-              <p className="font-display text-2xl font-bold text-white">{data.fullName}</p>
-              <p className="mt-2 text-sm text-ink-dim">{data.phone} · {data.email}</p>
+              <p className="break-words font-display text-2xl font-bold text-white">{data.fullName}</p>
+              <p className="mt-2 break-words text-sm text-ink-dim">{data.phone} · {data.email}</p>
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="grid w-full min-w-0 grid-cols-2 gap-3 sm:grid-cols-4 lg:w-auto">
               {[
                 { label: "Enfants", value: String(data.students.length), icon: Target, color: "text-brand-300" },
                 { label: "Mois couverts", value: summary.coveredMonths.toFixed(1), icon: CalendarClock, color: "text-cyan-300" },
                 { label: "Risque max", value: `${(summary.worstStudent?.risk ?? 0).toFixed(0)}%`, icon: AlertTriangle, color: "text-amber-300" },
                 { label: "Meilleur suivi", value: `${(summary.bestStudent?.progress ?? 0).toFixed(0)}%`, icon: CheckCircle2, color: "text-emerald-300" }
               ].map((item) => (
-                <div key={item.label} className="rounded-xl border border-white/10 bg-slate-900/30 p-3">
+                <div key={item.label} className="min-w-0 rounded-xl border border-white/10 bg-slate-900/30 p-3">
                   <item.icon className={`h-4 w-4 ${item.color}`} />
                   <p className="mt-2 text-xs text-ink-dim">{item.label}</p>
-                  <p className={`font-mono text-lg font-bold ${item.color}`}>{item.value}</p>
+                  <p className={`break-words font-mono text-lg font-bold ${item.color}`}>{item.value}</p>
                 </div>
               ))}
             </div>
           </div>
         </div>
 
-        <div className="card glass border border-cyan-500/10 shadow-lg">
+        <div className="card glass min-w-0 overflow-hidden border border-cyan-500/10 shadow-lg">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="font-display text-xl font-bold text-white">Diagnostic IA</h2>
@@ -403,25 +407,25 @@ export function ParentTrackingPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid min-w-0 gap-6 md:grid-cols-2 xl:grid-cols-4">
         {[
           { label: t("expectedTotal"), value: formatMoney(summary.totalExpected), icon: WalletCards, color: "text-brand-300", border: "border-brand-500/10" },
           { label: t("paidTotal"), value: formatMoney(summary.totalPaid), icon: CheckCircle2, color: "text-emerald-300", border: "border-emerald-500/10" },
           { label: t("debtTotal"), value: formatMoney(summary.totalDebt), icon: AlertTriangle, color: "text-red-300", border: "border-red-500/10" },
           { label: t("parentCompletionRate"), value: `${summary.completionRate.toFixed(1)}%`, icon: TrendingUp, color: "text-cyan-300", border: "border-cyan-500/10" }
         ].map((card) => (
-          <div key={card.label} className={`card glass shadow-lg ${card.border}`}>
+          <div key={card.label} className={`card glass min-w-0 overflow-hidden shadow-lg ${card.border}`}>
             <div className="flex items-center justify-between">
               <p className="text-sm text-ink-dim">{card.label}</p>
               <card.icon className={`h-5 w-5 ${card.color}`} />
             </div>
-            <p className={`mt-3 font-display text-2xl font-bold ${card.color}`}>{card.value}</p>
+            <p className={`mt-3 break-words font-display text-2xl font-bold ${card.color}`}>{card.value}</p>
           </div>
         ))}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-3">
-        <div className="card glass border border-brand-500/10 shadow-lg xl:col-span-2">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-3">
+        <div className="card glass min-w-0 overflow-hidden border border-brand-500/10 shadow-lg xl:col-span-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="font-display text-xl font-bold text-white">Évolution mensuelle</h2>
@@ -431,7 +435,7 @@ export function ParentTrackingPage() {
               Objectif : {formatMoney(summary.expectedPerMonth)} / mois
             </div>
           </div>
-          <div className="mt-5 h-72">
+          <div className="mt-5 h-72 min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={summary.monthlyTrend}>
                 <defs>
@@ -454,7 +458,7 @@ export function ParentTrackingPage() {
           </div>
         </div>
 
-        <div className="card glass border border-emerald-500/10 shadow-lg">
+        <div className="card glass min-w-0 overflow-hidden border border-emerald-500/10 shadow-lg">
           <h2 className="font-display text-xl font-bold text-white">Répartition financière</h2>
           <p className="mt-1 text-sm text-ink-dim">Vue rapide entre payé, attente et reste à payer.</p>
           <div className="mt-5 h-56">
@@ -474,20 +478,20 @@ export function ParentTrackingPage() {
           </div>
           <div className="space-y-2">
             {summary.statusDistribution.map((item, index) => (
-              <div key={item.name} className="flex items-center justify-between text-sm">
+              <div key={item.name} className="flex min-w-0 items-center justify-between gap-3 text-sm">
                 <span className="flex items-center gap-2 text-ink-dim">
                   <span className="h-2.5 w-2.5 rounded-full" style={{ background: pieColors[index % pieColors.length] }} />
                   {item.name}
                 </span>
-                <span className="font-mono font-bold text-white">{formatMoney(item.value)}</span>
+                <span className="shrink-0 font-mono font-bold text-white">{formatMoney(item.value)}</span>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <div className="card glass border border-cyan-500/10 shadow-lg">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <div className="card glass min-w-0 overflow-hidden border border-cyan-500/10 shadow-lg">
           <div className="flex items-center gap-3">
             <Lightbulb className="h-6 w-6 text-amber-300" />
             <div>
@@ -505,7 +509,7 @@ export function ParentTrackingPage() {
           </div>
         </div>
 
-        <div className="card glass border border-brand-500/10 shadow-lg">
+        <div className="card glass min-w-0 overflow-hidden border border-brand-500/10 shadow-lg">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="font-display text-xl font-bold text-white">Plan de paiement conseillé</h2>
@@ -513,23 +517,23 @@ export function ParentTrackingPage() {
             </div>
             <ShieldCheck className="h-7 w-7 text-emerald-300" />
           </div>
-          <div className="mt-5 grid gap-4 md:grid-cols-3">
-            <div className="rounded-xl border border-white/10 bg-slate-900/30 p-4">
+          <div className="mt-5 grid min-w-0 gap-4 md:grid-cols-3">
+            <div className="min-w-0 rounded-xl border border-white/10 bg-slate-900/30 p-4">
               <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">{t("nextInstallment")}</p>
-              <p className="mt-2 font-mono text-lg font-bold text-amber-300">{formatMoney(summary.nextInstallment)}</p>
+              <p className="mt-2 break-words font-mono text-lg font-bold text-amber-300">{formatMoney(summary.nextInstallment)}</p>
             </div>
-            <div className="rounded-xl border border-white/10 bg-slate-900/30 p-4">
+            <div className="min-w-0 rounded-xl border border-white/10 bg-slate-900/30 p-4">
               <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Mensualité IA</p>
-              <p className="mt-2 font-mono text-lg font-bold text-cyan-300">{formatMoney(summary.recommendedMonthly)}</p>
+              <p className="mt-2 break-words font-mono text-lg font-bold text-cyan-300">{formatMoney(summary.recommendedMonthly)}</p>
             </div>
-            <div className="rounded-xl border border-white/10 bg-slate-900/30 p-4">
+            <div className="min-w-0 rounded-xl border border-white/10 bg-slate-900/30 p-4">
               <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Délai estimé</p>
               <p className="mt-2 font-mono text-lg font-bold text-white">
                 {Number.isFinite(summary.monthsToClearDebt) ? `${Math.ceil(summary.monthsToClearDebt)} mois` : "À définir"}
               </p>
             </div>
           </div>
-          <div className="mt-5 h-56">
+          <div className="mt-5 h-56 min-w-0">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={summary.allocationData}>
                 <CartesianGrid stroke="#334155" strokeDasharray="3 3" opacity={0.35} />
@@ -547,8 +551,8 @@ export function ParentTrackingPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
-        <div className="card glass border border-emerald-500/10 shadow-lg">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+        <div className="card glass min-w-0 overflow-hidden border border-emerald-500/10 shadow-lg">
           <h2 className="font-display text-xl font-bold text-white mb-4">{t("recentPayments")}</h2>
           <div className="space-y-3">
             {summary.paymentTimeline.length === 0 && (
@@ -556,14 +560,14 @@ export function ParentTrackingPage() {
             )}
             {summary.paymentTimeline.map((payment, index) => (
               <div key={`${payment.studentName}-${index}`} className="rounded-lg border border-slate-700/50 bg-slate-900/30 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold text-white">{payment.studentName}</p>
                     <p className="mt-1 text-xs text-ink-dim">
                       {parsePaymentDate(payment).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}
                     </p>
                   </div>
-                  <p className="text-sm font-bold text-emerald-300">{formatMoney(payment.amount)}</p>
+                  <p className="shrink-0 text-sm font-bold text-emerald-300">{formatMoney(payment.amount)}</p>
                 </div>
                 {payment.reason && <p className="mt-2 text-xs text-ink-dim">{payment.reason}</p>}
               </div>
@@ -573,38 +577,38 @@ export function ParentTrackingPage() {
 
         <div className="space-y-6">
           {summary.studentsMetrics.map((student, index) => (
-            <div key={student.id} className="card glass border border-brand-500/10 shadow-lg animate-fadeInUp" style={{ animationDelay: `${index * 0.08}s` }}>
+            <div key={student.id} className="card glass min-w-0 overflow-hidden border border-brand-500/10 shadow-lg animate-fadeInUp" style={{ animationDelay: `${index * 0.08}s` }}>
               <div className="space-y-6">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
+                  <div className="min-w-0">
                     <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-300">
                       {student.className || student.classId || "Classe non renseignée"}
                     </p>
-                    <h3 className="mt-1 font-display text-xl font-bold text-white">{student.fullName}</h3>
+                    <h3 className="mt-1 break-words font-display text-xl font-bold text-white">{student.fullName}</h3>
                     <p className="mt-1 text-sm text-ink-dim">
                       {t("annualFees")}: <span className="font-semibold text-brand-300">{formatMoney(student.annualFee)}</span>
                     </p>
                   </div>
-                  <div className="flex items-center gap-2 rounded-full border border-slate-700/50 bg-slate-900/40 px-3 py-1.5">
+                  <div className="flex min-w-0 items-center gap-2 rounded-full border border-slate-700/50 bg-slate-900/40 px-3 py-1.5">
                     <span className="text-xs text-ink-dim">{t("remainingDebt")}</span>
                     <span className="text-sm font-bold text-rose-300">{formatMoney(student.debt)}</span>
                   </div>
                 </div>
 
-                <div className="grid gap-4 md:grid-cols-4">
-                  <div className="rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
+                <div className="grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="min-w-0 rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
                     <p className="text-xs text-ink-dim">{t("paidTotal")}</p>
-                    <p className="mt-1 text-lg font-bold text-emerald-300">{formatMoney(student.paid)}</p>
+                    <p className="mt-1 break-words text-lg font-bold text-emerald-300">{formatMoney(student.paid)}</p>
                   </div>
-                  <div className="rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
+                  <div className="min-w-0 rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
                     <p className="text-xs text-ink-dim">{t("monthlyInstallment")}</p>
-                    <p className="mt-1 text-lg font-bold text-cyan-300">{formatMoney(student.monthlyExpected)}</p>
+                    <p className="mt-1 break-words text-lg font-bold text-cyan-300">{formatMoney(student.monthlyExpected)}</p>
                   </div>
-                  <div className="rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
+                  <div className="min-w-0 rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
                     <p className="text-xs text-ink-dim">{t("unpaidMonths")}</p>
                     <p className="mt-1 text-lg font-bold text-amber-300">{student.missingMonths}</p>
                   </div>
-                  <div className="rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
+                  <div className="min-w-0 rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
                     <p className="text-xs text-ink-dim">Risque IA</p>
                     <p className={`mt-1 text-lg font-bold ${student.risk >= 65 ? "text-red-300" : student.risk >= 35 ? "text-amber-300" : "text-emerald-300"}`}>
                       {student.risk.toFixed(0)}%
@@ -625,8 +629,8 @@ export function ParentTrackingPage() {
                   </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                <div className="max-w-full overflow-x-auto">
+                  <table className="min-w-[520px] w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-700/50">
                         <th className="px-2 py-3 text-left font-semibold text-ink-dim">{t("month")}</th>

@@ -42,7 +42,7 @@ async function generateReceiptPdf(data: {
     doc.fontSize(12).fillColor("#111111").text(`Receipt ID: ${data.receiptId}`);
     doc.text(`Parent: ${data.parentName}`);
     doc.text(`Students: ${data.students.join(", ")}`);
-    doc.text(`Amount: ${data.amount}`);
+    doc.text(`Amount: $ ${data.amount.toFixed(2)} USD`);
     doc.text(`Reason: ${data.reason}`);
     doc.text(`Date: ${data.date}`);
     doc.moveDown();
@@ -114,7 +114,7 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
         parentId,
         reason: payload.reason,
         amount: payload.amount,
-        amountInWords: amountToWords(payload.amount, "fr"),
+        amountInWords: `${amountToWords(payload.amount, "fr")} dollars americains`,
         method: payload.method,
         status: payload.status,
         createdById: req.user!.sub,
@@ -141,7 +141,7 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
         parentFullName: payload.parentFullName,
         reason: payload.reason,
         amount: payload.amount,
-        amountInWords: amountToWords(payload.amount, "fr"),
+        amountInWords: `${amountToWords(payload.amount, "fr")} dollars americains`,
         method: payload.method,
         status: payload.status,
         createdAt: new Date().toISOString()
