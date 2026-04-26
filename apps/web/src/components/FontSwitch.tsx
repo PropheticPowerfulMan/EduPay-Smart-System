@@ -40,7 +40,7 @@ export function FontSwitch() {
   const pick = (v: FontValue) => { setFont(v); setOpen(false); };
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0">
       <button
         onClick={() => setOpen((v) => !v)}
         className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-slate-700/50 bg-slate-900/50 px-2.5 py-1.5 backdrop-blur transition-all hover:border-brand-500/50 sm:gap-2 sm:px-3"
@@ -55,7 +55,7 @@ export function FontSwitch() {
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 z-50 w-52 rounded-xl border border-slate-700/50 bg-slate-900/95 backdrop-blur shadow-2xl overflow-hidden animate-fadeInUp">
+        <div className="absolute left-1/2 top-full z-50 mt-2 w-[min(13rem,calc(100vw-2rem))] -translate-x-1/2 overflow-hidden rounded-xl border border-slate-700/50 bg-slate-900/95 shadow-2xl backdrop-blur animate-fadeInUp sm:left-auto sm:right-0 sm:w-52 sm:translate-x-0">
           <div className="px-3 py-2 border-b border-slate-700/50">
             <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-ink-dim">{t("fontLabel")}</p>
           </div>

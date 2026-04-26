@@ -229,7 +229,7 @@ export function LoginPage() {
                 <h2 className="font-display text-2xl font-bold text-white">{t("loginTitle")}</h2>
                 <p className="text-sm text-ink-dim mt-1">{t("loginSubtitle")}</p>
               </div>
-              <div className="flex max-w-full flex-wrap items-center justify-start gap-2 rounded-xl border border-slate-700/40 bg-slate-950/35 p-2 sm:justify-end">
+              <div className="flex max-w-full flex-wrap items-center justify-start gap-3 rounded-xl border border-slate-700/40 bg-slate-950/35 p-2 sm:justify-end sm:gap-3.5">
                 <FontSwitch />
                 <LanguageSwitch />
               </div>
