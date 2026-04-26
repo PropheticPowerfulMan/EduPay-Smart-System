@@ -439,25 +439,42 @@ Mot de passe temporaire: ${e.temporaryPassword}`,o=async()=>{var s;await((s=navi
       display:flex;
       align-items:center;
       justify-content:center;
-      font-size:128px;
+      font-size:104px;
       font-weight:900;
-      letter-spacing:20px;
-      color:rgba(30,58,95,0.14);
-      text-shadow:0 0 1px rgba(30,58,95,0.16);
-      transform:rotate(-24deg);
+      letter-spacing:16px;
+      color:rgba(30,58,95,0.055);
+      text-shadow:0 0 1px rgba(30,58,95,0.08);
+      transform:rotate(-22deg);
+      pointer-events:none;
+      user-select:none;
+    }
+    .watermark-logo-frame {
+      position:fixed;
+      left:50%;
+      top:50%;
+      z-index:0;
+      width:430px;
+      height:430px;
+      max-width:66vw;
+      max-height:66vw;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border-radius:999px;
+      border:2px solid rgba(30,58,95,0.045);
+      background:radial-gradient(circle, rgba(255,255,255,0.2) 0%, rgba(255,255,255,0.04) 56%, rgba(30,58,95,0.025) 100%);
+      transform:translate(-50%, -48%);
       pointer-events:none;
       user-select:none;
     }
     .watermark-logo {
-      position:fixed;
-      left:50%;
-      top:52%;
-      z-index:0;
-      width:440px;
-      max-width:64vw;
-      opacity:0.1;
-      filter:grayscale(100%) contrast(1.12);
-      transform:translate(-50%, -50%) rotate(-12deg);
+      width:82%;
+      height:82%;
+      object-fit:contain;
+      border-radius:999px;
+      opacity:0.115;
+      filter:grayscale(100%) contrast(1.08) saturate(0.35);
+      transform:rotate(-10deg);
       pointer-events:none;
       user-select:none;
     }
@@ -476,7 +493,9 @@ Mot de passe temporaire: ${e.temporaryPassword}`,o=async()=>{var s;await((s=navi
 </head>
 <body>
   <div class="watermark-text">${f.shortName}</div>
-  <img class="watermark-logo" src="${f.logoSrc}" alt=""/>
+  <div class="watermark-logo-frame">
+    <img class="watermark-logo" src="${f.logoSrc}" alt=""/>
+  </div>
   <div class="page-shell">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px double #1e3a5f; padding-bottom:14px; margin-bottom:20px;">
       <div style="display:flex; align-items:center;">
