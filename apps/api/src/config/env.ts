@@ -14,6 +14,7 @@ const envSchema = z.object({
   SMTP_USER: z.string().default("school@example.com"),
   SMTP_PASS: z.string().default("CHANGE_ME"),
   AFRIKTALK_API_KEY: z.string().default("CHANGE_ME"),
+  AFRIKTALK_API_URL: z.string().default(""),
   AFRIKTALK_SENDER: z.string().default("EduPay"),
   DEFAULT_LANG: z.enum(["fr", "en"]).default("fr")
 });

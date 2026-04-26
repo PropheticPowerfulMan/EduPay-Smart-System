@@ -34,6 +34,10 @@ function hasSmtpConfig() {
   return Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.SMTP_PASS !== "CHANGE_ME");
 }
 
+function hasSmsConfig() {
+  return Boolean(env.AFRIKTALK_API_URL && env.AFRIKTALK_API_KEY && env.AFRIKTALK_API_KEY !== "CHANGE_ME");
+}
+
 function buildParentWelcomeMessages(parent: any, temporaryPassword: string, loginEmail: string) {
   const students = (parent.students || []).map((student: any) => ({
     fullName: student.fullName,
@@ -110,8 +114,25 @@ async function sendParentWelcomeNotifications(parent: any, temporaryPassword: st
 
   if (parent.phone) {
     try {
-      console.log(`[parent-welcome-sms:dry-run] To: ${parent.phone}\n${messages.smsBody}`);
-      status.sms = "SIMULATED";
+      if (hasSmsConfig()) {
+        const response = await fetch(env.AFRIKTALK_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${env.AFRIKTALK_API_KEY}`
+          },
+          body: JSON.stringify({
+            sender: env.AFRIKTALK_SENDER,
+            to: parent.phone,
+            message: messages.smsBody
+          })
+        });
+        if (!response.ok) throw new Error(`SMS provider responded with ${response.status}`);
+        status.sms = "SENT";
+      } else {
+        console.log(`[parent-welcome-sms:dry-run] To: ${parent.phone}\n${messages.smsBody}`);
+        status.sms = "SIMULATED";
+      }
     } catch (error) {
       console.error("Parent welcome SMS failed", error);
       status.sms = "FAILED";
