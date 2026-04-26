@@ -181,7 +181,7 @@ function getStatusLabel(status: string) {
 
 function buildReceiptMicroText(r: PaymentRecord) {
   const sec = buildReceiptSecurity(r);
-  return `EDUPAY-A5-OFFICIAL ${r.transactionNumber} ${sec.verificationCode} ${r.amount.toFixed(5)}USD ${r.status}`;
+  return `EDUPAY-OFFICIAL ${r.transactionNumber} ${sec.verificationCode} ${r.amount.toFixed(5)}USD ${r.status}`;
 }
 
 /* --- Reçu individuel HTML (A5 paysage) ------------------------------------ */
@@ -208,48 +208,48 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
 <html lang="${lang}">
 <head>
   <meta charset="UTF-8"/>
-  <title>Reçu A5 ${safe.tx}</title>
+  <title>Reçu ${safe.tx}</title>
   <style>
-    @page { size: A5 landscape; margin: 7mm; }
+    @page { size: A5 landscape; margin: 4mm; }
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family: Arial, Helvetica, sans-serif; color:#101827; background:#fff; font-size:10.5px; }
-    .receipt { position:relative; width:196mm; min-height:134mm; margin:0 auto; border:1.2mm double #123047; padding:7mm; overflow:hidden; }
+    body { font-family: Arial, Helvetica, sans-serif; color:#101827; background:#fff; font-size:9.5px; }
+    .receipt { position:relative; width:202mm; height:140mm; margin:0 auto; border:0.9mm double #123047; padding:4.5mm; overflow:hidden; }
     .receipt:before { content:""; position:absolute; inset:0; background:linear-gradient(135deg, rgba(18,48,71,.05), transparent 32%, rgba(180,83,9,.05)); pointer-events:none; }
-    .watermark { position:absolute; inset:19mm 12mm auto; text-align:center; font-size:30mm; font-weight:900; letter-spacing:4mm; color:rgba(18,48,71,.035); transform:rotate(-10deg); pointer-events:none; }
-    .seal-watermark { position:absolute; inset:30mm 0 auto; display:flex; justify-content:center; pointer-events:none; opacity:.055; }
-    .seal-watermark img { width:70mm; height:70mm; object-fit:contain; transform:rotate(-9deg); }
+    .watermark { position:absolute; inset:17mm 12mm auto; text-align:center; font-size:27mm; font-weight:900; letter-spacing:4mm; color:rgba(18,48,71,.032); transform:rotate(-10deg); pointer-events:none; }
+    .seal-watermark { position:absolute; inset:28mm 0 auto; display:flex; justify-content:center; pointer-events:none; opacity:.05; }
+    .seal-watermark img { width:58mm; height:58mm; object-fit:contain; transform:rotate(-9deg); }
     .micro { position:absolute; left:5mm; right:5mm; bottom:2.5mm; color:#94a3b8; font-size:5.6px; letter-spacing:.8px; white-space:nowrap; overflow:hidden; }
-    .top { position:relative; display:grid; grid-template-columns:1.1fr .9fr; gap:8mm; border-bottom:2px solid #123047; padding-bottom:4mm; }
-    .brand { display:flex; gap:4mm; align-items:center; }
-    .logo { width:18mm; height:18mm; border:1px solid #123047; border-radius:2mm; padding:1.4mm; object-fit:contain; background:#fff; }
-    .school { font-family:Georgia, 'Times New Roman', serif; font-size:17px; font-weight:800; color:#123047; letter-spacing:.6px; }
-    .sub { margin-top:1mm; color:#64748b; font-size:9px; text-transform:uppercase; letter-spacing:1.1px; }
-    .official { margin-top:3mm; display:inline-block; border:1px solid #123047; padding:1.5mm 4mm; font-weight:800; letter-spacing:2px; text-transform:uppercase; }
+    .top { position:relative; display:grid; grid-template-columns:1.16fr .84fr; gap:6mm; border-bottom:1.5px solid #123047; padding-bottom:2.6mm; }
+    .brand { display:flex; gap:3mm; align-items:center; }
+    .logo { width:15mm; height:15mm; border:1px solid #123047; border-radius:2mm; padding:1.1mm; object-fit:contain; background:#fff; }
+    .school { font-family:Georgia, 'Times New Roman', serif; font-size:15px; font-weight:800; color:#123047; letter-spacing:.5px; }
+    .sub { margin-top:.7mm; color:#64748b; font-size:7.8px; text-transform:uppercase; letter-spacing:1px; }
+    .official { margin-top:2mm; display:inline-block; border:1px solid #123047; padding:1mm 3mm; font-size:8.2px; font-weight:900; letter-spacing:1.8px; text-transform:uppercase; }
     .tx { text-align:right; }
-    .tx-label { color:#64748b; font-size:8px; text-transform:uppercase; letter-spacing:1.6px; }
-    .tx-value { margin-top:1mm; font-family:'Courier New', monospace; font-size:13px; font-weight:900; color:#123047; }
-    .grid { display:grid; grid-template-columns:1.25fr .75fr; gap:6mm; margin-top:5mm; }
-    .field { display:grid; grid-template-columns:33mm 1fr; gap:3mm; padding:2.2mm 0; border-bottom:1px dotted #cbd5e1; }
-    .label { color:#475569; font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:.8px; }
+    .tx-label { color:#64748b; font-size:7px; text-transform:uppercase; letter-spacing:1.3px; }
+    .tx-value { margin-top:.7mm; font-family:'Courier New', monospace; font-size:11.5px; font-weight:900; color:#123047; }
+    .grid { display:grid; grid-template-columns:1.28fr .72fr; gap:4.5mm; margin-top:3.8mm; }
+    .field { display:grid; grid-template-columns:30mm 1fr; gap:2mm; padding:1.55mm 0; border-bottom:1px dotted #cbd5e1; }
+    .label { color:#475569; font-size:7.2px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; }
     .value { font-weight:700; color:#101827; }
-    .parent { font-size:13px; color:#123047; }
-    .amount { margin-top:4mm; border:1.5px solid #123047; background:#f8fafc; padding:4mm; }
-    .amount-label { color:#64748b; font-size:8px; font-weight:800; text-transform:uppercase; letter-spacing:1.4px; }
-    .amount-value { margin-top:1mm; font-family:'Courier New', monospace; font-size:24px; font-weight:900; color:#123047; }
-    .words { margin-top:2mm; border-top:1px solid #dbe4ef; padding-top:2mm; font-size:9px; font-style:italic; color:#334155; }
-    .security { border:1px solid #123047; padding:3mm; }
-    .matrix { display:grid; grid-template-columns:repeat(8, 1fr); width:25mm; height:25mm; border:1px solid #123047; padding:1mm; gap:.6mm; margin-left:auto; }
+    .parent { font-size:11.8px; color:#123047; }
+    .amount { margin-top:2.8mm; border:1.3px solid #123047; background:#f8fafc; padding:2.7mm; }
+    .amount-label { color:#64748b; font-size:7.2px; font-weight:800; text-transform:uppercase; letter-spacing:1.2px; }
+    .amount-value { margin-top:.7mm; font-family:'Courier New', monospace; font-size:20px; font-weight:900; color:#123047; }
+    .words { margin-top:1.4mm; border-top:1px solid #dbe4ef; padding-top:1.4mm; font-size:7.8px; font-style:italic; color:#334155; }
+    .security { border:1px solid #123047; padding:2.2mm; }
+    .matrix { display:grid; grid-template-columns:repeat(8, 1fr); width:20mm; height:20mm; border:1px solid #123047; padding:.8mm; gap:.45mm; margin-left:auto; }
     .matrix span { background:#e2e8f0; }
     .matrix span.on { background:#123047; }
-    .seal-row { display:grid; grid-template-columns:1fr 1fr; gap:4mm; margin-top:5mm; }
-    .box { min-height:22mm; border:1px dashed #475569; padding:2mm; display:flex; flex-direction:column; justify-content:space-between; }
-    .box-title { font-size:8px; font-weight:900; color:#475569; text-transform:uppercase; letter-spacing:.9px; }
-    .line { border-top:1px solid #475569; padding-top:1mm; text-align:center; font-size:7.5px; color:#64748b; }
+    .seal-row { display:grid; grid-template-columns:1fr 1fr; gap:3mm; margin-top:3.4mm; }
+    .box { min-height:17mm; border:1px dashed #475569; padding:1.5mm; display:flex; flex-direction:column; justify-content:space-between; }
+    .box-title { font-size:7px; font-weight:900; color:#475569; text-transform:uppercase; letter-spacing:.8px; }
+    .line { border-top:1px solid #475569; padding-top:.8mm; text-align:center; font-size:6.8px; color:#64748b; }
     .stamp { align-items:center; justify-content:center; text-align:center; border-style:solid; }
-    .stamp-circle { width:22mm; height:22mm; border:1px dashed #123047; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:auto; background:#fff; color:#94a3b8; font-size:6.5px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; }
-    .warning { margin-top:3mm; border-left:3px solid #b45309; background:#fffbeb; color:#78350f; padding:2mm; font-size:8px; }
-    .footer { margin-top:4mm; display:flex; justify-content:space-between; color:#64748b; font-size:8px; border-top:1px solid #dbe4ef; padding-top:2mm; }
-    @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } .receipt { margin:0; } }
+    .stamp-circle { width:17mm; height:17mm; border:1px dashed #123047; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:auto; background:#fff; color:#94a3b8; font-size:5.8px; font-weight:800; text-transform:uppercase; letter-spacing:.45px; }
+    .warning { margin-top:2.2mm; border-left:2.4px solid #b45309; background:#fffbeb; color:#78350f; padding:1.5mm; font-size:7px; }
+    .footer { margin-top:2.6mm; display:flex; justify-content:space-between; color:#64748b; font-size:7px; border-top:1px solid #dbe4ef; padding-top:1.4mm; }
+    @media print { html, body { width:210mm; height:148mm; overflow:hidden; } body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } .receipt { margin:0; page-break-inside:avoid; break-inside:avoid; } }
   </style>
 </head>
 <body>
@@ -262,7 +262,7 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
       <div>
         <div class="school">${safe.schoolName}</div>
         <div class="sub">${safe.tagline} - ${safe.appName}</div>
-        <div class="official">Reçu officiel A5</div>
+        <div class="official">Reçu officiel</div>
       </div>
     </div>
     <div class="tx">
@@ -312,7 +312,7 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
   </div>
 
   <div class="footer">
-    <span>${safe.schoolName} - ${safe.appName} - Norme interne A5-RCT-01</span>
+    <span>${safe.schoolName} - ${safe.appName} - Norme interne RCT-01</span>
     <span>Ref: ${safe.tx} - ${new Date().toLocaleDateString("fr-FR")}</span>
   </div>
   <div class="micro">${microText} ${microText} ${microText}</div>
@@ -648,7 +648,7 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
       : "border-emerald-500/40 bg-emerald-500/10 text-emerald-200";
 
   return (
-    <div className={`relative mx-auto w-full max-w-4xl overflow-hidden rounded-xl border-4 border-double border-slate-300 bg-white p-5 text-slate-950 shadow-2xl ${compact ? "scale-[0.98]" : ""}`}>
+    <div className={`relative mx-auto w-full max-w-4xl overflow-hidden rounded-xl border-[3px] border-double border-slate-300 bg-white p-4 text-slate-950 shadow-2xl ${compact ? "scale-[0.98]" : ""}`}>
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(18,48,71,0.05),transparent_35%,rgba(180,83,9,0.06))]" />
       <div className="pointer-events-none absolute inset-x-8 top-20 -rotate-6 text-center text-7xl font-black tracking-[0.28em] text-slate-900/[0.035]">
         {schoolBranding.shortName}
@@ -656,19 +656,19 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
       <div className="pointer-events-none absolute inset-x-0 top-24 flex justify-center opacity-[0.055]">
         <img src={schoolBranding.logoSrc} alt="" className="h-72 w-72 -rotate-6 object-contain" />
       </div>
-      <div className="relative grid gap-4 border-b-2 border-slate-800 pb-4 sm:grid-cols-[1.1fr_0.9fr]">
-        <div className="flex items-center gap-4">
+      <div className="relative grid gap-3 border-b-2 border-slate-800 pb-3 sm:grid-cols-[1.1fr_0.9fr]">
+        <div className="flex items-center gap-3">
           <img
             src={schoolBranding.logoSrc}
             alt={`Logo ${schoolBranding.schoolName}`}
-            className="h-20 w-20 rounded-lg border border-slate-900 bg-white object-contain p-1.5"
+            className="h-16 w-16 rounded-lg border border-slate-900 bg-white object-contain p-1.5"
           />
           <div>
-            <p className="font-serif text-xl font-black tracking-wide text-slate-900">{schoolBranding.schoolName}</p>
+            <p className="font-serif text-lg font-black tracking-wide text-slate-900">{schoolBranding.schoolName}</p>
           <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
               {schoolBranding.tagline} - {schoolBranding.appName}
             </p>
-            <span className="mt-3 inline-flex border border-slate-900 px-4 py-1 text-[11px] font-black uppercase tracking-[0.22em]">Reçu officiel A5</span>
+            <span className="mt-2 inline-flex border border-slate-900 px-3 py-1 text-[10px] font-black uppercase tracking-[0.22em]">Reçu officiel</span>
           </div>
         </div>
         <div className="text-left sm:text-right">
@@ -679,7 +679,7 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
         </div>
       </div>
 
-      <div className="relative mt-4 grid gap-5 lg:grid-cols-[1.25fr_0.75fr]">
+      <div className="relative mt-3 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
         <div>
           {[
             ["Date et heure", receipt.date],
@@ -693,10 +693,10 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
               <span className={`text-sm font-bold ${label === "Parent" ? "text-slate-950" : "text-slate-700"}`}>{value}</span>
             </div>
           ))}
-          <div className="mt-4 border-2 border-slate-900 bg-slate-50 p-4">
+          <div className="mt-3 border-2 border-slate-900 bg-slate-50 p-3">
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Montant reçu en dollars américains</p>
-            <p className="mt-1 font-mono text-3xl font-black text-slate-900">$ {receipt.amount.toFixed(5)}</p>
-            <p className="mt-3 border-t border-slate-300 pt-2 text-xs italic text-slate-700">
+            <p className="mt-1 font-mono text-2xl font-black text-slate-900">$ {receipt.amount.toFixed(5)}</p>
+            <p className="mt-2 border-t border-slate-300 pt-2 text-xs italic text-slate-700">
               <strong>En toutes lettres:</strong> {receipt.amountWords}
             </p>
           </div>
@@ -741,7 +741,7 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
       </div>
 
       <div className="relative mt-4 flex flex-wrap justify-between gap-2 border-t border-slate-300 pt-2 text-[10px] font-semibold text-slate-500">
-        <span>{schoolBranding.schoolName} - {schoolBranding.appName} - Norme interne A5-RCT-01</span>
+        <span>{schoolBranding.schoolName} - {schoolBranding.appName} - Norme interne RCT-01</span>
         <span>{buildReceiptMicroText(receipt)}</span>
       </div>
     </div>
@@ -951,6 +951,47 @@ export function PaymentsPage() {
     </div>
   );
 
+  const NotificationSettingsPanel = () => (
+    <div className={`card relative overflow-hidden border ${
+      paymentNotificationsEnabled
+        ? "border-emerald-500/30 bg-emerald-500/10"
+        : "border-amber-500/30 bg-amber-500/10"
+    }`}>
+      <div className="pointer-events-none absolute -right-10 -top-10 h-28 w-28 rounded-full bg-white/10 blur-2xl" />
+      <div className="relative flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-brand-200">
+              {t("paymentNotificationsAdminTitle")}
+            </p>
+            <span className={`rounded-full border px-3 py-1 text-[11px] font-bold uppercase tracking-wide ${
+              paymentNotificationsEnabled
+                ? "border-emerald-400/40 bg-emerald-400/15 text-emerald-200"
+                : "border-amber-400/40 bg-amber-400/15 text-amber-200"
+            }`}>
+              {paymentNotificationsEnabled ? t("paymentNotificationsOnBadge") : t("paymentNotificationsOffBadge")}
+            </span>
+          </div>
+          <h2 className="mt-2 font-display text-xl font-bold text-white">{t("paymentNotificationsTitle")}</h2>
+          <p className="mt-1 max-w-3xl text-sm text-ink-dim">{t("paymentNotificationsAdminSubtitle")}</p>
+          <p className="mt-2 text-xs font-semibold text-cyan-200">{t("paymentNotificationsChannels")}</p>
+          {notificationStatus && <p className="mt-2 text-xs font-semibold text-white/85">{notificationStatus}</p>}
+        </div>
+        <button
+          type="button"
+          onClick={() => void togglePaymentNotifications()}
+          className={`shrink-0 rounded-2xl px-6 py-3 text-sm font-black uppercase tracking-wide transition-all active:scale-95 ${
+            paymentNotificationsEnabled
+              ? "border border-emerald-400/50 bg-emerald-500/25 text-emerald-100 shadow-lg shadow-emerald-500/10 hover:bg-emerald-500/35"
+              : "border border-amber-400/50 bg-amber-500/20 text-amber-100 shadow-lg shadow-amber-500/10 hover:bg-amber-500/30"
+          }`}
+        >
+          {paymentNotificationsEnabled ? t("enabled") : t("disabled")}
+        </button>
+      </div>
+    </div>
+  );
+
   /* ------------------------------------------------------------------------
      VUE RECU
   ------------------------------------------------------------------------ */
@@ -1010,6 +1051,7 @@ export function PaymentsPage() {
         </div>
         <NavBar />
         <StatsBanner />
+        <NotificationSettingsPanel />
 
         {/* Filtres */}
         <div className="card">
@@ -1158,6 +1200,7 @@ export function PaymentsPage() {
         </div>
         <NavBar />
         <StatsBanner />
+        <NotificationSettingsPanel />
 
         {/* Recherche + impression */}
         <div className="card flex flex-col md:flex-row gap-4 items-end">
@@ -1314,27 +1357,7 @@ export function PaymentsPage() {
 
       <NavBar />
       <StatsBanner />
-
-      <div className="card flex flex-col gap-4 border border-cyan-500/20 bg-cyan-500/5 md:flex-row md:items-center md:justify-between">
-        <div>
-          <p className="text-sm font-bold text-white">{t("paymentNotificationsTitle")}</p>
-          <p className="mt-1 text-xs text-ink-dim">
-            {t("paymentNotificationsHelp")}
-          </p>
-          {notificationStatus && <p className="mt-2 text-xs font-semibold text-cyan-200">{notificationStatus}</p>}
-        </div>
-        <button
-          type="button"
-          onClick={() => void togglePaymentNotifications()}
-          className={`rounded-xl px-5 py-2.5 text-sm font-bold transition-all ${
-            paymentNotificationsEnabled
-              ? "bg-emerald-500/20 text-emerald-200 border border-emerald-500/40"
-              : "bg-slate-700/60 text-ink-dim border border-slate-600"
-          }`}
-        >
-          {paymentNotificationsEnabled ? t("enabled") : t("disabled")}
-        </button>
-      </div>
+      <NotificationSettingsPanel />
 
       <div className="card animate-fadeInUp">
         <h2 className="font-display text-xl font-bold text-white mb-6">{t("paymentDetails")}</h2>
