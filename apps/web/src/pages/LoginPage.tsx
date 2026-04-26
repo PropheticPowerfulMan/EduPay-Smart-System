@@ -203,19 +203,20 @@ export function LoginPage() {
             <div className="absolute inset-0 bg-gradient-to-br from-brand-600 to-brand-500 opacity-90"></div>
             <div className="absolute inset-0 bg-gradient-to-br from-transparent via-brand-500/0 to-accent/20"></div>
             
-            <div className="relative z-10 space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="logo-glass h-16 w-16 rounded-xl flex items-center justify-center border-2 border-white/30 shadow-lg">
+            <div className="relative z-10 flex flex-col items-center text-center">
+              <div className="logo-glass h-20 w-20 rounded-full flex items-center justify-center border-2 border-white/35 shadow-lg shadow-black/20">
+                <div className="h-16 w-16 overflow-hidden rounded-full bg-white p-1.5">
                   <img 
                     src={schoolBranding.logoSrc} 
                     alt={`Logo ${schoolBranding.schoolName}`} 
-                    className="h-12 w-12 object-contain" 
+                    className="h-full w-full rounded-full object-contain" 
                   />
                 </div>
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.2em] text-white/80">{schoolBranding.shortName}</p>
-                  <h1 className="font-display text-2xl font-bold text-white leading-tight">{schoolBranding.schoolName}</h1>
-                </div>
+              </div>
+              <div className="mt-3 max-w-[260px]">
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-white/75">{schoolBranding.shortName}</p>
+                <h1 className="mt-1 font-display text-lg font-bold leading-tight text-white sm:text-xl">{schoolBranding.schoolName}</h1>
+                <p className="mt-1 text-xs font-medium text-white/70">{schoolBranding.tagline}</p>
               </div>
             </div>
           </div>
