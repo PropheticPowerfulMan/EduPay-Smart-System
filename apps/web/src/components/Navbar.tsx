@@ -124,10 +124,10 @@ export function Navbar() {
 
           {/* Right Section */}
           <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
-            <div className="hidden min-[420px]:block">
+            <div className="hidden items-center gap-3 lg:flex">
               <FontSwitch />
+              <LanguageSwitch />
             </div>
-            <LanguageSwitch />
 
             {/* User Menu */}
             <div className="relative">
@@ -173,6 +173,11 @@ export function Navbar() {
               )}
             </div>
           </div>
+        </div>
+
+        <div className="mt-2 flex items-center justify-end gap-2 rounded-xl border border-brand-300/15 bg-white/[0.04] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] lg:hidden">
+          <FontSwitch />
+          <LanguageSwitch />
         </div>
       </div>
     </header>
