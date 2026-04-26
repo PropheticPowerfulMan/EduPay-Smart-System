@@ -220,7 +220,8 @@ app.post("/api/auth/login", async (req, res) => {
   if (!user) return res.status(401).json({ message: "Invalid credentials" });
   if (payload.password !== user.password) return res.status(401).json({ message: "Invalid credentials" });
   const token = jwt.sign({ sub: user.id, role: user.role, schoolId: user.schoolId }, env.JWT_SECRET);
-  return res.json({ token, role: user.role, fullName: user.fullName });
+  const parent = user.role === "PARENT" ? mockParents.find((item) => item.userId === user.id) : null;
+  return res.json({ token, role: user.role, fullName: user.fullName, parentId: parent?.id });
 });
 
 app.post("/api/auth/change-password", authGuard, (req: any, res) => {

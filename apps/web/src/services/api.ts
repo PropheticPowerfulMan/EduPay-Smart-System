@@ -2,14 +2,17 @@ const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\
 const TOKEN_STORAGE_KEY = "edupay_token";
 const ROLE_STORAGE_KEY = "edupay_role";
 const NAME_STORAGE_KEY = "edupay_name";
+const PARENT_ID_STORAGE_KEY = "edupay_parent_id";
 const SESSION_ACTIVE_KEY = "edupay_session_active";
 const DEMO_PARENTS_KEY = "edupay_demo_parents_v1";
 const DEMO_PAYMENTS_KEY = "edupay_payments_v2";
 const DEMO_NOTIFICATIONS_KEY = "edupay-payment-notifications-enabled";
+const DEMO_PARENT_CREDENTIALS_KEY = "edupay_demo_parent_credentials_v1";
 
 type DemoStudent = { id: string; fullName: string; classId: string; className: string; annualFee: number; payments?: DemoPayment[] };
 type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
 type DemoPayment = { id: string; transactionNumber: string; parentId?: string; parentFullName: string; reason: string; method: string; amount: number; status: string; createdAt: string; date: string };
+type DemoParentCredential = { parentId: string; email: string; password: string };
 
 const demoClasses = [
   ...Array.from({ length: 5 }, (_v, index) => ({ id: `section-k${index + 1}`, name: `K${index + 1}` })),
@@ -56,6 +59,7 @@ function clearLocalSession() {
   localStorage.removeItem(TOKEN_STORAGE_KEY);
   localStorage.removeItem(ROLE_STORAGE_KEY);
   localStorage.removeItem(NAME_STORAGE_KEY);
+  localStorage.removeItem(PARENT_ID_STORAGE_KEY);
   localStorage.removeItem("edupay_fullName");
 }
 
@@ -91,6 +95,18 @@ function getDemoPayments() {
   return payments;
 }
 
+function getDemoParentCredentials() {
+  const credentials = readJson<DemoParentCredential[]>(DEMO_PARENT_CREDENTIALS_KEY, []);
+  writeJson(DEMO_PARENT_CREDENTIALS_KEY, credentials);
+  return credentials;
+}
+
+function saveDemoParentCredential(credential: DemoParentCredential) {
+  const email = credential.email.trim().toLowerCase();
+  const credentials = getDemoParentCredentials().filter((item) => item.email.trim().toLowerCase() !== email);
+  writeJson(DEMO_PARENT_CREDENTIALS_KEY, [{ ...credential, email }, ...credentials]);
+}
+
 function parseBody(init?: RequestInit) {
   if (!init?.body || typeof init.body !== "string") return {} as Record<string, unknown>;
   try { return JSON.parse(init.body) as Record<string, unknown>; } catch { return {}; }
@@ -110,9 +126,15 @@ function overview() {
 }
 
 function parentMe() {
-  const parent = getDemoParents()[0];
+  const parents = getDemoParents();
+  const parentId = localStorage.getItem(PARENT_ID_STORAGE_KEY);
+  const fullName = localStorage.getItem(NAME_STORAGE_KEY);
+  const parent = parents.find((item) => item.id === parentId)
+    ?? parents.find((item) => item.fullName === fullName)
+    ?? parents[0];
   const payments = getDemoPayments().filter((payment) => payment.parentId === parent.id || payment.parentFullName === parent.fullName);
   return {
+    id: parent.id,
     fullName: parent.fullName,
     phone: parent.phone,
     email: parent.email,
@@ -130,9 +152,28 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
   if (normalizedPath === "/api/auth/login" && method === "POST") {
     const email = String(body.email ?? "").toLowerCase();
     const password = String(body.password ?? "");
-    if (password !== "password123") throw new Error("Identifiants invalides.");
-    if (email === "parent@school.com") return { token: "demo-parent-token", role: "PARENT", fullName: "Dupont Marie" } as T;
-    return { token: "demo-admin-token", role: "ADMIN", fullName: "Administrateur Demo" } as T;
+    if (email === "parent@school.com" && password === "password123") {
+      return { token: "demo-parent-token", role: "PARENT", fullName: "Dupont Marie", parentId: "PAR-2025-0001" } as T;
+    }
+
+    const credential = getDemoParentCredentials().find((item) => item.email === email && item.password === password);
+    if (credential) {
+      const parent = getDemoParents().find((item) => item.id === credential.parentId);
+      if (parent) {
+        return {
+          token: `demo-parent-token-${parent.id}`,
+          role: "PARENT",
+          fullName: parent.fullName,
+          parentId: parent.id
+        } as T;
+      }
+    }
+
+    if (password === "password123") {
+      return { token: "demo-admin-token", role: "ADMIN", fullName: "Administrateur Demo" } as T;
+    }
+
+    throw new Error("Identifiants invalides.");
   }
 
   if (normalizedPath === "/api/auth/forgot-password") return { message: "OK" } as T;
@@ -194,8 +235,12 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       createdAt: new Date().toISOString(),
       students: Array.isArray(body.students) ? body.students as DemoStudent[] : []
     };
+    const temporaryPassword = `KCS-${String(Date.now()).slice(-4)}`;
+    if (parent.email) {
+      saveDemoParentCredential({ parentId: parent.id, email: parent.email, password: temporaryPassword });
+    }
     writeJson(DEMO_PARENTS_KEY, [parent, ...getDemoParents()]);
-    return { ...parent, temporaryPassword: "password123", notificationStatus: { email: "SIMULATED", sms: "SIMULATED" } } as T;
+    return { ...parent, temporaryPassword, notificationStatus: { email: "SIMULATED", sms: "SIMULATED" } } as T;
   }
 
   const parentMatch = normalizedPath.match(/^\/api\/parents\/([^/]+)$/);
@@ -212,7 +257,11 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
   const resetMatch = normalizedPath.match(/^\/api\/parents\/([^/]+)\/reset-password$/);
   if (resetMatch) {
     const parent = getDemoParents().find((item) => item.id === resetMatch[1]);
-    return { parentId: resetMatch[1], email: parent?.email ?? "parent@school.com", temporaryPassword: "password123" } as T;
+    const temporaryPassword = `KCS-${String(Date.now()).slice(-4)}`;
+    if (parent?.email) {
+      saveDemoParentCredential({ parentId: resetMatch[1], email: parent.email, password: temporaryPassword });
+    }
+    return { parentId: resetMatch[1], email: parent?.email ?? "parent@school.com", temporaryPassword } as T;
   }
 
   throw new Error("Endpoint demo non disponible.");

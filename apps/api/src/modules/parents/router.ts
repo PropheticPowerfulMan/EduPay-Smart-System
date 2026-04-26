@@ -184,6 +184,17 @@ function enrichParent(p: any) {
   };
 }
 
+function parentDashboardData(parent: any) {
+  const enriched = enrichParent(parent);
+  return {
+    ...enriched,
+    students: (enriched.students || []).map((student: any) => ({
+      ...student,
+      payments: student.payments || []
+    }))
+  };
+}
+
 export const parentRouter = Router();
 parentRouter.use(authGuard);
 
@@ -203,15 +214,23 @@ parentRouter.get("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticate
 
 // GET /me (for PARENT role)
 parentRouter.get("/me", authorize("PARENT"), async (req: AuthenticatedRequest, res) => {
+  if (req.user!.sub.startsWith("demo-")) {
+    return res.json(parentDashboardData(demoParents[0]));
+  }
+
   try {
     const parent = await prisma.parent.findFirst({
       where: { schoolId: req.user!.schoolId, userId: req.user!.sub },
       include: { students: { include: { class: true, payments: true } } }
     });
-    return res.json(parent ? enrichParent(parent) : null);
+    if (parent) return res.json(parentDashboardData(parent));
+
+    const demoParent = demoParents.find((item) => item.userId === req.user!.sub) ?? demoParents[0];
+    return res.json(parentDashboardData(demoParent));
   } catch (error) {
     console.error("DB unavailable on parent/me", error);
-    return res.json(null);
+    const demoParent = demoParents.find((item) => item.userId === req.user!.sub) ?? demoParents[0];
+    return res.json(parentDashboardData(demoParent));
   }
 });
 

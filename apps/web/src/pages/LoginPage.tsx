@@ -151,14 +151,14 @@ export function LoginPage() {
 
   const loginWithCredentials = async (values: LoginInput) => {
     setApiError(null);
-    const result = await api<{ token: string; role: "ADMIN" | "ACCOUNTANT" | "PARENT"; fullName: string }>("/api/auth/login", {
+    const result = await api<{ token: string; role: "ADMIN" | "ACCOUNTANT" | "PARENT"; fullName: string; parentId?: string }>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({
         email: values.email.trim().toLowerCase(),
         password: values.password.trim()
       })
     });
-    setAuth(result.token, result.role, result.fullName);
+    setAuth(result.token, result.role, result.fullName, result.parentId);
     window.location.replace(`${import.meta.env.BASE_URL}#${result.role === "PARENT" ? "/parent" : "/"}`);
   };
 

@@ -32,7 +32,8 @@ const demoUsers = [
     password: "password123",
     role: "PARENT" as const,
     fullName: "Parent Demo",
-    schoolId: "demo-school"
+    schoolId: "demo-school",
+    parentId: "demo-parent-1"
   }
 ];
 
@@ -71,7 +72,10 @@ authRouter.post("/login", async (req, res) => {
       const ok = await bcrypt.compare(payload.password, user.passwordHash);
       if (ok) {
         const token = buildToken({ id: user.id, role: user.role, schoolId: user.schoolId });
-        return res.json({ token, role: user.role, fullName: user.fullName });
+        const parent = user.role === "PARENT"
+          ? await prisma.parent.findUnique({ where: { userId: user.id }, select: { id: true } })
+          : null;
+        return res.json({ token, role: user.role, fullName: user.fullName, parentId: parent?.id });
       }
     }
   } catch (error) {
@@ -84,7 +88,7 @@ authRouter.post("/login", async (req, res) => {
 
   if (demoUser) {
     const token = buildToken({ id: `demo-${demoUser.role.toLowerCase()}`, role: demoUser.role, schoolId: demoUser.schoolId });
-    return res.json({ token, role: demoUser.role, fullName: demoUser.fullName });
+    return res.json({ token, role: demoUser.role, fullName: demoUser.fullName, parentId: "parentId" in demoUser ? demoUser.parentId : undefined });
   }
 
   return res.status(401).json({ message: "Identifiants invalides" });
