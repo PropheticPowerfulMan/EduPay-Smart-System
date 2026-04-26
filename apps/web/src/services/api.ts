@@ -240,12 +240,21 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       createdAt: new Date().toISOString(),
       students: Array.isArray(body.students) ? body.students as DemoStudent[] : []
     };
+    const notifyEmail = body.notifyEmail !== false;
+    const notifySms = body.notifySms !== false;
     const temporaryPassword = `KCS-${String(Date.now()).slice(-4)}`;
     if (parent.email) {
       saveDemoParentCredential({ parentId: parent.id, email: parent.email, password: temporaryPassword });
     }
     writeJson(DEMO_PARENTS_KEY, [parent, ...getDemoParents()]);
-    return { ...parent, temporaryPassword, notificationStatus: { email: "SIMULATED", sms: "SIMULATED" } } as T;
+    return {
+      ...parent,
+      temporaryPassword,
+      notificationStatus: {
+        email: notifyEmail && parent.email ? "SIMULATED" : "SKIPPED",
+        sms: notifySms && parent.phone ? "SIMULATED" : "SKIPPED"
+      }
+    } as T;
   }
 
   const parentMatch = normalizedPath.match(/^\/api\/parents\/([^/]+)$/);
@@ -263,10 +272,20 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
   if (resetMatch) {
     const parent = getDemoParents().find((item) => item.id === resetMatch[1]);
     const temporaryPassword = `KCS-${String(Date.now()).slice(-4)}`;
+    const notifyEmail = body.notifyEmail !== false;
+    const notifySms = body.notifySms !== false;
     if (parent?.email) {
       saveDemoParentCredential({ parentId: resetMatch[1], email: parent.email, password: temporaryPassword });
     }
-    return { parentId: resetMatch[1], email: parent?.email ?? "parent@school.com", temporaryPassword } as T;
+    return {
+      parentId: resetMatch[1],
+      email: parent?.email ?? "parent@school.com",
+      temporaryPassword,
+      notificationStatus: {
+        email: notifyEmail && parent?.email ? "SIMULATED" : "SKIPPED",
+        sms: notifySms && parent?.phone ? "SIMULATED" : "SKIPPED"
+      }
+    } as T;
   }
 
   throw new Error("Endpoint demo non disponible.");

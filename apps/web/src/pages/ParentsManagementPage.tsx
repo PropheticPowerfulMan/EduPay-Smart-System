@@ -44,6 +44,8 @@ type FormState = {
   phone: string;
   email: string;
   photoUrl: string;
+  notifyEmail: boolean;
+  notifySms: boolean;
   students: { fullName: string; classId: string; annualFee: string }[];
 };
 
@@ -54,6 +56,8 @@ const EMPTY_FORM: FormState = {
   phone: "",
   email: "",
   photoUrl: "",
+  notifyEmail: true,
+  notifySms: true,
   students: []
 };
 
@@ -121,6 +125,20 @@ function KeyIcon() {
     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
       <circle cx="7.5" cy="15.5" r="3.5" />
       <path d="M10 13l8-8 3 3-2 2-2-2-2 2 2 2-2 2" />
+    </svg>
+  );
+}
+function MailIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M4 4h16v16H4z" /><path d="m22 6-10 7L2 6" />
+    </svg>
+  );
+}
+function PhoneIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.8 19.8 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.12 4.2 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.12.9.33 1.77.63 2.6a2 2 0 0 1-.45 2.11L8 9.72a16 16 0 0 0 6.29 6.29l1.29-1.29a2 2 0 0 1 2.11-.45c.83.3 1.7.51 2.6.63A2 2 0 0 1 22 16.92z" />
     </svg>
   );
 }
@@ -211,6 +229,77 @@ function CredentialsModal({ credentials, onClose }: { credentials: ParentCredent
 }
 
 /* ─── Detail Modal ───────────────────────────────────────────────── */
+function AccessNotificationModal({
+  parent,
+  onClose,
+  onConfirm,
+  loading
+}: {
+  parent: Parent;
+  onClose: () => void;
+  onConfirm: (channels: { notifyEmail: boolean; notifySms: boolean }) => void;
+  loading: boolean;
+}) {
+  const [notifyEmail, setNotifyEmail] = useState(Boolean(parent.email));
+  const [notifySms, setNotifySms] = useState(Boolean(parent.phone));
+  const disabled = loading || (!notifyEmail && !notifySms);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="relative w-full max-w-md glass rounded-2xl p-6 space-y-5 animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute right-4 top-4 text-ink-dim hover:text-white">
+          <XIcon />
+        </button>
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-300">Notifications d'accès</p>
+          <h2 className="mt-2 font-display text-2xl font-bold text-white">{parent.fullName}</h2>
+          <p className="mt-2 text-sm text-ink-dim">
+            Regénérer un mot de passe temporaire et envoyer les accès au parent par les canaux activés.
+          </p>
+        </div>
+
+        <div className="grid gap-3">
+          <label className={`flex cursor-pointer items-center justify-between gap-4 rounded-xl border p-4 transition-all ${notifyEmail ? "border-cyan-500/40 bg-cyan-500/10" : "border-slate-700/50 bg-slate-900/30"}`}>
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="rounded-lg border border-white/10 bg-white/[0.05] p-2 text-cyan-300"><MailIcon /></span>
+              <span>
+                <span className="block text-sm font-bold text-white">Email</span>
+                <span className="block truncate text-xs text-ink-dim">{parent.email || "Aucun email renseigné"}</span>
+              </span>
+            </span>
+            <input type="checkbox" checked={notifyEmail} disabled={!parent.email} onChange={(e) => setNotifyEmail(e.target.checked)} className="h-5 w-5 accent-cyan-400" />
+          </label>
+
+          <label className={`flex cursor-pointer items-center justify-between gap-4 rounded-xl border p-4 transition-all ${notifySms ? "border-emerald-500/40 bg-emerald-500/10" : "border-slate-700/50 bg-slate-900/30"}`}>
+            <span className="flex min-w-0 items-center gap-3">
+              <span className="rounded-lg border border-white/10 bg-white/[0.05] p-2 text-emerald-300"><PhoneIcon /></span>
+              <span>
+                <span className="block text-sm font-bold text-white">SMS</span>
+                <span className="block truncate text-xs text-ink-dim">{parent.phone || "Aucun téléphone renseigné"}</span>
+              </span>
+            </span>
+            <input type="checkbox" checked={notifySms} disabled={!parent.phone} onChange={(e) => setNotifySms(e.target.checked)} className="h-5 w-5 accent-emerald-400" />
+          </label>
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <button onClick={onClose} className="flex-1 rounded-lg border border-slate-600 py-3 text-sm font-semibold text-ink-dim hover:text-white">
+            Annuler
+          </button>
+          <button
+            onClick={() => onConfirm({ notifyEmail, notifySms })}
+            disabled={disabled}
+            className="flex-1 rounded-lg bg-gradient-to-r from-brand-600 to-brand-500 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {loading ? "Envoi..." : "Envoyer les accès"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function DetailModal({ parent, onClose, t }: { parent: Parent; onClose: () => void; t: (k: string) => string }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -327,6 +416,8 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
       phone: initial.phone,
       email: initial.email,
       photoUrl: initial.photoUrl || "",
+      notifyEmail: true,
+      notifySms: true,
       students: initial.students.map((s) => ({
         fullName: s.fullName,
         classId: s.classId,
@@ -340,6 +431,10 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
   const set = (key: keyof FormState, value: string) => {
     setForm((f) => ({ ...f, [key]: value }));
     setErrors((e) => ({ ...e, [key]: "" }));
+  };
+
+  const setBool = (key: "notifyEmail" | "notifySms", value: boolean) => {
+    setForm((f) => ({ ...f, [key]: value }));
   };
 
   const setStudent = (idx: number, key: string, value: string) => {
@@ -467,6 +562,25 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
           </div>
         </div>
 
+        {!initial && (
+          <div className="rounded-xl border border-brand-500/20 bg-brand-500/10 p-4">
+            <div className="flex flex-col gap-1">
+              <p className="text-sm font-bold text-white">Notifications de création du compte</p>
+              <p className="text-xs text-ink-dim">Choisissez les canaux utilisés pour envoyer les accès au parent.</p>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 ${form.notifyEmail ? "border-cyan-500/40 bg-cyan-500/10" : "border-slate-700/50 bg-slate-900/30"}`}>
+                <span className="flex items-center gap-2 text-sm font-semibold text-white"><MailIcon /> Email</span>
+                <input type="checkbox" checked={form.notifyEmail} onChange={(e) => setBool("notifyEmail", e.target.checked)} className="h-5 w-5 accent-cyan-400" />
+              </label>
+              <label className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 ${form.notifySms ? "border-emerald-500/40 bg-emerald-500/10" : "border-slate-700/50 bg-slate-900/30"}`}>
+                <span className="flex items-center gap-2 text-sm font-semibold text-white"><PhoneIcon /> SMS</span>
+                <input type="checkbox" checked={form.notifySms} onChange={(e) => setBool("notifySms", e.target.checked)} className="h-5 w-5 accent-emerald-400" />
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* Children section */}
         <div className="space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -551,7 +665,9 @@ export function ParentsManagementPage() {
   const [editTarget, setEditTarget] = useState<Parent | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Parent | null>(null);
   const [viewTarget, setViewTarget] = useState<Parent | null>(null);
+  const [notificationTarget, setNotificationTarget] = useState<Parent | null>(null);
   const [credentials, setCredentials] = useState<ParentCredentials | null>(null);
+  const [sendingAccess, setSendingAccess] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -624,22 +740,27 @@ export function ParentsManagementPage() {
     }
   };
 
-  const handleResetPassword = async (parent: Parent) => {
-    if (!window.confirm(t("resetPasswordConfirm").replace("{{name}}", parent.fullName))) return;
+  const handleResetPassword = async (parent: Parent, channels: { notifyEmail: boolean; notifySms: boolean }) => {
     try {
+      setSendingAccess(true);
       setApiError(null);
-      const result = await api<{ parentId: string; email: string; temporaryPassword: string }>(`/api/parents/${parent.id}/reset-password`, {
-        method: "POST"
+      const result = await api<{ parentId: string; email: string; temporaryPassword: string; notificationStatus?: ParentCredentials["notificationStatus"] }>(`/api/parents/${parent.id}/reset-password`, {
+        method: "POST",
+        body: JSON.stringify(channels)
       });
+      setNotificationTarget(null);
       setCredentials({
         parentId: result.parentId,
         parentName: parent.fullName,
         email: result.email,
-        temporaryPassword: result.temporaryPassword
+        temporaryPassword: result.temporaryPassword,
+        notificationStatus: result.notificationStatus
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erreur API";
       setApiError(message);
+    } finally {
+      setSendingAccess(false);
     }
   };
 
@@ -656,6 +777,14 @@ export function ParentsManagementPage() {
       {viewTarget && <DetailModal parent={viewTarget} onClose={() => setViewTarget(null)} t={t} />}
       {credentials && <CredentialsModal credentials={credentials} onClose={() => setCredentials(null)} />}
       {deleteTarget && <DeleteModal parent={deleteTarget} onConfirm={handleDelete} onClose={() => setDeleteTarget(null)} t={t} />}
+      {notificationTarget && (
+        <AccessNotificationModal
+          parent={notificationTarget}
+          loading={sendingAccess}
+          onClose={() => setNotificationTarget(null)}
+          onConfirm={(channels) => void handleResetPassword(notificationTarget, channels)}
+        />
+      )}
       {showForm && (
         <FormModal
           initial={editTarget}
@@ -784,8 +913,8 @@ export function ParentsManagementPage() {
                           className="p-2 rounded-lg bg-brand-500/20 text-brand-300 hover:bg-brand-500/30 transition-all active:scale-90" title={t("pmEdit")}>
                           <EditIcon />
                         </button>
-                        <button onClick={() => void handleResetPassword(parent)}
-                          className="p-2 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-all active:scale-90" title={t("resetPassword")}>
+                        <button onClick={() => setNotificationTarget(parent)}
+                          className="p-2 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-all active:scale-90" title="Envoyer les accès">
                           <KeyIcon />
                         </button>
                         <button onClick={() => setDeleteTarget(parent)}

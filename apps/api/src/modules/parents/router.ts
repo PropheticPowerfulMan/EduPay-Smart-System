@@ -20,7 +20,14 @@ const parentSchema = z.object({
   email: z.string().email(),
   photoUrl: z.string().optional().default(""),
   preferredLanguage: z.enum(["fr", "en"]).default("fr"),
+  notifyEmail: z.boolean().optional().default(true),
+  notifySms: z.boolean().optional().default(true),
   students: z.array(studentInputSchema).optional().default([])
+});
+
+const notificationPreferenceSchema = z.object({
+  notifyEmail: z.boolean().optional().default(true),
+  notifySms: z.boolean().optional().default(true)
 });
 
 function generateTemporaryPassword() {
@@ -59,15 +66,22 @@ function buildParentWelcomeMessages(parent: any, temporaryPassword: string, logi
   return { subject, emailBody, smsBody };
 }
 
-async function sendParentWelcomeNotifications(parent: any, temporaryPassword: string, schoolId: string) {
+async function sendParentWelcomeNotifications(
+  parent: any,
+  temporaryPassword: string,
+  schoolId: string,
+  preferences: { notifyEmail?: boolean; notifySms?: boolean } = {}
+) {
   const loginEmail = parent.email;
   const messages = buildParentWelcomeMessages(parent, temporaryPassword, loginEmail);
+  const notifyEmail = preferences.notifyEmail ?? true;
+  const notifySms = preferences.notifySms ?? true;
   const status = {
-    email: parent.email ? "PENDING" : "SKIPPED",
-    sms: parent.phone ? "PENDING" : "SKIPPED"
+    email: notifyEmail && parent.email ? "PENDING" : "SKIPPED",
+    sms: notifySms && parent.phone ? "PENDING" : "SKIPPED"
   };
 
-  if (parent.email) {
+  if (notifyEmail && parent.email) {
     status.email = await sendEmail({
       to: parent.email,
       subject: messages.subject,
@@ -86,7 +100,7 @@ async function sendParentWelcomeNotifications(parent: any, temporaryPassword: st
     }).catch((error) => console.error("Notification email log failed", error));
   }
 
-  if (parent.phone) {
+  if (notifySms && parent.phone) {
     status.sms = await sendSms({ to: parent.phone, text: messages.smsBody });
     await prisma.notificationLog.create({
       data: {
@@ -228,7 +242,10 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
         include: { students: { include: { class: true } } }
       });
     });
-    const notificationStatus = await sendParentWelcomeNotifications(parent, temporaryPassword, req.user!.schoolId);
+    const notificationStatus = await sendParentWelcomeNotifications(parent, temporaryPassword, req.user!.schoolId, {
+      notifyEmail: payload.notifyEmail,
+      notifySms: payload.notifySms
+    });
     return res.status(201).json({
       ...enrichParent({ ...parent, nom: payload.nom, postnom: payload.postnom, prenom: payload.prenom }),
       temporaryPassword,
@@ -256,19 +273,24 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       createdAt: new Date().toISOString()
     };
     demoParents.push(newParent);
-    console.log("[parent-welcome-email:demo]", buildParentWelcomeMessages(newParent, temporaryPassword, newParent.email).emailBody);
-    console.log("[parent-welcome-sms:demo]", buildParentWelcomeMessages(newParent, temporaryPassword, newParent.email).smsBody);
-    return res.status(201).json(newParent);
+    const notificationStatus = {
+      email: payload.notifyEmail && newParent.email ? "SIMULATED" : "SKIPPED",
+      sms: payload.notifySms && newParent.phone ? "SIMULATED" : "SKIPPED"
+    };
+    if (payload.notifyEmail) console.log("[parent-welcome-email:demo]", buildParentWelcomeMessages(newParent, temporaryPassword, newParent.email).emailBody);
+    if (payload.notifySms) console.log("[parent-welcome-sms:demo]", buildParentWelcomeMessages(newParent, temporaryPassword, newParent.email).smsBody);
+    return res.status(201).json({ ...newParent, notificationStatus });
   }
 });
 
 parentRouter.post("/:id/reset-password", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
+  const preferences = notificationPreferenceSchema.parse(req.body ?? {});
   const temporaryPassword = generateTemporaryPassword();
   try {
     const parent = await prisma.parent.findFirst({
       where: { id, schoolId: req.user!.schoolId },
-      include: { user: true }
+      include: { user: true, students: { include: { class: true } } }
     });
     if (!parent) return res.status(404).json({ message: "Parent non trouve" });
 
@@ -297,13 +319,22 @@ parentRouter.post("/:id/reset-password", authorize("ADMIN", "ACCOUNTANT"), async
       });
     }
 
-    return res.json({ parentId: parent.id, email: user.email, temporaryPassword });
+    const notificationStatus = await sendParentWelcomeNotifications(parent, temporaryPassword, req.user!.schoolId, preferences);
+    return res.json({ parentId: parent.id, email: user.email, temporaryPassword, notificationStatus });
   } catch (error) {
     console.error("DB unavailable on parent password reset, using demo store", error);
     const parent = demoParents.find((p) => p.id === id);
     if (!parent) return res.status(404).json({ message: "Parent non trouve" });
     parent.temporaryPassword = temporaryPassword;
-    return res.json({ parentId: parent.id, email: parent.email, temporaryPassword });
+    return res.json({
+      parentId: parent.id,
+      email: parent.email,
+      temporaryPassword,
+      notificationStatus: {
+        email: preferences.notifyEmail && parent.email ? "SIMULATED" : "SKIPPED",
+        sms: preferences.notifySms && parent.phone ? "SIMULATED" : "SKIPPED"
+      }
+    });
   }
 });
 
