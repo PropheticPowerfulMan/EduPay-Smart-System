@@ -12,6 +12,7 @@ import { useAuthStore } from "./store/auth";
 import type { Role } from "./store/auth";
 
 function getHomePathByRole(role: Role | null) {
+  if (!role) return "/login";
   return role === "PARENT" ? "/parent" : "/";
 }
 
@@ -31,7 +32,8 @@ function ProtectedLayout() {
 
 function ProtectedRoute() {
   const token = useAuthStore((s) => s.token);
-  if (!token) return <Navigate to="/login" replace />;
+  const role = useAuthStore((s) => s.role);
+  if (!token || !role) return <Navigate to="/login" replace />;
   return <Outlet />;
 }
 
@@ -48,7 +50,10 @@ function RoleHome() {
   if (role === "PARENT") {
     return <Navigate to="/parent" replace />;
   }
-  return <DashboardPage />;
+  if (role === "ADMIN" || role === "ACCOUNTANT") {
+    return <DashboardPage />;
+  }
+  return <Navigate to="/login" replace />;
 }
 
 function NotFoundPage() {
@@ -78,7 +83,7 @@ export function App() {
 
   return (
     <Routes>
-      <Route path="/login" element={token ? <Navigate to={getHomePathByRole(role)} replace /> : <LoginPage />} />
+      <Route path="/login" element={token && role ? <Navigate to={getHomePathByRole(role)} replace /> : <LoginPage />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<ProtectedLayout />}>
           <Route index element={<RoleHome />} />

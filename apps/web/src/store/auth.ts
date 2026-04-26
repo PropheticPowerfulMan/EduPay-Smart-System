@@ -16,6 +16,12 @@ function clearStoredAuth() {
   localStorage.removeItem("edupay_fullName");
 }
 
+export function normalizeRole(value: unknown, parentId?: string | null): Role | null {
+  const role = String(value ?? "").trim().toUpperCase();
+  if (role === "ADMIN" || role === "ACCOUNTANT" || role === "PARENT") return role;
+  return parentId ? "PARENT" : null;
+}
+
 if (sessionStorage.getItem(SESSION_ACTIVE_KEY) !== "true") {
   clearStoredAuth();
 }
@@ -25,26 +31,35 @@ type AuthState = {
   role: Role | null;
   fullName: string | null;
   parentId: string | null;
-  setAuth: (token: string, role: Role, fullName: string, parentId?: string | null) => void;
+  setAuth: (token: string, role: Role | string | null | undefined, fullName: string, parentId?: string | null) => void;
   logout: () => void;
 };
 
+const storedParentId = localStorage.getItem(PARENT_ID_STORAGE_KEY);
+
 export const useAuthStore = create<AuthState>((set) => ({
   token: localStorage.getItem(TOKEN_STORAGE_KEY),
-  role: (localStorage.getItem(ROLE_STORAGE_KEY) as Role | null) || null,
+  role: normalizeRole(localStorage.getItem(ROLE_STORAGE_KEY), storedParentId),
   fullName: localStorage.getItem(NAME_STORAGE_KEY),
-  parentId: localStorage.getItem(PARENT_ID_STORAGE_KEY),
+  parentId: storedParentId,
   setAuth: (token, role, fullName, parentId = null) => {
+    const normalizedRole = normalizeRole(role, parentId);
+    if (!normalizedRole) {
+      clearStoredAuth();
+      set({ token: null, role: null, fullName: null, parentId: null });
+      throw new Error("Role utilisateur invalide.");
+    }
+
     sessionStorage.setItem(SESSION_ACTIVE_KEY, "true");
     localStorage.setItem(TOKEN_STORAGE_KEY, token);
-    localStorage.setItem(ROLE_STORAGE_KEY, role);
+    localStorage.setItem(ROLE_STORAGE_KEY, normalizedRole);
     localStorage.setItem(NAME_STORAGE_KEY, fullName);
     if (parentId) {
       localStorage.setItem(PARENT_ID_STORAGE_KEY, parentId);
     } else {
       localStorage.removeItem(PARENT_ID_STORAGE_KEY);
     }
-    set({ token, role, fullName, parentId });
+    set({ token, role: normalizedRole, fullName, parentId });
   },
   logout: () => {
     sessionStorage.removeItem(SESSION_ACTIVE_KEY);

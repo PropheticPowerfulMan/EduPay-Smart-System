@@ -169,7 +169,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       }
     }
 
-    if (password === "password123") {
+    if (email === "admin@school.com" && password === "password123") {
       return { token: "demo-admin-token", role: "ADMIN", fullName: "Administrateur Demo" } as T;
     }
 

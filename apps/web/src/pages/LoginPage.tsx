@@ -7,7 +7,7 @@ import { LanguageSwitch } from "../components/LanguageSwitch";
 import { schoolBranding } from "../config/branding";
 import { useI18n } from "../i18n";
 import { api } from "../services/api";
-import { useAuthStore } from "../store/auth";
+import { normalizeRole, useAuthStore } from "../store/auth";
 
 function EyeIcon({ open }: { open: boolean }) {
   return open ? (
@@ -151,15 +151,18 @@ export function LoginPage() {
 
   const loginWithCredentials = async (values: LoginInput) => {
     setApiError(null);
-    const result = await api<{ token: string; role: "ADMIN" | "ACCOUNTANT" | "PARENT"; fullName: string; parentId?: string }>("/api/auth/login", {
+    const result = await api<{ token: string; role?: string; fullName: string; parentId?: string }>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({
         email: values.email.trim().toLowerCase(),
         password: values.password.trim()
       })
     });
-    setAuth(result.token, result.role, result.fullName, result.parentId);
-    window.location.replace(`${import.meta.env.BASE_URL}#${result.role === "PARENT" ? "/parent" : "/"}`);
+    const role = normalizeRole(result.role, result.parentId);
+    if (!role) throw new Error("Rôle utilisateur invalide.");
+
+    setAuth(result.token, role, result.fullName, result.parentId);
+    window.location.replace(`${import.meta.env.BASE_URL}#${role === "PARENT" ? "/parent" : "/"}`);
   };
 
   const onSubmit = async (values: LoginInput) => {
