@@ -205,10 +205,15 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (normalizedPath === "/api/payments" && method === "GET") return getDemoPayments() as T;
   if (normalizedPath === "/api/payments" && method === "POST") {
+    const parentId = String(body.parentId ?? "");
+    const parent = parentId
+      ? getDemoParents().find((item) => item.id === parentId)
+      : getDemoParents().find((item) => item.fullName === String(body.parentFullName ?? ""));
     const payment: DemoPayment = {
       id: `pay-${Date.now()}`,
       transactionNumber: `TXN-${Date.now()}`,
-      parentFullName: String(body.parentFullName ?? "Parent demo"),
+      parentId: parent?.id || parentId || undefined,
+      parentFullName: parent?.fullName || String(body.parentFullName ?? "Parent demo"),
       reason: String(body.reason ?? "Paiement"),
       method: String(body.method ?? "CASH"),
       amount: Number(body.amount ?? 0),

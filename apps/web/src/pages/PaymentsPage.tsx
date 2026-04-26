@@ -563,6 +563,7 @@ type PaymentRecord = {
   id: string;
   transactionNumber: string;
   date: string;
+  parentId?: string;
   parentFullName: string;
   reason: string;
   amount: number;
@@ -572,6 +573,7 @@ type PaymentRecord = {
 };
 
 type FormState = {
+  parentId: string;
   parentFullName: string;
   reason: string;
   amount: string;
@@ -579,10 +581,17 @@ type FormState = {
   status: "COMPLETED" | "PENDING" | "FAILED";
 };
 
+type ParentOption = {
+  id: string;
+  fullName: string;
+  phone?: string;
+  email?: string;
+};
+
 type View = "form" | "receipt" | "history" | "report";
 
 const EMPTY_FORM: FormState = {
-  parentFullName: "", reason: "", amount: "", method: "CASH", status: "COMPLETED",
+  parentId: "", parentFullName: "", reason: "", amount: "", method: "CASH", status: "COMPLETED",
 };
 
 const PAYMENT_NOTIFICATION_STORAGE_KEY = "edupay-payment-notifications-enabled";
@@ -782,6 +791,7 @@ export function PaymentsPage() {
     return localStorage.getItem(PAYMENT_NOTIFICATION_STORAGE_KEY) !== "false";
   });
   const [notificationStatus, setNotificationStatus] = useState<string | null>(null);
+  const [parents, setParents] = useState<ParentOption[]>([]);
   // Historique
   const [searchQuery, setSearchQuery]       = useState("");
   const [filterStatus, setFilterStatus]     = useState("ALL");
@@ -798,6 +808,12 @@ export function PaymentsPage() {
         localStorage.setItem(PAYMENT_NOTIFICATION_STORAGE_KEY, String(settings.paymentNotificationsEnabled));
       })
       .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    api<ParentOption[]>("/api/parents")
+      .then((items) => setParents(items))
+      .catch(() => setParents([]));
   }, []);
 
   const togglePaymentNotifications = async () => {
@@ -844,11 +860,27 @@ export function PaymentsPage() {
 
   const validate = () => {
     const errs: Partial<Record<keyof FormState, string>> = {};
+    if (paymentNotificationsEnabled && !form.parentId) errs.parentId = "Choisissez le parent qui recevra l'email et le SMS.";
     if (!form.parentFullName.trim()) errs.parentFullName = t("pmRequired");
     if (!form.reason.trim())         errs.reason         = t("pmRequired");
     if (!form.amount || parseFloat(form.amount) <= 0) errs.amount = t("pmRequired");
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
+  };
+
+  const selectedParent = useMemo(
+    () => parents.find((parent) => parent.id === form.parentId) ?? null,
+    [form.parentId, parents]
+  );
+
+  const setParentTarget = (parentId: string) => {
+    const parent = parents.find((item) => item.id === parentId);
+    setForm((prev) => ({
+      ...prev,
+      parentId,
+      parentFullName: parent?.fullName ?? prev.parentFullName
+    }));
+    setFieldErrors((prev) => ({ ...prev, parentFullName: undefined }));
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -869,6 +901,7 @@ export function PaymentsPage() {
       transactionNumber: txNumber,
       date: dateStr,
       parentFullName: form.parentFullName.trim(),
+      parentId: form.parentId || undefined,
       reason: form.reason.trim(),
       amount: finalAmount,
       amountWords: amountToWords(finalAmount, lang as "fr" | "en"),
@@ -881,17 +914,18 @@ export function PaymentsPage() {
         method: "POST",
         body: JSON.stringify({
           parentFullName: record.parentFullName,
+          parentId: record.parentId,
           reason: record.reason,
           amount: record.amount,
           method: record.method,
           transactionNumber: txNumber,
           status: record.status,
-          notifyParent: paymentNotificationsEnabled,
+          notifyParent: paymentNotificationsEnabled && Boolean(record.parentId),
         }),
       });
       record.id = created?.payment?.id ?? record.id;
       if (created?.notificationStatus) {
-        setNotificationStatus(`Notification parent - Email: ${created.notificationStatus.email ?? "SKIPPED"} | SMS: ${created.notificationStatus.sms ?? "SKIPPED"}`);
+        setNotificationStatus(`${record.parentFullName} - Email: ${created.notificationStatus.email ?? "SKIPPED"} | SMS: ${created.notificationStatus.sms ?? "SKIPPED"}`);
       }
     } catch { /* Mode démo - reçu généré même sans base de données */ }
 
@@ -994,6 +1028,13 @@ export function PaymentsPage() {
           <h2 className="mt-2 font-display text-xl font-bold text-white">{t("paymentNotificationsTitle")}</h2>
           <p className="mt-1 max-w-3xl text-sm text-ink-dim">{t("paymentNotificationsAdminSubtitle")}</p>
           <p className="mt-2 text-xs font-semibold text-cyan-200">{t("paymentNotificationsChannels")}</p>
+          {selectedParent && (
+            <p className="mt-2 rounded-lg border border-cyan-400/25 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-100">
+              Parent cible : {selectedParent.fullName}
+              {selectedParent.email ? ` - ${selectedParent.email}` : ""}
+              {selectedParent.phone ? ` - ${selectedParent.phone}` : ""}
+            </p>
+          )}
           {notificationStatus && <p className="mt-2 text-xs font-semibold text-white/85">{notificationStatus}</p>}
         </div>
         <button
@@ -1397,21 +1438,50 @@ export function PaymentsPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-5">
-          {/* Nom complet du parent */}
-          <div className="space-y-1.5">
-            <label className="text-sm font-semibold text-ink-dim uppercase tracking-wide">
-              {t("parentFullName")} <span className="text-danger">*</span>
-            </label>
-            <input
-              type="text"
-              value={form.parentFullName}
-              onChange={(e) => setField("parentFullName", e.target.value)}
-              placeholder="Ex. Kabila wa Muzuri Jean"
-              className={`w-full ${fieldErrors.parentFullName ? "border-danger" : ""}`}
-            />
-            {fieldErrors.parentFullName && (
-              <p className="text-xs text-danger">{fieldErrors.parentFullName}</p>
-            )}
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-ink-dim uppercase tracking-wide">
+                Parent destinataire email/SMS
+              </label>
+              <select
+                value={form.parentId}
+                onChange={(event) => setParentTarget(event.target.value)}
+                className="w-full"
+              >
+                <option value="">Choisir un parent inscrit</option>
+                {parents.map((parent) => (
+                  <option key={parent.id} value={parent.id}>
+                    {parent.fullName} {parent.phone ? `- ${parent.phone}` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="text-xs text-ink-dim">
+                Les notifications partent uniquement vers ce parent cible.
+              </p>
+              {fieldErrors.parentId && <p className="text-xs text-danger">{fieldErrors.parentId}</p>}
+            </div>
+
+            {/* Nom complet du parent */}
+            <div className="space-y-1.5">
+              <label className="text-sm font-semibold text-ink-dim uppercase tracking-wide">
+                {t("parentFullName")} <span className="text-danger">*</span>
+              </label>
+              <input
+                type="text"
+                value={form.parentFullName}
+                onChange={(e) => {
+                  setField("parentFullName", e.target.value);
+                  if (form.parentId && e.target.value !== selectedParent?.fullName) {
+                    setField("parentId", "");
+                  }
+                }}
+                placeholder="Ex. Kabila wa Muzuri Jean"
+                className={`w-full ${fieldErrors.parentFullName ? "border-danger" : ""}`}
+              />
+              {fieldErrors.parentFullName && (
+                <p className="text-xs text-danger">{fieldErrors.parentFullName}</p>
+              )}
+            </div>
           </div>
 
           {/* Motif */}
