@@ -13,7 +13,7 @@ const applyStoredFont = () => {
 };
 
 const forceFavicon = () => {
-  const href = "/logo-school.png?v=4";
+  const href = `${import.meta.env.BASE_URL}logo-school.png?v=4`;
   const existing = document.querySelector<HTMLLinkElement>("link[rel='icon']");
   if (existing) {
     existing.href = href;
@@ -42,7 +42,7 @@ applyStoredFont();
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <I18nProvider>
-      <BrowserRouter>
+      <BrowserRouter basename={import.meta.env.BASE_URL.replace(/\/$/, "")}>
         <App />
       </BrowserRouter>
     </I18nProvider>

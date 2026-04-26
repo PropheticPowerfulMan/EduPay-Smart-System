@@ -3,6 +3,53 @@ const TOKEN_STORAGE_KEY = "edupay_token";
 const ROLE_STORAGE_KEY = "edupay_role";
 const NAME_STORAGE_KEY = "edupay_name";
 const SESSION_ACTIVE_KEY = "edupay_session_active";
+const DEMO_PARENTS_KEY = "edupay_demo_parents_v1";
+const DEMO_PAYMENTS_KEY = "edupay_payments_v2";
+const DEMO_NOTIFICATIONS_KEY = "edupay-payment-notifications-enabled";
+
+type DemoStudent = { id: string; fullName: string; classId: string; className: string; annualFee: number; payments?: DemoPayment[] };
+type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
+type DemoPayment = { id: string; transactionNumber: string; parentId?: string; parentFullName: string; reason: string; method: string; amount: number; status: string; createdAt: string; date: string };
+
+const demoClasses = [
+  ...Array.from({ length: 5 }, (_v, index) => ({ id: `section-k${index + 1}`, name: `K${index + 1}` })),
+  ...Array.from({ length: 12 }, (_v, index) => ({ id: `section-grade-${index + 1}`, name: `Grade ${index + 1}` }))
+];
+
+const seedParents: DemoParent[] = [
+  {
+    id: "PAR-2025-0001",
+    nom: "Dupont",
+    postnom: "",
+    prenom: "Marie",
+    fullName: "Dupont Marie",
+    phone: "+243 999 123 456",
+    email: "marie@example.com",
+    createdAt: new Date().toISOString(),
+    students: [
+      { id: "STU-001", fullName: "Alice Dupont", classId: "section-grade-4", className: "Grade 4", annualFee: 1800 },
+      { id: "STU-002", fullName: "Kevin Dupont", classId: "section-grade-2", className: "Grade 2", annualFee: 1500 }
+    ]
+  },
+  {
+    id: "PAR-2025-0002",
+    nom: "Pierre",
+    postnom: "Kalamba",
+    prenom: "Jean",
+    fullName: "Pierre Kalamba Jean",
+    phone: "+243 999 234 567",
+    email: "jean@example.com",
+    createdAt: new Date().toISOString(),
+    students: [
+      { id: "STU-003", fullName: "Sarah Kalamba", classId: "section-grade-6", className: "Grade 6", annualFee: 2200 }
+    ]
+  }
+];
+
+const seedPayments: DemoPayment[] = [
+  { id: "pay-1", transactionNumber: "TXN-20260420-10001", parentId: "PAR-2025-0001", parentFullName: "Dupont Marie", reason: "Frais scolaires - 1er trimestre", method: "CASH", amount: 1200, status: "COMPLETED", createdAt: new Date().toISOString(), date: new Date().toLocaleString("fr-FR") },
+  { id: "pay-2", transactionNumber: "TXN-20260421-10002", parentId: "PAR-2025-0002", parentFullName: "Pierre Kalamba Jean", reason: "Frais scolaires - 1er trimestre", method: "MPESA", amount: 800, status: "PENDING", createdAt: new Date().toISOString(), date: new Date().toLocaleString("fr-FR") }
+];
 
 function clearLocalSession() {
   sessionStorage.removeItem(SESSION_ACTIVE_KEY);
@@ -13,15 +60,159 @@ function clearLocalSession() {
 }
 
 function resolveApiUrl(path: string): string {
-  if (/^https?:\/\//i.test(path)) {
-    return path;
-  }
-
+  if (/^https?:\/\//i.test(path)) return path;
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return API_BASE_URL ? `${API_BASE_URL}${normalizedPath}` : normalizedPath;
 }
 
+function readJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw) as T;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJson(key: string, value: unknown) {
+  localStorage.setItem(key, JSON.stringify(value));
+}
+
+function getDemoParents() {
+  const parents = readJson<DemoParent[]>(DEMO_PARENTS_KEY, seedParents);
+  writeJson(DEMO_PARENTS_KEY, parents);
+  return parents;
+}
+
+function getDemoPayments() {
+  const payments = readJson<DemoPayment[]>(DEMO_PAYMENTS_KEY, seedPayments);
+  writeJson(DEMO_PAYMENTS_KEY, payments);
+  return payments;
+}
+
+function parseBody(init?: RequestInit) {
+  if (!init?.body || typeof init.body !== "string") return {} as Record<string, unknown>;
+  try { return JSON.parse(init.body) as Record<string, unknown>; } catch { return {}; }
+}
+
+function overview() {
+  const payments = getDemoPayments();
+  const parents = getDemoParents();
+  const totalExpected = parents.reduce((sum, parent) => sum + parent.students.reduce((s, st) => s + Number(st.annualFee || 0), 0), 0);
+  const completed = payments.filter((payment) => payment.status === "COMPLETED").reduce((sum, payment) => sum + payment.amount, 0);
+  return {
+    totalRevenue: completed,
+    monthlyRevenue: completed,
+    paymentSuccessRate: payments.length ? (payments.filter((p) => p.status === "COMPLETED").length / payments.length) * 100 : 0,
+    outstandingDebt: Math.max(totalExpected - completed, 0)
+  };
+}
+
+function parentMe() {
+  const parent = getDemoParents()[0];
+  const payments = getDemoPayments().filter((payment) => payment.parentId === parent.id || payment.parentFullName === parent.fullName);
+  return {
+    fullName: parent.fullName,
+    phone: parent.phone,
+    email: parent.email,
+    students: parent.students.map((student) => ({ ...student, payments }))
+  };
+}
+
+async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  const method = (init?.method ?? "GET").toUpperCase();
+  const body = parseBody(init);
+
+  await new Promise((resolve) => setTimeout(resolve, 80));
+
+  if (normalizedPath === "/api/auth/login" && method === "POST") {
+    const email = String(body.email ?? "").toLowerCase();
+    const password = String(body.password ?? "");
+    if (password !== "password123") throw new Error("Identifiants invalides.");
+    if (email === "parent@school.com") return { token: "demo-parent-token", role: "PARENT", fullName: "Dupont Marie" } as T;
+    return { token: "demo-admin-token", role: "ADMIN", fullName: "Administrateur Demo" } as T;
+  }
+
+  if (normalizedPath === "/api/auth/forgot-password") return { message: "OK" } as T;
+  if (normalizedPath === "/api/auth/change-password") return { message: "OK" } as T;
+  if (normalizedPath === "/api/classes") return demoClasses as T;
+  if (normalizedPath === "/api/parents/me") return parentMe() as T;
+  if (normalizedPath === "/api/analytics/overview") return overview() as T;
+  if (normalizedPath === "/api/analytics/overdue-parents") return { overdueParents: 1 } as T;
+  if (normalizedPath === "/api/analytics/payment-anomalies") return { anomalies: 0 } as T;
+  if (normalizedPath === "/api/analytics/system-health") return { dbOk: true, lastBackup: new Date().toLocaleDateString("fr-FR") } as T;
+  if (normalizedPath === "/api/analytics/forecast") return { nextMonthRevenue: overview().monthlyRevenue, risk: 0.18 } as T;
+
+  if (normalizedPath === "/api/payments/settings/notifications") {
+    if (method === "PUT") localStorage.setItem(DEMO_NOTIFICATIONS_KEY, String(Boolean(body.paymentNotificationsEnabled)));
+    return { paymentNotificationsEnabled: localStorage.getItem(DEMO_NOTIFICATIONS_KEY) !== "false" } as T;
+  }
+
+  if (normalizedPath === "/api/payments" && method === "GET") return getDemoPayments() as T;
+  if (normalizedPath === "/api/payments" && method === "POST") {
+    const payment: DemoPayment = {
+      id: `pay-${Date.now()}`,
+      transactionNumber: `TXN-${Date.now()}`,
+      parentFullName: String(body.parentFullName ?? "Parent demo"),
+      reason: String(body.reason ?? "Paiement"),
+      method: String(body.method ?? "CASH"),
+      amount: Number(body.amount ?? 0),
+      status: String(body.status ?? "COMPLETED"),
+      createdAt: new Date().toISOString(),
+      date: new Date().toLocaleString("fr-FR")
+    };
+    writeJson(DEMO_PAYMENTS_KEY, [payment, ...getDemoPayments()]);
+    return { payment, receipt: { id: `receipt-${Date.now()}` }, notificationStatus: { email: "SIMULATED", sms: "SIMULATED" } } as T;
+  }
+
+  if (normalizedPath === "/api/parents" && method === "GET") return getDemoParents() as T;
+  if (normalizedPath === "/api/parents" && method === "POST") {
+    const id = `PAR-2025-${String(Date.now()).slice(-4)}`;
+    const parent: DemoParent = {
+      id,
+      nom: String(body.nom ?? ""),
+      postnom: String(body.postnom ?? ""),
+      prenom: String(body.prenom ?? ""),
+      fullName: String(body.fullName ?? `${body.nom ?? ""} ${body.prenom ?? ""}`).trim() || "Nouveau parent",
+      phone: String(body.phone ?? ""),
+      email: String(body.email ?? ""),
+      photoUrl: String(body.photoUrl ?? ""),
+      createdAt: new Date().toISOString(),
+      students: Array.isArray(body.students) ? body.students as DemoStudent[] : []
+    };
+    writeJson(DEMO_PARENTS_KEY, [parent, ...getDemoParents()]);
+    return { ...parent, temporaryPassword: "password123", notificationStatus: { email: "SIMULATED", sms: "SIMULATED" } } as T;
+  }
+
+  const parentMatch = normalizedPath.match(/^\/api\/parents\/([^/]+)$/);
+  if (parentMatch && method === "PUT") {
+    const parents = getDemoParents().map((parent) => parent.id === parentMatch[1] ? { ...parent, ...body } as DemoParent : parent);
+    writeJson(DEMO_PARENTS_KEY, parents);
+    return parents.find((parent) => parent.id === parentMatch[1]) as T;
+  }
+  if (parentMatch && method === "DELETE") {
+    writeJson(DEMO_PARENTS_KEY, getDemoParents().filter((parent) => parent.id !== parentMatch[1]));
+    return undefined as T;
+  }
+
+  const resetMatch = normalizedPath.match(/^\/api\/parents\/([^/]+)\/reset-password$/);
+  if (resetMatch) {
+    const parent = getDemoParents().find((item) => item.id === resetMatch[1]);
+    return { parentId: resetMatch[1], email: parent?.email ?? "parent@school.com", temporaryPassword: "password123" } as T;
+  }
+
+  throw new Error("Endpoint demo non disponible.");
+}
+
+function shouldUseDemoApi(path: string) {
+  return !API_BASE_URL && path.startsWith("/api/");
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
+  if (shouldUseDemoApi(path)) return demoApi<T>(path, init);
+
   const token = localStorage.getItem(TOKEN_STORAGE_KEY);
   const url = resolveApiUrl(path);
 
@@ -36,34 +227,28 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       }
     });
   } catch {
+    if (path.startsWith("/api/")) return demoApi<T>(path, init);
     throw new Error("Impossible de joindre l'API. Verifiez que le backend est demarre.");
   }
 
   if (!response.ok) {
     if (response.status === 401) {
       clearLocalSession();
-      window.location.replace("/login");
+      window.location.replace(`${import.meta.env.BASE_URL}login`);
       throw new Error("Session expiree. Veuillez vous reconnecter.");
     }
 
     const errorFromJson = await response.json().catch(() => null) as { message?: string } | null;
-    if (errorFromJson?.message) {
-      throw new Error(errorFromJson.message);
-    }
+    if (errorFromJson?.message) throw new Error(errorFromJson.message);
 
     const errorText = await response.text().catch(() => "");
     throw new Error(errorText || `Erreur API (${response.status})`);
   }
 
-  // Handle endpoints that return 204 No Content (e.g. DELETE)
-  if (response.status === 204) {
-    return undefined as T;
-  }
+  if (response.status === 204) return undefined as T;
 
   const text = await response.text();
-  if (!text) {
-    return undefined as T;
-  }
+  if (!text) return undefined as T;
 
   try {
     return JSON.parse(text) as T;
