@@ -279,7 +279,7 @@ export function AdminParentPaymentsPage() {
   }, [parentAnalyses]);
 
   return (
-    <div className="space-y-6 pb-10">
+    <div className="min-w-0 space-y-6 overflow-hidden pb-10">
       <div className="animate-fadeInDown">
         <p className="text-xs font-bold uppercase tracking-[0.22em] text-brand-300">Administration financiere</p>
         <h1 className="mt-2 font-display text-3xl font-bold text-white">Suivi a la loupe des parents</h1>
@@ -288,7 +288,7 @@ export function AdminParentPaymentsPage() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-5">
         {[
           { label: "Attendu global", value: formatCurrency(global.expected), icon: Target, color: "text-brand-300" },
           { label: "Encaisse", value: formatCurrency(global.paid), icon: CheckCircle2, color: "text-emerald-300" },
@@ -296,25 +296,25 @@ export function AdminParentPaymentsPage() {
           { label: "Couverture", value: `${global.coverage.toFixed(1)}%`, icon: TrendingUp, color: "text-cyan-300" },
           { label: "Parents critiques", value: String(global.critical), icon: ShieldAlert, color: "text-amber-300" }
         ].map((item) => (
-          <div key={item.label} className="card glass border border-white/10 shadow-lg">
+          <div key={item.label} className="card glass min-w-0 overflow-hidden border border-white/10 shadow-lg">
             <div className="flex items-center justify-between gap-3">
-              <p className="text-sm text-ink-dim">{item.label}</p>
+              <p className="min-w-0 truncate text-sm text-ink-dim">{item.label}</p>
               <item.icon className={`h-5 w-5 ${item.color}`} />
             </div>
-            <p className={`mt-3 font-display text-xl font-bold ${item.color}`}>{item.value}</p>
+            <p className={`mt-3 truncate font-display text-xl font-bold ${item.color}`}>{item.value}</p>
           </div>
         ))}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[360px_1fr]">
-        <div className="card glass border border-brand-500/10 shadow-lg">
+      <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
+        <div className="card glass min-w-0 overflow-hidden border border-brand-500/10 shadow-lg">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-dim" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Rechercher un parent, ID, telephone..."
-              className="w-full pl-10"
+              className="w-full !pl-10"
             />
           </div>
 
@@ -335,7 +335,7 @@ export function AdminParentPaymentsPage() {
                     <p className="truncate font-semibold text-white">{row.parent.fullName}</p>
                     <p className="mt-1 text-xs text-ink-dim">{row.parent.id}</p>
                   </div>
-                  <span className={`rounded-full px-2 py-1 text-xs font-bold ${
+                  <span className={`shrink-0 rounded-full px-2 py-1 text-xs font-bold ${
                     row.risk >= 72 ? "bg-red-500/15 text-red-300" : row.risk >= 48 ? "bg-amber-500/15 text-amber-300" : "bg-emerald-500/15 text-emerald-300"
                   }`}>
                     {row.risk.toFixed(0)}%
@@ -344,9 +344,9 @@ export function AdminParentPaymentsPage() {
                 <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-800">
                   <div className="h-full rounded-full bg-brand-400" style={{ width: `${row.coverage}%` }} />
                 </div>
-                <div className="mt-2 flex justify-between text-xs text-ink-dim">
-                  <span>{row.coverage.toFixed(1)}% couvert</span>
-                  <span>{formatCurrency(row.debt)} reste</span>
+                <div className="mt-2 flex min-w-0 justify-between gap-3 text-xs text-ink-dim">
+                  <span className="shrink-0">{row.coverage.toFixed(1)}% couvert</span>
+                  <span className="min-w-0 truncate text-right">{formatCurrency(row.debt)} reste</span>
                 </div>
               </button>
             ))}
@@ -354,22 +354,22 @@ export function AdminParentPaymentsPage() {
         </div>
 
         {selected ? (
-          <div className="space-y-6">
-            <div className="card glass border border-cyan-500/10 shadow-lg">
+          <div className="min-w-0 space-y-6">
+            <div className="card glass min-w-0 overflow-hidden border border-cyan-500/10 shadow-lg">
               <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-                <div>
+                <div className="min-w-0">
                   <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-brand-500/20 bg-brand-500/10 text-brand-200">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-brand-500/20 bg-brand-500/10 text-brand-200">
                       <UserRound className="h-6 w-6" />
                     </div>
-                    <div>
-                      <h2 className="font-display text-2xl font-bold text-white">{selected.parent.fullName}</h2>
-                      <p className="text-sm text-ink-dim">{selected.parent.phone || "Telephone non renseigne"} · {selected.parent.email || "Email non renseigne"}</p>
+                    <div className="min-w-0">
+                      <h2 className="truncate font-display text-2xl font-bold text-white">{selected.parent.fullName}</h2>
+                      <p className="truncate text-sm text-ink-dim">{selected.parent.phone || "Telephone non renseigne"} - {selected.parent.email || "Email non renseigne"}</p>
                     </div>
                   </div>
                   <p className="mt-4 max-w-2xl text-sm text-ink-dim">{selected.recommendedAction}</p>
                 </div>
-                <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+                <div className="shrink-0 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
                   <div className="flex items-center gap-3">
                     <BrainCircuit className="h-6 w-6 text-cyan-300" />
                     <div>
@@ -381,23 +381,23 @@ export function AdminParentPaymentsPage() {
                 </div>
               </div>
 
-              <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div className="mt-6 grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {[
                   ["Attendu", formatCurrency(selected.expected), "text-brand-300"],
                   ["Paye", formatCurrency(selected.paid), "text-emerald-300"],
                   ["En attente", formatCurrency(selected.pendingAmount), "text-amber-300"],
                   ["Dette", formatCurrency(selected.debt), "text-red-300"]
                 ].map(([label, value, color]) => (
-                  <div key={label} className="rounded-xl border border-white/10 bg-slate-900/30 p-4">
+                  <div key={label} className="min-w-0 rounded-xl border border-white/10 bg-slate-900/30 p-4">
                     <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">{label}</p>
-                    <p className={`mt-2 font-mono text-lg font-bold ${color}`}>{value}</p>
+                    <p className={`mt-2 truncate font-mono text-lg font-bold ${color}`}>{value}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-              <div className="card glass border border-brand-500/10 shadow-lg">
+            <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+              <div className="card glass min-w-0 overflow-hidden border border-brand-500/10 shadow-lg">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h3 className="font-display text-xl font-bold text-white">Evolution mensuelle</h3>
@@ -430,7 +430,7 @@ export function AdminParentPaymentsPage() {
                 </div>
               </div>
 
-              <div className="card glass border border-amber-500/10 shadow-lg">
+              <div className="card glass min-w-0 overflow-hidden border border-amber-500/10 shadow-lg">
                 <h3 className="font-display text-xl font-bold text-white">Lecture IA</h3>
                 <div className="mt-4 space-y-3">
                   <div className="rounded-xl border border-white/10 bg-slate-900/30 p-4">
@@ -451,8 +451,8 @@ export function AdminParentPaymentsPage() {
               </div>
             </div>
 
-            <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-              <div className="card glass border border-emerald-500/10 shadow-lg">
+            <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+              <div className="card glass min-w-0 overflow-hidden border border-emerald-500/10 shadow-lg">
                 <h3 className="font-display text-xl font-bold text-white">Couverture par enfant</h3>
                 <div className="mt-5 h-64">
                   <ResponsiveContainer width="100%" height="100%">
@@ -470,13 +470,13 @@ export function AdminParentPaymentsPage() {
                 </div>
                 <div className="space-y-2">
                   {selected.studentRows.map((student) => (
-                    <div key={student.id} className="rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
+                    <div key={student.id} className="min-w-0 rounded-xl border border-slate-700/50 bg-slate-900/25 p-3">
                       <div className="flex justify-between gap-3">
-                        <div>
-                          <p className="font-semibold text-white">{student.fullName}</p>
-                          <p className="text-xs text-ink-dim">{student.className || student.classId || "Classe non renseignee"}</p>
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-white">{student.fullName}</p>
+                          <p className="truncate text-xs text-ink-dim">{student.className || student.classId || "Classe non renseignee"}</p>
                         </div>
-                        <p className="font-mono text-sm font-bold text-brand-300">{student.coverage.toFixed(1)}%</p>
+                        <p className="shrink-0 font-mono text-sm font-bold text-brand-300">{student.coverage.toFixed(1)}%</p>
                       </div>
                       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
                         <div className="h-full rounded-full bg-emerald-400" style={{ width: `${student.coverage}%` }} />
@@ -486,7 +486,7 @@ export function AdminParentPaymentsPage() {
                 </div>
               </div>
 
-              <div className="card glass border border-white/10 shadow-lg">
+              <div className="card glass min-w-0 overflow-hidden border border-white/10 shadow-lg">
                 <h3 className="font-display text-xl font-bold text-white">Historique detaille</h3>
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full text-sm">
