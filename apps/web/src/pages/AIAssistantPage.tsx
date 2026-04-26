@@ -8,42 +8,188 @@ type AssistantResponse = {
   suggestions: string[];
 };
 
-function localAssistantReply(query: string, lang: "fr" | "en"): AssistantResponse {
-  const q = query.toLowerCase();
+type Overview = {
+  totalRevenue: number;
+  monthlyRevenue: number;
+  paymentSuccessRate: number;
+  outstandingDebt: number;
+};
 
-  if (q.includes("impay") || q.includes("non pay") || q.includes("unpaid")) {
+type Student = {
+  annualFee?: number;
+};
+
+type Parent = {
+  id: string;
+  fullName: string;
+  email?: string;
+  phone?: string;
+  students?: Student[];
+};
+
+type Payment = {
+  id: string;
+  parentId?: string;
+  parentFullName?: string;
+  amount: number;
+  status: string;
+  createdAt?: string;
+  date?: string;
+};
+
+type AssistantContext = {
+  overview: Overview | null;
+  parents: Parent[];
+  payments: Payment[];
+};
+
+const USD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+function asNumber(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function normalize(value: string | undefined) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function parseDate(payment: Payment) {
+  const raw = payment.createdAt ?? payment.date;
+  const date = raw ? new Date(raw) : new Date();
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+}
+
+async function loadAssistantContext(): Promise<AssistantContext> {
+  const [overview, parents, payments] = await Promise.all([
+    api<Overview>("/api/analytics/overview").catch(() => null),
+    api<Parent[]>("/api/parents").catch(() => []),
+    api<Payment[]>("/api/payments").catch(() => [])
+  ]);
+
+  return {
+    overview,
+    parents,
+    payments: payments.map((payment) => ({
+      ...payment,
+      amount: asNumber(payment.amount),
+      status: payment.status ?? "COMPLETED"
+    }))
+  };
+}
+
+function buildInsights(context: AssistantContext) {
+  const completed = context.payments.filter((payment) => payment.status === "COMPLETED");
+  const pending = context.payments.filter((payment) => payment.status === "PENDING");
+  const failed = context.payments.filter((payment) => payment.status === "FAILED");
+  const revenue = completed.reduce((sum, payment) => sum + payment.amount, 0) || asNumber(context.overview?.totalRevenue);
+  const pendingAmount = pending.reduce((sum, payment) => sum + payment.amount, 0);
+  const expected = context.parents.reduce(
+    (sum, parent) => sum + (parent.students ?? []).reduce((studentSum, student) => studentSum + asNumber(student.annualFee), 0),
+    0
+  );
+  const outstandingDebt = Math.max(asNumber(context.overview?.outstandingDebt), expected - revenue, pendingAmount, 0);
+  const successRate = context.payments.length
+    ? (completed.length / context.payments.length) * 100
+    : asNumber(context.overview?.paymentSuccessRate);
+
+  const paidByParent = new Map<string, number>();
+  for (const payment of completed) {
+    for (const key of [payment.parentId, normalize(payment.parentFullName)].filter(Boolean) as string[]) {
+      paidByParent.set(key, (paidByParent.get(key) ?? 0) + payment.amount);
+    }
+  }
+
+  const parentsWithDebt = context.parents
+    .map((parent) => {
+      const expectedForParent = (parent.students ?? []).reduce((sum, student) => sum + asNumber(student.annualFee), 0);
+      const paid = (paidByParent.get(parent.id) ?? 0) + (paidByParent.get(normalize(parent.fullName)) ?? 0);
+      return {
+        id: parent.id,
+        name: parent.fullName,
+        email: parent.email,
+        phone: parent.phone,
+        debt: Math.max(expectedForParent - paid, 0)
+      };
+    })
+    .filter((parent) => parent.debt > 0)
+    .sort((a, b) => b.debt - a.debt);
+
+  const monthly = new Map<string, number>();
+  for (const payment of completed) {
+    const date = parseDate(payment);
+    const key = date.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+    monthly.set(key, (monthly.get(key) ?? 0) + payment.amount);
+  }
+  const bestMonth = [...monthly.entries()].sort((a, b) => b[1] - a[1])[0];
+
+  return { completed, pending, failed, revenue, pendingAmount, outstandingDebt, successRate, parentsWithDebt, bestMonth };
+}
+
+function localAssistantReply(query: string, lang: "fr" | "en", context: AssistantContext): AssistantResponse {
+  const q = normalize(query);
+  const insights = buildInsights(context);
+  const topParent = insights.parentsWithDebt[0];
+
+  if (q.includes("impay") || q.includes("non pay") || q.includes("retard") || q.includes("unpaid") || q.includes("debt")) {
     return lang === "fr"
       ? {
-          answer: "Des impayés ont été détectés. Priorisez les classes avec les retards les plus importants et planifiez des rappels automatiques.",
-          suggestions: ["Afficher la liste des parents en retard", "Envoyer un rappel WhatsApp/SMS", "Proposer un échéancier de paiement"]
+          answer: topParent
+            ? `${insights.parentsWithDebt.length} parent(s) présentent un solde restant. La priorité est ${topParent.name} avec ${USD.format(topParent.debt)} à régulariser. Dette estimée globale : ${USD.format(insights.outstandingDebt)}.`
+            : `Aucun parent en retard net n'est détecté avec les données disponibles. Paiements en attente : ${USD.format(insights.pendingAmount)}.`,
+          suggestions: ["Relancer le parent prioritaire", "Vérifier les paiements en attente", "Préparer un échéancier ciblé"]
         }
       : {
-          answer: "Unpaid balances were detected. Prioritize classes with the largest delays and schedule automatic reminders.",
-          suggestions: ["Show overdue parent list", "Send WhatsApp/SMS reminders", "Offer a payment plan"]
+          answer: topParent
+            ? `${insights.parentsWithDebt.length} parent(s) still have a balance. Priority: ${topParent.name} with ${USD.format(topParent.debt)} remaining. Estimated total debt: ${USD.format(insights.outstandingDebt)}.`
+            : `No clear overdue parent is detected from available data. Pending payments: ${USD.format(insights.pendingAmount)}.`,
+          suggestions: ["Follow up with the priority parent", "Review pending payments", "Prepare a targeted payment plan"]
         };
   }
 
-  if (q.includes("revenu") || q.includes("revenue")) {
+  if (q.includes("revenu") || q.includes("recette") || q.includes("revenue") || q.includes("paiement total")) {
     return lang === "fr"
       ? {
-          answer: "Le revenu global est stable. Analysez les écarts par classe pour identifier les zones à risque.",
-          suggestions: ["Comparer avec le mois précédent", "Afficher les 3 classes les plus performantes", "Vérifier les paiements en attente"]
+          answer: `Revenu encaissé : ${USD.format(insights.revenue)}. Taux de réussite : ${insights.successRate.toFixed(1)} %. Paiements en attente : ${USD.format(insights.pendingAmount)}. ${insights.bestMonth ? `Meilleur mois observé : ${insights.bestMonth[0]} (${USD.format(insights.bestMonth[1])}).` : ""}`,
+          suggestions: ["Comparer avec le mois précédent", "Afficher les paiements en attente", "Analyser les parents à forte contribution"]
         }
       : {
-          answer: "Overall revenue is stable. Analyze class-level differences to identify risk areas.",
-          suggestions: ["Compare with previous month", "Show top 3 performing classes", "Review pending payments"]
+          answer: `Collected revenue: ${USD.format(insights.revenue)}. Success rate: ${insights.successRate.toFixed(1)}%. Pending payments: ${USD.format(insights.pendingAmount)}. ${insights.bestMonth ? `Best observed month: ${insights.bestMonth[0]} (${USD.format(insights.bestMonth[1])}).` : ""}`,
+          suggestions: ["Compare with previous month", "Show pending payments", "Analyze high-contribution parents"]
+        };
+  }
+
+  if (q.includes("critique") || q.includes("risque") || q.includes("critical") || q.includes("risk")) {
+    const names = insights.parentsWithDebt.slice(0, 3).map((parent) => `${parent.name} (${USD.format(parent.debt)})`).join(", ");
+    return lang === "fr"
+      ? {
+          answer: names
+            ? `Parents à surveiller en priorité : ${names}. Les relances doivent rester individuelles et basées sur le montant réel dû.`
+            : "Aucun profil critique net n'apparaît avec les données actuelles.",
+          suggestions: ["Envoyer une relance individuelle", "Contrôler l'historique du parent", "Générer une synthèse de risque"]
+        }
+      : {
+          answer: names
+            ? `Priority parents to monitor: ${names}. Follow-ups should stay individual and based on the real balance.`
+            : "No clear critical profile appears in the current data.",
+          suggestions: ["Send an individual reminder", "Check parent history", "Generate a risk summary"]
         };
   }
 
   return lang === "fr"
     ? {
-        answer: "Question reçue. Voici un premier diagnostic automatique basé sur vos données disponibles.",
+        answer: `Diagnostic local : ${context.parents.length} parent(s), ${context.payments.length} paiement(s), ${USD.format(insights.revenue)} encaissés et ${USD.format(insights.outstandingDebt)} de dette estimée. Posez une question sur les impayés, les revenus ou les risques pour obtenir une analyse ciblée.`,
         suggestions: ["Afficher les retards critiques", "Vérifier la performance mensuelle", "Générer un rapport résumé"]
       }
     : {
-        answer: "Question received. Here is an initial automated diagnosis based on available data.",
+        answer: `Local diagnosis: ${context.parents.length} parent(s), ${context.payments.length} payment(s), ${USD.format(insights.revenue)} collected and ${USD.format(insights.outstandingDebt)} estimated debt. Ask about unpaid balances, revenue or risks for a targeted analysis.`,
         suggestions: ["Show critical delays", "Review monthly performance", "Generate a summary report"]
       };
+}
+
+function isGenericAssistantResponse(data: AssistantResponse | null | undefined) {
+  const answer = normalize(data?.answer);
+  return !data?.answer || answer.includes("mode local actif") || answer.includes("service ia distant");
 }
 
 export function AIAssistantPage() {
@@ -53,17 +199,30 @@ export function AIAssistantPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const submit = async () => {
+  const submit = async (nextQuery = query) => {
+    const askedQuestion = nextQuery.trim();
+    if (!askedQuestion) return;
+
     setLoading(true);
     setError(null);
+
+    const context = await loadAssistantContext();
+    const localResult = localAssistantReply(askedQuestion, lang, context);
+
     try {
       const data = await api<AssistantResponse>("/api/ai/assistant", {
         method: "POST",
-        body: JSON.stringify({ query })
+        body: JSON.stringify({ query: askedQuestion })
       });
-      setResult(data);
+
+      if (isGenericAssistantResponse(data)) {
+        setResult(localResult);
+        setError(t("aiUnavailable"));
+      } else {
+        setResult(data);
+      }
     } catch {
-      setResult(localAssistantReply(query, lang));
+      setResult(localResult);
       setError(t("aiUnavailable"));
     } finally {
       setLoading(false);
@@ -104,7 +263,7 @@ export function AIAssistantPage() {
             className="h-32 w-full resize-none"
           />
           <button
-            onClick={submit}
+            onClick={() => void submit()}
             disabled={loading}
             className="btn-primary w-full py-3 font-semibold disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -179,7 +338,7 @@ export function AIAssistantPage() {
                   key={example}
                   onClick={() => {
                     setQuery(example);
-                    setTimeout(() => void submit(), 100);
+                    void submit(example);
                   }}
                   className="rounded-lg border border-slate-700/50 p-3 text-left text-sm text-ink-dim transition-all duration-300 hover:bg-slate-700/30 hover:text-white"
                 >

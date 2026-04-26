@@ -26,8 +26,8 @@ aiRouter.post("/assistant", authorize("ADMIN", "ACCOUNTANT"), async (req, res) =
   } catch (error) {
     console.error("AI service unavailable, using local assistant fallback", error);
     return res.json({
-      answer: "Le service IA distant est momentanement indisponible. Mode local actif : priorisez les paiements en retard, verifiez les soldes parents et surveillez les anomalies du tableau de bord.",
-      suggestions: ["Analyser les parents critiques", "Verifier les paiements en attente", "Generer un rapport financier"]
+      answer: "Le service IA distant est momentanément indisponible. Mode local actif : priorisez les paiements en retard, vérifiez les soldes parents et surveillez les anomalies du tableau de bord.",
+      suggestions: ["Analyser les parents critiques", "Vérifier les paiements en attente", "Générer un rapport financier"]
     });
   }
 });

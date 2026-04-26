@@ -289,7 +289,7 @@ function computeDashboard(overview: Overview, payments: Payment[], parents: Pare
 function severity(score: number) {
   if (score >= 70) return { label: "Critique", color: "text-red-300", bg: "bg-red-500/12", border: "border-red-500/35" };
   if (score >= 45) return { label: "Sous surveillance", color: "text-amber-300", bg: "bg-amber-500/12", border: "border-amber-500/35" };
-  return { label: "Controle", color: "text-emerald-300", bg: "bg-emerald-500/12", border: "border-emerald-500/35" };
+  return { label: "Contrôle", color: "text-emerald-300", bg: "bg-emerald-500/12", border: "border-emerald-500/35" };
 }
 
 function MetricCard({
@@ -318,6 +318,26 @@ function MetricCard({
         </div>
       </div>
     </div>
+  );
+}
+
+function RadarAxisTick({ x, y, payload, textAnchor }: {
+  x?: number;
+  y?: number;
+  payload?: { value?: string };
+  textAnchor?: "start" | "middle" | "end" | "inherit";
+}) {
+  const label = payload?.value ?? "";
+  const lines = label === "Projection" ? ["Projec-", "tion"] : [label];
+
+  return (
+    <text x={x} y={y} textAnchor={textAnchor} fill="#cbd5e1" fontSize={10} fontWeight={600}>
+      {lines.map((line, index) => (
+        <tspan key={`${line}-${index}`} x={x} dy={index === 0 ? 0 : 11}>
+          {line}
+        </tspan>
+      ))}
+    </text>
   );
 }
 
@@ -497,13 +517,13 @@ export function DashboardPage() {
         </div>
 
         <div className="card glass border border-brand-500/10 shadow-lg">
-          <h2 className="font-display text-xl font-bold text-white">Matrice de sante financiere</h2>
+          <h2 className="font-display text-xl font-bold text-white">Matrice de santé financière</h2>
           <p className="mt-1 text-xs text-ink-dim">Lecture multi-axes pour détecter les fragilités systémiques.</p>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <RadarChart data={radar}>
                 <PolarGrid stroke="rgba(148,163,184,.18)" />
-                <PolarAngleAxis dataKey="axis" tick={{ fill: "#cbd5e1", fontSize: 11 }} />
+                <PolarAngleAxis dataKey="axis" tick={<RadarAxisTick />} />
                 <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
                 <Radar dataKey="value" stroke="#14b8de" fill="#14b8de" fillOpacity={0.28} />
                 <Tooltip contentStyle={{ background: "#0b1a24", border: "1px solid rgba(20,184,222,.25)", borderRadius: 8 }} />
@@ -555,7 +575,7 @@ export function DashboardPage() {
           <div className="mb-5 flex items-center justify-between">
             <div>
               <h2 className="font-display text-xl font-bold text-white">Statut des flux</h2>
-              <p className="mt-1 text-xs text-ink-dim">Repartition operationnelle et tendance court terme.</p>
+              <p className="mt-1 text-xs text-ink-dim">Répartition opérationnelle et tendance à court terme.</p>
             </div>
             {analysis.trend >= 0 ? <ArrowUpRight className="h-5 w-5 text-emerald-300" /> : <ArrowDownRight className="h-5 w-5 text-red-300" />}
           </div>
