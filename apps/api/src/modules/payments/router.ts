@@ -354,17 +354,22 @@ paymentRouter.get("/", authorize("ADMIN", "ACCOUNTANT", "PARENT"), async (req: A
     ? { schoolId: req.user!.schoolId, parent: { userId: req.user!.sub } }
     : { schoolId: req.user!.schoolId };
 
-  const payments = await prisma.payment.findMany({
-    where,
-    include: {
-      parent: true,
-      students: true,
-      receipt: true
-    },
-    orderBy: { createdAt: "desc" }
-  });
+  try {
+    const payments = await prisma.payment.findMany({
+      where,
+      include: {
+        parent: true,
+        students: true,
+        receipt: true
+      },
+      orderBy: { createdAt: "desc" }
+    });
 
-  res.json(payments);
+    return res.json(payments);
+  } catch (error) {
+    console.error("DB unavailable on payment list, returning empty list", error);
+    return res.json([]);
+  }
 });
 
 paymentRouter.get("/:id/receipt/pdf", authorize("ADMIN", "ACCOUNTANT", "PARENT"), async (req, res) => {

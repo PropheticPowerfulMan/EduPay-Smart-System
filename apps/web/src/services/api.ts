@@ -137,6 +137,18 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (normalizedPath === "/api/auth/forgot-password") return { message: "OK" } as T;
   if (normalizedPath === "/api/auth/change-password") return { message: "OK" } as T;
+  if (normalizedPath === "/api/ai/assistant") {
+    const query = String(body.query ?? "").toLowerCase();
+    const hasDebtQuestion = query.includes("impay") || query.includes("non pay") || query.includes("unpaid");
+    return {
+      answer: hasDebtQuestion
+        ? "Mode local actif : les donnees disponibles indiquent de prioriser les familles avec le plus grand solde restant et de relancer les paiements en attente."
+        : "Mode local actif : le diagnostic utilise les donnees stockees dans ce navigateur pendant que l'API distante est indisponible.",
+      suggestions: hasDebtQuestion
+        ? ["Voir les parents en retard", "Verifier les paiements en attente", "Preparer un echeancier"]
+        : ["Analyser le tableau de bord", "Controler les paiements recents", "Generer un rapport"]
+    } as T;
+  }
   if (normalizedPath === "/api/classes") return demoClasses as T;
   if (normalizedPath === "/api/parents/me") return parentMe() as T;
   if (normalizedPath === "/api/analytics/overview") return overview() as T;
@@ -210,6 +222,12 @@ function shouldUseDemoApi(path: string) {
   return !API_BASE_URL && path.startsWith("/api/");
 }
 
+function canFallbackToDemo(path: string, init?: RequestInit) {
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (!path.startsWith("/api/")) return false;
+  return method === "GET" || path === "/api/auth/login" || path === "/api/ai/assistant";
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (shouldUseDemoApi(path)) return demoApi<T>(path, init);
 
@@ -234,8 +252,12 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     if (response.status === 401) {
       clearLocalSession();
-      window.location.replace(`${import.meta.env.BASE_URL}login`);
+      window.location.replace(`${import.meta.env.BASE_URL}#/login`);
       throw new Error("Session expiree. Veuillez vous reconnecter.");
+    }
+
+    if (response.status >= 500 && canFallbackToDemo(path, init)) {
+      return demoApi<T>(path, init);
     }
 
     const errorFromJson = await response.json().catch(() => null) as { message?: string } | null;

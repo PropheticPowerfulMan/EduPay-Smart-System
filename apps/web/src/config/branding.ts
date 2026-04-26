@@ -3,5 +3,5 @@ export const schoolBranding = {
   schoolName: "Kinshasa Christian School",
   shortName: "KCS",
   tagline: "Paiement scolaire intelligent",
-  logoSrc: "/kcs.jpg"
+  logoSrc: `${import.meta.env.BASE_URL}logo-school.png`
 };

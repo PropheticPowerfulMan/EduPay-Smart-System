@@ -51,6 +51,27 @@ function RoleHome() {
   return <DashboardPage />;
 }
 
+function NotFoundPage() {
+  const role = useAuthStore((s) => s.role);
+  const token = useAuthStore((s) => s.token);
+  const homePath = token ? getHomePathByRole(role) : "/login";
+
+  return (
+    <div className="flex min-h-[65vh] items-center justify-center px-4">
+      <div className="glass max-w-md rounded-2xl border border-brand-500/20 p-8 text-center shadow-xl">
+        <p className="text-xs font-bold uppercase tracking-[0.22em] text-brand-300">Page introuvable</p>
+        <h1 className="mt-3 font-display text-3xl font-bold text-white">Cette section n'existe pas</h1>
+        <p className="mt-3 text-sm text-ink-dim">
+          La navigation EduPay est toujours disponible. Revenez a l'espace adapte a votre role.
+        </p>
+        <a href={`#${homePath}`} className="btn-primary mt-6 inline-flex px-5 py-3 text-sm font-semibold">
+          Retour a l'accueil
+        </a>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   const token = useAuthStore((s) => s.token);
   const role = useAuthStore((s) => s.role);
@@ -70,9 +91,10 @@ export function App() {
           <Route element={<RoleRoute allowedRoles={["PARENT"]} />}>
             <Route path="parent" element={<ParentTrackingPage />} />
           </Route>
+          <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Route>
-      <Route path="*" element={<Navigate to={token ? getHomePathByRole(role) : "/login"} replace />} />
+      <Route path="*" element={token ? <NotFoundPage /> : <Navigate to="/login" replace />} />
     </Routes>
   );
 }

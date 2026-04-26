@@ -118,9 +118,25 @@ function insightToneClasses(tone: Insight["tone"]) {
 export function ParentTrackingPage() {
   const { t, lang } = useI18n();
   const [data, setData] = useState<ParentData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    api<ParentData>("/api/parents/me").then(setData).catch(() => undefined);
+    let active = true;
+    api<ParentData>("/api/parents/me")
+      .then((parentData) => {
+        if (!active) return;
+        setData(parentData);
+        setLoadError(null);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setLoadError(error instanceof Error ? error.message : "Impossible de charger l'espace parent.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
   }, []);
 
   const moneyFormatter = useMemo(
@@ -311,11 +327,25 @@ export function ParentTrackingPage() {
     };
   }, [data, lang, moneyFormatter]);
 
-  if (!data || !summary) {
+  if (loading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <div className="animate-pulse">
           <div className="h-12 w-12 rounded-lg bg-gradient-to-r from-brand-500 to-accent" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!data || !summary) {
+    return (
+      <div className="flex min-h-[65vh] items-center justify-center px-4">
+        <div className="glass max-w-md rounded-2xl border border-amber-500/25 p-8 text-center shadow-xl">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-300">Espace parent</p>
+          <h1 className="mt-3 font-display text-2xl font-bold text-white">Donnees indisponibles</h1>
+          <p className="mt-3 text-sm text-ink-dim">
+            {loadError ?? "Le backend ne repond pas pour le moment. Reessayez dans quelques instants."}
+          </p>
         </div>
       </div>
     );

@@ -16,8 +16,32 @@ import { exportRouter } from "./modules/exports/router";
 
 const app = express();
 
+const allowedOrigins = new Set([
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "https://edupay-web.onrender.com"
+]);
+
+if (env.FRONTEND_URL) {
+  allowedOrigins.add(env.FRONTEND_URL.replace(/\/$/, ""));
+}
+
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin(origin, callback) {
+    let hostname = "";
+    try {
+      hostname = origin ? new URL(origin).hostname : "";
+    } catch {
+      hostname = "";
+    }
+    if (!origin || allowedOrigins.has(origin) || hostname.endsWith(".github.io")) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error(`CORS origin not allowed: ${origin}`));
+  }
+}));
 app.use(express.json({ limit: "3mb" }));
 app.use(morgan("combined"));
 app.use(rateLimit({

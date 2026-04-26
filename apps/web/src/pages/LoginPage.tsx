@@ -159,8 +159,7 @@ export function LoginPage() {
       })
     });
     setAuth(result.token, result.role, result.fullName);
-    const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-    window.location.replace(`${base}${result.role === "PARENT" ? "/parent" : "/"}`);
+    window.location.replace(`${import.meta.env.BASE_URL}#${result.role === "PARENT" ? "/parent" : "/"}`);
   };
 
   const onSubmit = async (values: LoginInput) => {

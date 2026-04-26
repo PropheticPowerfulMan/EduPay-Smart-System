@@ -13,18 +13,37 @@ const querySchema = z.object({
 aiRouter.post("/assistant", authorize("ADMIN", "ACCOUNTANT"), async (req, res) => {
   const payload = querySchema.parse(req.body);
 
-  const response = await fetch(`${env.AI_SERVICE_URL}/assistant/query`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
+  try {
+    const response = await fetch(`${env.AI_SERVICE_URL}/assistant/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
 
-  const data = await response.json();
-  return res.json(data);
+    if (!response.ok) throw new Error(`AI service responded with ${response.status}`);
+    const data = await response.json();
+    return res.json(data);
+  } catch (error) {
+    console.error("AI service unavailable, using local assistant fallback", error);
+    return res.json({
+      answer: "Le service IA distant est momentanement indisponible. Mode local actif : priorisez les paiements en retard, verifiez les soldes parents et surveillez les anomalies du tableau de bord.",
+      suggestions: ["Analyser les parents critiques", "Verifier les paiements en attente", "Generer un rapport financier"]
+    });
+  }
 });
 
 aiRouter.get("/insights", authorize("ADMIN", "ACCOUNTANT"), async (_req, res) => {
-  const response = await fetch(`${env.AI_SERVICE_URL}/insights`);
-  const data = await response.json();
-  return res.json(data);
+  try {
+    const response = await fetch(`${env.AI_SERVICE_URL}/insights`);
+    if (!response.ok) throw new Error(`AI service responded with ${response.status}`);
+    const data = await response.json();
+    return res.json(data);
+  } catch (error) {
+    console.error("AI insights unavailable, using local fallback", error);
+    return res.json({
+      anomalies: [],
+      suggestions: ["Surveiller les retards de paiement", "Relancer les familles prioritaires"],
+      summary: "Mode local actif."
+    });
+  }
 });

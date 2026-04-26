@@ -27,7 +27,7 @@ export function useAdminDashboardAlerts() {
             title: "Parents en retard",
             message: `Il y a ${overdue.overdueParents} parents avec des retards de paiement importants. Relancez-les pour éviter des pertes.`,
             actionLabel: "Voir la liste",
-            onAction: () => window.location.href = "/parents?filter=overdue"
+            onAction: () => { window.location.hash = "/parents?filter=overdue"; }
           });
         }
         // 2. Anomalies de paiement
@@ -38,7 +38,7 @@ export function useAdminDashboardAlerts() {
             title: "Anomalies détectées",
             message: `${anomalies.anomalies} transactions suspectes détectées. Vérifiez les journaux d'audit.`,
             actionLabel: "Voir l'audit",
-            onAction: () => window.location.href = "/audit"
+            onAction: () => { window.location.hash = "/"; }
           });
         }
         // 3. Santé technique
@@ -56,7 +56,7 @@ export function useAdminDashboardAlerts() {
             title: "Sauvegarde ancienne",
             message: `La dernière sauvegarde date du ${health.lastBackup}. Lancez une sauvegarde pour éviter toute perte de données.`,
             actionLabel: "Sauvegarder maintenant",
-            onAction: () => window.location.href = "/settings/backup"
+            onAction: () => { window.location.hash = "/"; }
           });
         }
         // 4. Prévision de trésorerie (exemple statique)

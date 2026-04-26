@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, type FormEvent } from "react";
 import { schoolBranding } from "../config/branding";
 import { useI18n } from "../i18n";
 import { api } from "../services/api";
@@ -851,7 +851,7 @@ export function PaymentsPage() {
     return Object.keys(errs).length === 0;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
     setSaving(true);

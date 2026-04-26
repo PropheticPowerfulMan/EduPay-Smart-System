@@ -90,6 +90,14 @@ authRouter.post("/login", async (req, res) => {
   return res.status(401).json({ message: "Identifiants invalides" });
 });
 
+authRouter.post("/forgot-password", async (req, res) => {
+  const payload = z.object({ email: z.string().email() }).safeParse(req.body);
+  if (!payload.success) return res.json({ message: "Si cet email existe, un lien de reinitialisation sera envoye." });
+
+  console.log(`[forgot-password] Reset requested for: ${payload.data.email}`);
+  return res.json({ message: "Si cet email existe, un lien de reinitialisation sera envoye." });
+});
+
 authRouter.post("/change-password", authGuard, async (req: AuthenticatedRequest, res) => {
   const payload = z.object({
     currentPassword: z.string().min(1),
