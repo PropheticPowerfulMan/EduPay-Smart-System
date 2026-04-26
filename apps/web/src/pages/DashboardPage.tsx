@@ -328,12 +328,16 @@ function RadarAxisTick({ x, y, payload, textAnchor }: {
   textAnchor?: "start" | "middle" | "end" | "inherit";
 }) {
   const label = payload?.value ?? "";
-  const lines = label === "Projection" ? ["Projec-", "tion"] : [label];
+  const lines = label === "Projection"
+    ? ["Projec-", "tion"]
+    : label === "Données"
+      ? ["Don-", "nées"]
+      : [label];
 
   return (
-    <text x={x} y={y} textAnchor={textAnchor} fill="#cbd5e1" fontSize={10} fontWeight={600}>
+    <text x={x} y={y} textAnchor={textAnchor} fill="#cbd5e1" fontSize={9} fontWeight={700}>
       {lines.map((line, index) => (
-        <tspan key={`${line}-${index}`} x={x} dy={index === 0 ? 0 : 11}>
+        <tspan key={`${line}-${index}`} x={x} dy={index === 0 ? 0 : 10}>
           {line}
         </tspan>
       ))}
@@ -519,9 +523,9 @@ export function DashboardPage() {
         <div className="card glass border border-brand-500/10 shadow-lg">
           <h2 className="font-display text-xl font-bold text-white">Matrice de santé financière</h2>
           <p className="mt-1 text-xs text-ink-dim">Lecture multi-axes pour détecter les fragilités systémiques.</p>
-          <div className="h-80">
+          <div className="h-96 overflow-visible sm:h-80 [&_.recharts-surface]:overflow-visible">
             <ResponsiveContainer width="100%" height="100%">
-              <RadarChart data={radar}>
+              <RadarChart data={radar} outerRadius="58%" margin={{ top: 36, right: 46, bottom: 34, left: 46 }}>
                 <PolarGrid stroke="rgba(148,163,184,.18)" />
                 <PolarAngleAxis dataKey="axis" tick={<RadarAxisTick />} />
                 <PolarRadiusAxis angle={90} domain={[0, 100]} tick={false} axisLine={false} />
