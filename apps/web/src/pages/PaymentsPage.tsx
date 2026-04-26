@@ -1362,7 +1362,7 @@ export function PaymentsPage() {
                 {t("amountUsd")} <span className="text-danger">*</span>
               </label>
               <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-brand-300 font-bold text-sm">$</span>
+                <span className="pointer-events-none absolute inset-y-0 left-0 flex w-10 items-center justify-center text-sm font-bold text-brand-300">$</span>
                 <input
                   type="number"
                   step="0.00001"
@@ -1370,7 +1370,7 @@ export function PaymentsPage() {
                   value={form.amount}
                   onChange={(e) => setField("amount", e.target.value)}
                   placeholder="0.00000"
-                  className={`w-full pl-7 font-mono ${fieldErrors.amount ? "border-danger" : ""}`}
+                  className={`w-full !pl-11 font-mono tabular-nums ${fieldErrors.amount ? "border-danger" : ""}`}
                 />
               </div>
               {fieldErrors.amount && <p className="text-xs text-danger">{fieldErrors.amount}</p>}
