@@ -47,7 +47,7 @@ exportRouter.get("/report.pdf", authorize("ADMIN", "ACCOUNTANT"), async (req: Au
 
   const doc = new PDFDocument();
   const chunks: Buffer[] = [];
-  doc.on("data", (d) => chunks.push(d));
+  doc.on("data", (d: Buffer) => chunks.push(d));
   doc.on("end", () => {
     const buffer = Buffer.concat(chunks);
     res.setHeader("Content-Type", "application/pdf");

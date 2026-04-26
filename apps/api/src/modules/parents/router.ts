@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import bcrypt from "bcrypt";
 import { prisma } from "../../prisma";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
 
@@ -19,6 +20,12 @@ const parentSchema = z.object({
   preferredLanguage: z.enum(["fr", "en"]).default("fr"),
   students: z.array(studentInputSchema).optional().default([])
 });
+
+function generateTemporaryPassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const pick = (length: number) => Array.from({ length }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+  return `KCS-${pick(4)}-${pick(4)}`;
+}
 
 // In-memory fallback store (used when DB is unavailable)
 let demoParents: any[] = [
@@ -85,15 +92,27 @@ parentRouter.get("/me", authorize("PARENT"), async (req: AuthenticatedRequest, r
 // POST create parent + students
 parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
   const payload = parentSchema.parse(req.body);
+  const temporaryPassword = generateTemporaryPassword();
   try {
     const parent = await prisma.$transaction(async (tx) => {
+      const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+      const user = await tx.user.create({
+        data: {
+          fullName: payload.fullName,
+          email: payload.email,
+          role: "PARENT",
+          schoolId: req.user!.schoolId,
+          passwordHash
+        }
+      });
       const p = await tx.parent.create({
         data: {
           fullName: payload.fullName,
           phone: payload.phone,
           email: payload.email,
           preferredLanguage: payload.preferredLanguage,
-          schoolId: req.user!.schoolId
+          schoolId: req.user!.schoolId,
+          userId: user.id
         }
       });
       for (const st of payload.students) {
@@ -112,7 +131,10 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
         include: { students: { include: { class: true } } }
       });
     });
-    return res.status(201).json(enrichParent({ ...parent, nom: payload.nom, postnom: payload.postnom, prenom: payload.prenom }));
+    return res.status(201).json({
+      ...enrichParent({ ...parent, nom: payload.nom, postnom: payload.postnom, prenom: payload.prenom }),
+      temporaryPassword
+    });
   } catch (error) {
     console.error("DB unavailable on parent create, using demo store", error);
     const newParent = {
@@ -123,6 +145,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       fullName: payload.fullName,
       phone: payload.phone,
       email: payload.email,
+      temporaryPassword,
       students: payload.students.map((s, i) => ({
         id: `demo-student-${Date.now()}-${i}`,
         fullName: s.fullName,
@@ -134,6 +157,51 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
     };
     demoParents.push(newParent);
     return res.status(201).json(newParent);
+  }
+});
+
+parentRouter.post("/:id/reset-password", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
+  const { id } = req.params;
+  const temporaryPassword = generateTemporaryPassword();
+  try {
+    const parent = await prisma.parent.findFirst({
+      where: { id, schoolId: req.user!.schoolId },
+      include: { user: true }
+    });
+    if (!parent) return res.status(404).json({ message: "Parent non trouve" });
+
+    const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+    let user = parent.user;
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          fullName: parent.fullName,
+          email: parent.email,
+          role: "PARENT",
+          schoolId: req.user!.schoolId,
+          passwordHash
+        }
+      });
+      await prisma.parent.update({ where: { id: parent.id }, data: { userId: user.id } });
+    } else {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          fullName: parent.fullName,
+          email: parent.email,
+          passwordHash
+        }
+      });
+    }
+
+    return res.json({ parentId: parent.id, email: user.email, temporaryPassword });
+  } catch (error) {
+    console.error("DB unavailable on parent password reset, using demo store", error);
+    const parent = demoParents.find((p) => p.id === id);
+    if (!parent) return res.status(404).json({ message: "Parent non trouve" });
+    parent.temporaryPassword = temporaryPassword;
+    return res.json({ parentId: parent.id, email: parent.email, temporaryPassword });
   }
 });
 

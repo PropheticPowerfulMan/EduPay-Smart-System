@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { prisma } from "../../prisma";
 import { env } from "../../config/env";
+import { authGuard, AuthenticatedRequest } from "../../middlewares/auth";
 
 const registerSchema = z.object({
   fullName: z.string().min(3),
@@ -37,7 +38,7 @@ const demoUsers = [
 
 function buildToken(user: { id: string; role: "ADMIN" | "ACCOUNTANT" | "PARENT"; schoolId: string }) {
   return jwt.sign({ sub: user.id, role: user.role, schoolId: user.schoolId }, env.JWT_SECRET, {
-    expiresIn: env.JWT_EXPIRES_IN
+    expiresIn: env.JWT_EXPIRES_IN as any
   });
 }
 
@@ -87,4 +88,25 @@ authRouter.post("/login", async (req, res) => {
   }
 
   return res.status(401).json({ message: "Identifiants invalides" });
+});
+
+authRouter.post("/change-password", authGuard, async (req: AuthenticatedRequest, res) => {
+  const payload = z.object({
+    currentPassword: z.string().min(1),
+    newPassword: z.string().min(8)
+  }).parse(req.body);
+
+  const user = await prisma.user.findUnique({ where: { id: req.user!.sub } });
+  if (!user) return res.status(404).json({ message: "Utilisateur introuvable" });
+
+  const ok = await bcrypt.compare(payload.currentPassword, user.passwordHash);
+  if (!ok) return res.status(400).json({ message: "Mot de passe actuel incorrect" });
+
+  const passwordHash = await bcrypt.hash(payload.newPassword, 10);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash }
+  });
+
+  return res.json({ message: "Mot de passe modifie avec succes." });
 });

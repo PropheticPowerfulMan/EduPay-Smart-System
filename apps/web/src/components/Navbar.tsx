@@ -2,16 +2,100 @@ import { LanguageSwitch } from "./LanguageSwitch";
 import { FontSwitch } from "./FontSwitch";
 import { schoolBranding } from "../config/branding";
 import { useI18n } from "../i18n";
+import { api } from "../services/api";
 import { useAuthStore } from "../store/auth";
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
+
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    if (newPassword.length < 8) {
+      setError("Le nouveau mot de passe doit contenir au moins 8 caracteres.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("Les deux nouveaux mots de passe ne correspondent pas.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api("/api/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({ currentPassword, newPassword })
+      });
+      setMessage("Mot de passe modifie avec succes.");
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Impossible de modifier le mot de passe.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <form onSubmit={submit} className="glass relative w-full max-w-sm rounded-2xl p-7 space-y-4 animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
+        <div>
+          <h3 className="font-display text-xl font-bold text-white">Changer mon mot de passe</h3>
+          <p className="mt-1 text-sm text-ink-dim">Remplacez votre mot de passe temporaire par un mot de passe personnel.</p>
+        </div>
+        <input
+          type="password"
+          value={currentPassword}
+          onChange={(event) => setCurrentPassword(event.target.value)}
+          placeholder="Mot de passe actuel"
+          className="w-full"
+        />
+        <input
+          type="password"
+          value={newPassword}
+          onChange={(event) => setNewPassword(event.target.value)}
+          placeholder="Nouveau mot de passe"
+          className="w-full"
+        />
+        <input
+          type="password"
+          value={confirmPassword}
+          onChange={(event) => setConfirmPassword(event.target.value)}
+          placeholder="Confirmer le nouveau mot de passe"
+          className="w-full"
+        />
+        {error && <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
+        {message && <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">{message}</p>}
+        <div className="flex gap-3">
+          <button disabled={saving} className="flex-1 btn-primary py-3 text-sm font-bold disabled:opacity-60">
+            {saving ? "Enregistrement..." : "Enregistrer"}
+          </button>
+          <button type="button" onClick={onClose} className="rounded-lg border border-slate-600 px-4 py-3 text-sm font-semibold text-ink-dim hover:text-white">
+            Fermer
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
 
 export function Navbar() {
   const { t } = useI18n();
   const { fullName, role, logout } = useAuthStore();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   return (
     <header className="sticky top-0 z-50 border-b border-brand-300/20 bg-slate-950/70 shadow-[0_18px_60px_rgba(0,0,0,0.22)] backdrop-blur-2xl">
+      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
       <div className="mx-auto max-w-[1440px] px-4 py-3 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between">
           {/* Logo Section */}
@@ -64,6 +148,15 @@ export function Navbar() {
                     <p className="text-sm font-semibold text-white">{fullName || t("user")}</p>
                     <p className="text-xs text-ink-dim">{role || t("guest")}</p>
                   </div>
+                  <button
+                    onClick={() => {
+                      setShowPasswordModal(true);
+                      setIsUserMenuOpen(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-ink-dim transition-all duration-200 hover:bg-brand-500/10 hover:text-white"
+                  >
+                    Changer mon mot de passe
+                  </button>
                   <button
                     onClick={() => {
                       logout();

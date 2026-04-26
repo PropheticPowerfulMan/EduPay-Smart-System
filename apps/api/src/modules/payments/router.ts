@@ -34,7 +34,7 @@ async function generateReceiptPdf(data: {
   return new Promise<Buffer>((resolve) => {
     const doc = new PDFDocument({ margin: 40 });
     const chunks: Buffer[] = [];
-    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
     doc.on("end", () => resolve(Buffer.concat(chunks)));
 
     doc.fontSize(18).fillColor("#0b2e59").text(data.schoolName);
@@ -93,11 +93,25 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
       return res.status(409).json({ message: "Paiement dupliqué détecté" });
     }
 
+    let parentId = payload.parentId;
+    if (!parentId) {
+      const parent = await prisma.parent.findFirst({
+        where: {
+          schoolId: req.user!.schoolId,
+          fullName: payload.parentFullName
+        }
+      });
+      parentId = parent?.id;
+    }
+    if (!parentId) {
+      throw new Error("Parent introuvable pour ce paiement");
+    }
+
     const payment = await prisma.payment.create({
       data: {
         schoolId: req.user!.schoolId,
         transactionNumber: txNumber,
-        parentId: payload.parentId ?? undefined,
+        parentId,
         reason: payload.reason,
         amount: payload.amount,
         amountInWords: amountToWords(payload.amount, "fr"),
@@ -111,10 +125,11 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
       include: { parent: true, students: true }
     });
 
+    const paymentWithRelations = payment as typeof payment & { parent?: { fullName: string } | null };
     return res.status(201).json({
       payment: {
         ...payment,
-        parentFullName: payload.parentFullName ?? payment.parent?.fullName
+        parentFullName: payload.parentFullName ?? paymentWithRelations.parent?.fullName
       }
     });
   } catch (_dbErr) {

@@ -23,6 +23,13 @@ type Parent = {
   createdAt: string;
 };
 
+type ParentCredentials = {
+  parentId: string;
+  parentName: string;
+  email: string;
+  temporaryPassword: string;
+};
+
 type SchoolClass = { id: string; name: string };
 
 type FormState = {
@@ -91,6 +98,14 @@ function XIcon() {
     </svg>
   );
 }
+function KeyIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <circle cx="7.5" cy="15.5" r="3.5" />
+      <path d="M10 13l8-8 3 3-2 2-2-2-2 2 2 2-2 2" />
+    </svg>
+  );
+}
 
 /* ─── Sub-components ─────────────────────────────────────────────── */
 function Badge({ text, color }: { text: string; color: string }) {
@@ -98,6 +113,61 @@ function Badge({ text, color }: { text: string; color: string }) {
     <span className={`inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold ${color}`}>
       {text}
     </span>
+  );
+}
+
+function CredentialsModal({ credentials, onClose }: { credentials: ParentCredentials; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const copyText = `Email: ${credentials.email}\nMot de passe temporaire: ${credentials.temporaryPassword}`;
+
+  const copy = async () => {
+    await navigator.clipboard?.writeText(copyText).catch(() => undefined);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="relative w-full max-w-md glass rounded-2xl p-8 space-y-5 animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute right-4 top-4 text-ink-dim hover:text-white transition-colors">
+          <XIcon />
+        </button>
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-brand-500/20 text-brand-200">
+            <KeyIcon />
+          </div>
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-300">Acces parent genere</p>
+            <h3 className="font-display text-xl font-bold text-white">{credentials.parentName}</h3>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
+          Transmettez ce mot de passe temporaire au parent. Apres modification par le parent, l'administrateur ne peut pas lire son mot de passe prive ; il peut seulement le reinitialiser.
+        </div>
+
+        <div className="space-y-3">
+          <div className="rounded-xl border border-slate-700/50 bg-slate-900/40 p-4">
+            <p className="text-xs uppercase tracking-wide text-ink-dim">Email de connexion</p>
+            <p className="mt-1 font-mono text-sm font-bold text-white">{credentials.email}</p>
+          </div>
+          <div className="rounded-xl border border-slate-700/50 bg-slate-900/40 p-4">
+            <p className="text-xs uppercase tracking-wide text-ink-dim">Mot de passe temporaire</p>
+            <p className="mt-1 font-mono text-lg font-black text-emerald-300">{credentials.temporaryPassword}</p>
+          </div>
+        </div>
+
+        <div className="flex gap-3">
+          <button onClick={copy} className="flex-1 rounded-lg bg-brand-600 px-4 py-3 text-sm font-bold text-white hover:bg-brand-700 transition-all">
+            {copied ? "Copie" : "Copier les acces"}
+          </button>
+          <button onClick={onClose} className="rounded-lg border border-slate-600 px-4 py-3 text-sm font-semibold text-ink-dim hover:text-white">
+            Fermer
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -363,6 +433,7 @@ export function ParentsManagementPage() {
   const [editTarget, setEditTarget] = useState<Parent | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Parent | null>(null);
   const [viewTarget, setViewTarget] = useState<Parent | null>(null);
+  const [credentials, setCredentials] = useState<ParentCredentials | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -402,7 +473,15 @@ export function ParentsManagementPage() {
       if (id) {
         await api(`/api/parents/${id}`, { method: "PUT", body: JSON.stringify(body) });
       } else {
-        await api("/api/parents", { method: "POST", body: JSON.stringify(body) });
+        const created = await api<Parent & { temporaryPassword?: string }>("/api/parents", { method: "POST", body: JSON.stringify(body) });
+        if (created.temporaryPassword) {
+          setCredentials({
+            parentId: created.id,
+            parentName: created.fullName,
+            email: created.email,
+            temporaryPassword: created.temporaryPassword
+          });
+        }
       }
       setShowForm(false);
       setEditTarget(null);
@@ -426,6 +505,25 @@ export function ParentsManagementPage() {
     }
   };
 
+  const handleResetPassword = async (parent: Parent) => {
+    if (!window.confirm(`Reinitialiser le mot de passe de ${parent.fullName} ?`)) return;
+    try {
+      setApiError(null);
+      const result = await api<{ parentId: string; email: string; temporaryPassword: string }>(`/api/parents/${parent.id}/reset-password`, {
+        method: "POST"
+      });
+      setCredentials({
+        parentId: result.parentId,
+        parentName: parent.fullName,
+        email: result.email,
+        temporaryPassword: result.temporaryPassword
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erreur API";
+      setApiError(message);
+    }
+  };
+
   const openEdit = (p: Parent) => { setEditTarget(p); setShowForm(true); };
 
   const stats = useMemo(() => ({
@@ -437,6 +535,7 @@ export function ParentsManagementPage() {
     <div className="space-y-6 pb-8">
       {/* Modals */}
       {viewTarget && <DetailModal parent={viewTarget} onClose={() => setViewTarget(null)} t={t} />}
+      {credentials && <CredentialsModal credentials={credentials} onClose={() => setCredentials(null)} />}
       {deleteTarget && <DeleteModal parent={deleteTarget} onConfirm={handleDelete} onClose={() => setDeleteTarget(null)} t={t} />}
       {showForm && (
         <FormModal
@@ -561,6 +660,10 @@ export function ParentsManagementPage() {
                         <button onClick={() => openEdit(parent)}
                           className="p-2 rounded-lg bg-brand-500/20 text-brand-300 hover:bg-brand-500/30 transition-all active:scale-90" title={t("pmEdit")}>
                           <EditIcon />
+                        </button>
+                        <button onClick={() => void handleResetPassword(parent)}
+                          className="p-2 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-all active:scale-90" title="Reinitialiser le mot de passe">
+                          <KeyIcon />
                         </button>
                         <button onClick={() => setDeleteTarget(parent)}
                           className="p-2 rounded-lg bg-danger/20 text-danger hover:bg-danger/30 transition-all active:scale-90" title={t("pmDelete")}>

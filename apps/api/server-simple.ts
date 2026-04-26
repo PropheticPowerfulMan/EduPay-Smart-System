@@ -54,6 +54,12 @@ function generateParentId() {
   return `PAR-${year}-${String(parentCounter).padStart(4, "0")}`;
 }
 
+function generateTemporaryPassword() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
+  const pick = (length: number) => Array.from({ length }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
+  return `KCS-${pick(4)}-${pick(4)}`;
+}
+
 const mockStudents: any[] = [
   { id: "student-1", parentId: "PAR-2025-0001", classId: "class-1", fullName: "Alice Dupont", annualFee: 50000, schoolId: "school-1" },
   { id: "student-2", parentId: "PAR-2025-0001", classId: "class-1", fullName: "Bob Dupont", annualFee: 50000, schoolId: "school-1" },
@@ -91,6 +97,18 @@ app.post("/api/auth/login", async (req, res) => {
   if (payload.password !== user.password) return res.status(401).json({ message: "Invalid credentials" });
   const token = jwt.sign({ sub: user.id, role: user.role, schoolId: user.schoolId }, env.JWT_SECRET);
   return res.json({ token, role: user.role, fullName: user.fullName });
+});
+
+app.post("/api/auth/change-password", authGuard, (req: any, res) => {
+  const payload = z.object({
+    currentPassword: z.string().min(1),
+    newPassword: z.string().min(8)
+  }).parse(req.body);
+  const user = mockUsers.find((u) => u.id === req.user?.sub);
+  if (!user) return res.status(404).json({ message: "Utilisateur introuvable" });
+  if (user.password !== payload.currentPassword) return res.status(400).json({ message: "Mot de passe actuel incorrect" });
+  user.password = payload.newPassword;
+  return res.json({ message: "Mot de passe modifie avec succes." });
 });
 
 // Middleware: Auth Guard
@@ -154,19 +172,30 @@ app.get("/api/parents", authGuard, (req: any, res) => {
 app.post("/api/parents", authGuard, (req: any, res) => {
   const { nom, postnom, prenom, fullName, phone, email, students: reqStudents } = req.body;
   const id = generateParentId();
+  const temporaryPassword = generateTemporaryPassword();
+  const userId = `user-parent-${Date.now()}`;
+  const parentFullName = fullName || [nom, postnom, prenom].filter(Boolean).join(" ");
   const parent = {
     id,
     nom: nom || "",
     postnom: postnom || "",
     prenom: prenom || "",
-    fullName: fullName || [nom, postnom, prenom].filter(Boolean).join(" "),
+    fullName: parentFullName,
     phone: phone || "",
     email: email || "",
     schoolId: "school-1",
-    userId: null,
+    userId,
     preferredLanguage: "fr",
     createdAt: new Date().toISOString()
   };
+  mockUsers.push({
+    id: userId,
+    email: email || `${id.toLowerCase()}@parent.local`,
+    password: temporaryPassword,
+    role: "PARENT",
+    fullName: parentFullName,
+    schoolId: "school-1"
+  });
   mockParents.push(parent);
   // Add students if provided
   if (Array.isArray(reqStudents)) {
@@ -182,7 +211,35 @@ app.post("/api/parents", authGuard, (req: any, res) => {
       });
     }
   }
-  return res.status(201).json(parentWithStudents(parent));
+  return res.status(201).json({ ...parentWithStudents(parent), temporaryPassword });
+});
+
+app.post("/api/parents/:id/reset-password", authGuard, (req: any, res) => {
+  if (!["ADMIN", "ACCOUNTANT"].includes(req.user?.role)) {
+    return res.status(403).json({ message: "Access denied" });
+  }
+  const parent = mockParents.find((p) => p.id === req.params.id);
+  if (!parent) return res.status(404).json({ message: "Parent not found" });
+  const temporaryPassword = generateTemporaryPassword();
+  let user = mockUsers.find((u) => u.id === parent.userId);
+  if (!user) {
+    const userId = `user-parent-${Date.now()}`;
+    parent.userId = userId;
+    user = {
+      id: userId,
+      email: parent.email || `${parent.id.toLowerCase()}@parent.local`,
+      password: temporaryPassword,
+      role: "PARENT",
+      fullName: parent.fullName,
+      schoolId: parent.schoolId
+    };
+    mockUsers.push(user);
+  } else {
+    user.password = temporaryPassword;
+    user.email = parent.email || user.email;
+    user.fullName = parent.fullName;
+  }
+  return res.json({ parentId: parent.id, email: user.email, temporaryPassword });
 });
 
 app.put("/api/parents/:id", authGuard, (req: any, res) => {
