@@ -17,7 +17,7 @@ const app = express();
 // Middleware
 app.use(helmet());
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "3mb" }));
 app.use(morgan("combined"));
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
 
@@ -58,6 +58,50 @@ function generateTemporaryPassword() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
   const pick = (length: number) => Array.from({ length }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
   return `KCS-${pick(4)}-${pick(4)}`;
+}
+
+function buildParentWelcomeMessages(parent: any, password: string, email: string) {
+  const children = parentWithStudents(parent).students;
+  const childLines = children.length
+    ? children.map((student: any) => `- ${student.fullName} (${student.className || student.classId})`).join("\n")
+    : "- Aucun eleve rattache pour le moment";
+  const subject = "Vos acces EduPay";
+  const emailBody = [
+    `Bonjour ${parent.fullName},`,
+    "",
+    "Votre compte parent EduPay vient d'etre cree.",
+    "",
+    `Identifiant parent: ${parent.id}`,
+    `Telephone: ${parent.phone || "Non renseigne"}`,
+    `Email de connexion: ${email}`,
+    `Mot de passe temporaire: ${password}`,
+    "",
+    "Enfants rattaches:",
+    childLines,
+    "",
+    "Pour votre securite, connectez-vous puis changez ce mot de passe depuis votre profil."
+  ].join("\n");
+  const smsBody = `EduPay: compte cree pour ${parent.fullName}. Email: ${email}. Mot de passe temporaire: ${password}. Changez-le apres connexion.`;
+  return { subject, emailBody, smsBody };
+}
+
+async function sendParentWelcomeNotifications(parent: any, password: string, email: string) {
+  const messages = buildParentWelcomeMessages(parent, password, email);
+  const status = {
+    email: parent.email ? "QUEUED" : "SKIPPED",
+    sms: parent.phone ? "QUEUED" : "SKIPPED"
+  };
+
+  if (parent.email) {
+    console.log(`[parent-welcome-email] To: ${parent.email}\nSubject: ${messages.subject}\n${messages.emailBody}`);
+    status.email = "SIMULATED";
+  }
+  if (parent.phone) {
+    console.log(`[parent-welcome-sms] To: ${parent.phone}\n${messages.smsBody}`);
+    status.sms = "SIMULATED";
+  }
+
+  return status;
 }
 
 const mockStudents: any[] = [
@@ -169,8 +213,8 @@ app.get("/api/parents", authGuard, (req: any, res) => {
   return res.json(list);
 });
 
-app.post("/api/parents", authGuard, (req: any, res) => {
-  const { nom, postnom, prenom, fullName, phone, email, students: reqStudents } = req.body;
+app.post("/api/parents", authGuard, async (req: any, res) => {
+  const { nom, postnom, prenom, fullName, phone, email, photoUrl, students: reqStudents } = req.body;
   const id = generateParentId();
   const temporaryPassword = generateTemporaryPassword();
   const userId = `user-parent-${Date.now()}`;
@@ -183,6 +227,7 @@ app.post("/api/parents", authGuard, (req: any, res) => {
     fullName: parentFullName,
     phone: phone || "",
     email: email || "",
+    photoUrl: photoUrl || "",
     schoolId: "school-1",
     userId,
     preferredLanguage: "fr",
@@ -211,7 +256,12 @@ app.post("/api/parents", authGuard, (req: any, res) => {
       });
     }
   }
-  return res.status(201).json({ ...parentWithStudents(parent), temporaryPassword });
+  const notificationStatus = await sendParentWelcomeNotifications(parent, temporaryPassword, email || `${id.toLowerCase()}@parent.local`);
+  return res.status(201).json({
+    ...parentWithStudents(parent),
+    temporaryPassword,
+    notificationStatus
+  });
 });
 
 app.post("/api/parents/:id/reset-password", authGuard, (req: any, res) => {
@@ -245,7 +295,7 @@ app.post("/api/parents/:id/reset-password", authGuard, (req: any, res) => {
 app.put("/api/parents/:id", authGuard, (req: any, res) => {
   const idx = mockParents.findIndex((p) => p.id === req.params.id);
   if (idx === -1) return res.status(404).json({ message: "Parent not found" });
-  const { nom, postnom, prenom, fullName, phone, email, students: reqStudents } = req.body;
+  const { nom, postnom, prenom, fullName, phone, email, photoUrl, students: reqStudents } = req.body;
   mockParents[idx] = {
     ...mockParents[idx],
     nom: nom ?? mockParents[idx].nom,
@@ -253,7 +303,8 @@ app.put("/api/parents/:id", authGuard, (req: any, res) => {
     prenom: prenom ?? mockParents[idx].prenom,
     fullName: fullName || [nom, postnom, prenom].filter(Boolean).join(" "),
     phone: phone ?? mockParents[idx].phone,
-    email: email ?? mockParents[idx].email
+    email: email ?? mockParents[idx].email,
+    photoUrl: photoUrl ?? mockParents[idx].photoUrl
   };
   // Replace students: remove old ones, add new ones
   if (Array.isArray(reqStudents)) {

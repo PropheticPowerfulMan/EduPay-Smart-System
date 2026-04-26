@@ -1,8 +1,10 @@
 import { Router } from "express";
 import { z } from "zod";
 import bcrypt from "bcrypt";
+import nodemailer from "nodemailer";
 import { prisma } from "../../prisma";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
+import { env } from "../../config/env";
 
 const studentInputSchema = z.object({
   fullName: z.string().min(1),
@@ -17,6 +19,7 @@ const parentSchema = z.object({
   prenom: z.string().optional().default(""),
   phone: z.string().min(6),
   email: z.string().email(),
+  photoUrl: z.string().optional().default(""),
   preferredLanguage: z.enum(["fr", "en"]).default("fr"),
   students: z.array(studentInputSchema).optional().default([])
 });
@@ -25,6 +28,108 @@ function generateTemporaryPassword() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
   const pick = (length: number) => Array.from({ length }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
   return `KCS-${pick(4)}-${pick(4)}`;
+}
+
+function hasSmtpConfig() {
+  return Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.SMTP_PASS !== "CHANGE_ME");
+}
+
+function buildParentWelcomeMessages(parent: any, temporaryPassword: string, loginEmail: string) {
+  const students = (parent.students || []).map((student: any) => ({
+    fullName: student.fullName,
+    className: student.class?.name ?? student.className ?? student.classId ?? "Classe non renseignee",
+    annualFee: Number(student.annualFee || 0)
+  }));
+  const studentLines = students.length
+    ? students.map((student: any) => `- ${student.fullName} | Classe: ${student.className} | Frais annuels: ${student.annualFee.toLocaleString("fr-FR")} FC`).join("\n")
+    : "- Aucun eleve rattache pour le moment";
+
+  const subject = "Vos acces EduPay";
+  const emailBody = [
+    `Bonjour ${parent.fullName},`,
+    "",
+    "Votre compte parent EduPay vient d'etre cree par l'administration de l'ecole.",
+    "",
+    `Identifiant parent: ${parent.id}`,
+    `Telephone: ${parent.phone || "Non renseigne"}`,
+    `Email de connexion: ${loginEmail}`,
+    `Mot de passe temporaire: ${temporaryPassword}`,
+    "",
+    "Enfants rattaches:",
+    studentLines,
+    "",
+    "Pour votre securite, connectez-vous puis changez ce mot de passe depuis votre profil."
+  ].join("\n");
+  const smsBody = `EduPay: compte cree pour ${parent.fullName}. Email: ${loginEmail}. Mot de passe temporaire: ${temporaryPassword}. Changez-le apres connexion.`;
+  return { subject, emailBody, smsBody };
+}
+
+async function sendParentWelcomeNotifications(parent: any, temporaryPassword: string, schoolId: string) {
+  const loginEmail = parent.email;
+  const messages = buildParentWelcomeMessages(parent, temporaryPassword, loginEmail);
+  const status = {
+    email: parent.email ? "PENDING" : "SKIPPED",
+    sms: parent.phone ? "PENDING" : "SKIPPED"
+  };
+
+  if (parent.email) {
+    try {
+      if (hasSmtpConfig()) {
+        const transporter = nodemailer.createTransport({
+          host: env.SMTP_HOST,
+          port: Number(env.SMTP_PORT),
+          auth: { user: env.SMTP_USER, pass: env.SMTP_PASS }
+        });
+        await transporter.sendMail({
+          from: env.SMTP_USER,
+          to: parent.email,
+          subject: messages.subject,
+          text: messages.emailBody
+        });
+        status.email = "SENT";
+      } else {
+        console.log(`[parent-welcome-email:dry-run] To: ${parent.email}\nSubject: ${messages.subject}\n${messages.emailBody}`);
+        status.email = "SIMULATED";
+      }
+    } catch (error) {
+      console.error("Parent welcome email failed", error);
+      status.email = "FAILED";
+    }
+    await prisma.notificationLog.create({
+      data: {
+        schoolId,
+        parentId: parent.id,
+        type: "CONFIRMATION",
+        language: parent.preferredLanguage || "fr",
+        channel: "EMAIL",
+        content: messages.emailBody,
+        status: status.email
+      }
+    }).catch((error) => console.error("Notification email log failed", error));
+  }
+
+  if (parent.phone) {
+    try {
+      console.log(`[parent-welcome-sms:dry-run] To: ${parent.phone}\n${messages.smsBody}`);
+      status.sms = "SIMULATED";
+    } catch (error) {
+      console.error("Parent welcome SMS failed", error);
+      status.sms = "FAILED";
+    }
+    await prisma.notificationLog.create({
+      data: {
+        schoolId,
+        parentId: parent.id,
+        type: "CONFIRMATION",
+        language: parent.preferredLanguage || "fr",
+        channel: "SMS",
+        content: messages.smsBody,
+        status: status.sms
+      }
+    }).catch((error) => console.error("Notification SMS log failed", error));
+  }
+
+  return status;
 }
 
 // In-memory fallback store (used when DB is unavailable)
@@ -110,6 +215,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
           fullName: payload.fullName,
           phone: payload.phone,
           email: payload.email,
+          photoUrl: payload.photoUrl || null,
           preferredLanguage: payload.preferredLanguage,
           schoolId: req.user!.schoolId,
           userId: user.id
@@ -131,9 +237,11 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
         include: { students: { include: { class: true } } }
       });
     });
+    const notificationStatus = await sendParentWelcomeNotifications(parent, temporaryPassword, req.user!.schoolId);
     return res.status(201).json({
       ...enrichParent({ ...parent, nom: payload.nom, postnom: payload.postnom, prenom: payload.prenom }),
-      temporaryPassword
+      temporaryPassword,
+      notificationStatus
     });
   } catch (error) {
     console.error("DB unavailable on parent create, using demo store", error);
@@ -145,6 +253,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       fullName: payload.fullName,
       phone: payload.phone,
       email: payload.email,
+      photoUrl: payload.photoUrl,
       temporaryPassword,
       students: payload.students.map((s, i) => ({
         id: `demo-student-${Date.now()}-${i}`,
@@ -156,6 +265,8 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       createdAt: new Date().toISOString()
     };
     demoParents.push(newParent);
+    console.log("[parent-welcome-email:demo]", buildParentWelcomeMessages(newParent, temporaryPassword, newParent.email).emailBody);
+    console.log("[parent-welcome-sms:demo]", buildParentWelcomeMessages(newParent, temporaryPassword, newParent.email).smsBody);
     return res.status(201).json(newParent);
   }
 });
@@ -216,6 +327,7 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
         fullName: payload.fullName,
         phone: payload.phone,
         email: payload.email,
+        photoUrl: payload.photoUrl || null,
         preferredLanguage: payload.preferredLanguage
       },
       include: { students: { include: { class: true } } }

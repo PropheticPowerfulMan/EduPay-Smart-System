@@ -6,7 +6,6 @@ coverage
 .env.*
 !.env.example
 pnpm-lock.yaml
-apps/api/prisma/migrations
 __pycache__
 .pytest_cache
 .venv

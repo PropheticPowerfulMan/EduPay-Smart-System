@@ -19,6 +19,7 @@ type Parent = {
   fullName: string;
   phone: string;
   email: string;
+  photoUrl?: string;
   students: Student[];
   createdAt: string;
 };
@@ -28,6 +29,10 @@ type ParentCredentials = {
   parentName: string;
   email: string;
   temporaryPassword: string;
+  notificationStatus?: {
+    email?: string;
+    sms?: string;
+  };
 };
 
 type SchoolClass = { id: string; name: string };
@@ -38,6 +43,7 @@ type FormState = {
   prenom: string;
   phone: string;
   email: string;
+  photoUrl: string;
   students: { fullName: string; classId: string; annualFee: string }[];
 };
 
@@ -47,6 +53,7 @@ const EMPTY_FORM: FormState = {
   prenom: "",
   phone: "",
   email: "",
+  photoUrl: "",
   students: []
 };
 
@@ -106,6 +113,14 @@ function KeyIcon() {
     </svg>
   );
 }
+function CameraIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+      <circle cx="12" cy="13" r="4" />
+    </svg>
+  );
+}
 
 /* ─── Sub-components ─────────────────────────────────────────────── */
 function Badge({ text, color }: { text: string; color: string }) {
@@ -144,7 +159,7 @@ function CredentialsModal({ credentials, onClose }: { credentials: ParentCredent
         </div>
 
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
-          Transmettez ce mot de passe temporaire au parent. Apres modification par le parent, l'administrateur ne peut pas lire son mot de passe prive ; il peut seulement le reinitialiser.
+          Les acces ont ete envoyes au parent par email et par SMS quand les coordonnees sont disponibles. Gardez ce mot de passe temporaire uniquement pour assistance ou reinitialisation.
         </div>
 
         <div className="space-y-3">
@@ -156,6 +171,18 @@ function CredentialsModal({ credentials, onClose }: { credentials: ParentCredent
             <p className="text-xs uppercase tracking-wide text-ink-dim">Mot de passe temporaire</p>
             <p className="mt-1 font-mono text-lg font-black text-emerald-300">{credentials.temporaryPassword}</p>
           </div>
+          {credentials.notificationStatus && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-slate-700/50 bg-slate-900/40 p-3">
+                <p className="text-xs uppercase tracking-wide text-ink-dim">Email</p>
+                <p className="mt-1 text-sm font-bold text-cyan-300">{credentials.notificationStatus.email || "SKIPPED"}</p>
+              </div>
+              <div className="rounded-xl border border-slate-700/50 bg-slate-900/40 p-3">
+                <p className="text-xs uppercase tracking-wide text-ink-dim">SMS</p>
+                <p className="mt-1 text-sm font-bold text-cyan-300">{credentials.notificationStatus.sms || "SKIPPED"}</p>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex gap-3">
@@ -182,8 +209,21 @@ function DetailModal({ parent, onClose, t }: { parent: Parent; onClose: () => vo
         </button>
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.15em] text-brand-300 mb-1">{t("pmParentId")}: {parent.id}</p>
-          <h2 className="font-display text-2xl font-bold text-white">{parent.fullName}</h2>
-          <p className="text-xs text-ink-dim mt-1">{t("pmRegisteredOn")} {new Date(parent.createdAt).toLocaleDateString()}</p>
+          <div className="flex items-center gap-4">
+            <div className="h-16 w-16 overflow-hidden rounded-2xl border border-slate-700/60 bg-gradient-to-br from-brand-500 to-accent shrink-0">
+              {parent.photoUrl ? (
+                <img src={parent.photoUrl} alt={parent.fullName} className="h-full w-full object-cover" />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-xl font-black text-white">
+                  {parent.fullName.charAt(0).toUpperCase()}
+                </div>
+              )}
+            </div>
+            <div>
+              <h2 className="font-display text-2xl font-bold text-white">{parent.fullName}</h2>
+              <p className="text-xs text-ink-dim mt-1">{t("pmRegisteredOn")} {new Date(parent.createdAt).toLocaleDateString()}</p>
+            </div>
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="rounded-xl bg-slate-900/40 border border-slate-700/50 p-3">
@@ -274,6 +314,7 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
       prenom: initial.prenom,
       phone: initial.phone,
       email: initial.email,
+      photoUrl: initial.photoUrl || "",
       students: initial.students.map((s) => ({
         fullName: s.fullName,
         classId: s.classId,
@@ -299,6 +340,33 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
 
   const addStudent = () => setForm((f) => ({ ...f, students: [...f.students, { ...EMPTY_STUDENT }] }));
   const removeStudent = (idx: number) => setForm((f) => ({ ...f, students: f.students.filter((_, i) => i !== idx) }));
+
+  const handlePhoto = (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setErrors((e) => ({ ...e, photoUrl: "Veuillez choisir une image valide." }));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const size = 360;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        const minSide = Math.min(image.width, image.height);
+        const sx = (image.width - minSide) / 2;
+        const sy = (image.height - minSide) / 2;
+        ctx.drawImage(image, sx, sy, minSide, minSide, 0, 0, size, size);
+        set("photoUrl", canvas.toDataURL("image/jpeg", 0.78));
+      };
+      image.src = String(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -333,6 +401,32 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
         </div>
 
         {/* Parent fields */}
+        <div className="flex flex-wrap items-center gap-4 rounded-xl border border-slate-700/50 bg-slate-900/30 p-4">
+          <div className="h-20 w-20 overflow-hidden rounded-2xl border border-slate-700/70 bg-gradient-to-br from-brand-500 to-accent shrink-0">
+            {form.photoUrl ? (
+              <img src={form.photoUrl} alt="Photo du parent" className="h-full w-full object-cover" />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-2xl font-black text-white">
+                {(form.prenom || form.nom || "?").charAt(0).toUpperCase()}
+              </div>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-bold text-white">Photo du parent</p>
+            <p className="mt-1 text-xs text-ink-dim">Ajoutez une photo claire pour reconnaitre rapidement le parent dans les suivis et les recus.</p>
+          </div>
+          <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg bg-brand-500/20 px-4 py-2 text-sm font-semibold text-brand-200 hover:bg-brand-500/30">
+            <CameraIcon /> Choisir
+            <input type="file" accept="image/*" className="hidden" onChange={(event) => handlePhoto(event.target.files?.[0])} />
+          </label>
+          {form.photoUrl && (
+            <button type="button" onClick={() => set("photoUrl", "")} className="rounded-lg border border-slate-600 px-4 py-2 text-sm font-semibold text-ink-dim hover:text-white">
+              Retirer
+            </button>
+          )}
+          {errors.photoUrl && <p className="w-full text-xs text-danger">{errors.photoUrl}</p>}
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="space-y-1">
             <label className="text-xs font-semibold text-ink-dim uppercase tracking-[0.1em]">{t("pmNom")} *</label>
@@ -473,13 +567,14 @@ export function ParentsManagementPage() {
       if (id) {
         await api(`/api/parents/${id}`, { method: "PUT", body: JSON.stringify(body) });
       } else {
-        const created = await api<Parent & { temporaryPassword?: string }>("/api/parents", { method: "POST", body: JSON.stringify(body) });
+        const created = await api<Parent & { temporaryPassword?: string; notificationStatus?: ParentCredentials["notificationStatus"] }>("/api/parents", { method: "POST", body: JSON.stringify(body) });
         if (created.temporaryPassword) {
           setCredentials({
             parentId: created.id,
             parentName: created.fullName,
             email: created.email,
-            temporaryPassword: created.temporaryPassword
+            temporaryPassword: created.temporaryPassword,
+            notificationStatus: created.notificationStatus
           });
         }
       }
@@ -634,8 +729,12 @@ export function ParentsManagementPage() {
                     </td>
                     <td className="py-4 px-5">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-accent shrink-0 flex items-center justify-center text-white text-xs font-bold">
-                          {parent.fullName.charAt(0).toUpperCase()}
+                        <div className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-brand-500 to-accent shrink-0 flex items-center justify-center text-white text-xs font-bold border border-slate-700/60">
+                          {parent.photoUrl ? (
+                            <img src={parent.photoUrl} alt={parent.fullName} className="h-full w-full object-cover" />
+                          ) : (
+                            parent.fullName.charAt(0).toUpperCase()
+                          )}
                         </div>
                         <div>
                           <p className="font-semibold text-white">{parent.fullName}</p>

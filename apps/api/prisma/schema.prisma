@@ -73,6 +73,7 @@ model Parent {
   fullName          String
   phone             String
   email             String
+  photoUrl          String?
   preferredLanguage String   @default("fr")
   createdAt         DateTime @default(now())
   school            School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
