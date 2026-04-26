@@ -1,9 +1,8 @@
 import { Router } from "express";
-import nodemailer from "nodemailer";
 import { z } from "zod";
 import { prisma } from "../../prisma";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
-import { env } from "../../config/env";
+import { sendEmail, sendSms } from "../../utils/messaging";
 
 const sendSchema = z.object({
   parentId: z.string(),
@@ -12,15 +11,6 @@ const sendSchema = z.object({
   channel: z.enum(["SMS", "EMAIL"]),
   subject: z.string().optional(),
   body: z.string().min(3)
-});
-
-const transporter = nodemailer.createTransport({
-  host: env.SMTP_HOST,
-  port: Number(env.SMTP_PORT),
-  auth: {
-    user: env.SMTP_USER,
-    pass: env.SMTP_PASS
-  }
 });
 
 export const notificationRouter = Router();
@@ -32,18 +22,13 @@ notificationRouter.post("/send", authorize("ADMIN", "ACCOUNTANT"), async (req: A
 
   if (!parent) return res.status(404).json({ message: "Parent introuvable" });
 
-  if (payload.channel === "EMAIL") {
-    await transporter.sendMail({
-      from: env.SMTP_USER,
+  const status = payload.channel === "EMAIL"
+    ? await sendEmail({
       to: parent.email,
       subject: payload.subject || "Notification EduPay",
       text: payload.body
-    });
-  }
-
-  if (payload.channel === "SMS") {
-    // Stub AfrikTalk integration point.
-  }
+    })
+    : await sendSms({ to: parent.phone, text: payload.body });
 
   const log = await prisma.notificationLog.create({
     data: {
@@ -53,7 +38,7 @@ notificationRouter.post("/send", authorize("ADMIN", "ACCOUNTANT"), async (req: A
       language: payload.language,
       channel: payload.channel,
       content: payload.body,
-      status: "SENT"
+      status
     }
   });
 

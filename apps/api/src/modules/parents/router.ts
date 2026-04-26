@@ -1,10 +1,9 @@
 import { Router } from "express";
 import { z } from "zod";
 import bcrypt from "bcrypt";
-import nodemailer from "nodemailer";
 import { prisma } from "../../prisma";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
-import { env } from "../../config/env";
+import { sendEmail, sendSms } from "../../utils/messaging";
 
 const studentInputSchema = z.object({
   fullName: z.string().min(1),
@@ -28,14 +27,6 @@ function generateTemporaryPassword() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
   const pick = (length: number) => Array.from({ length }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
   return `KCS-${pick(4)}-${pick(4)}`;
-}
-
-function hasSmtpConfig() {
-  return Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.SMTP_PASS !== "CHANGE_ME");
-}
-
-function hasSmsConfig() {
-  return Boolean(env.AFRIKTALK_API_URL && env.AFRIKTALK_API_KEY && env.AFRIKTALK_API_KEY !== "CHANGE_ME");
 }
 
 function buildParentWelcomeMessages(parent: any, temporaryPassword: string, loginEmail: string) {
@@ -77,28 +68,11 @@ async function sendParentWelcomeNotifications(parent: any, temporaryPassword: st
   };
 
   if (parent.email) {
-    try {
-      if (hasSmtpConfig()) {
-        const transporter = nodemailer.createTransport({
-          host: env.SMTP_HOST,
-          port: Number(env.SMTP_PORT),
-          auth: { user: env.SMTP_USER, pass: env.SMTP_PASS }
-        });
-        await transporter.sendMail({
-          from: env.SMTP_USER,
-          to: parent.email,
-          subject: messages.subject,
-          text: messages.emailBody
-        });
-        status.email = "SENT";
-      } else {
-        console.log(`[parent-welcome-email:dry-run] To: ${parent.email}\nSubject: ${messages.subject}\n${messages.emailBody}`);
-        status.email = "SIMULATED";
-      }
-    } catch (error) {
-      console.error("Parent welcome email failed", error);
-      status.email = "FAILED";
-    }
+    status.email = await sendEmail({
+      to: parent.email,
+      subject: messages.subject,
+      text: messages.emailBody
+    });
     await prisma.notificationLog.create({
       data: {
         schoolId,
@@ -113,30 +87,7 @@ async function sendParentWelcomeNotifications(parent: any, temporaryPassword: st
   }
 
   if (parent.phone) {
-    try {
-      if (hasSmsConfig()) {
-        const response = await fetch(env.AFRIKTALK_API_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${env.AFRIKTALK_API_KEY}`
-          },
-          body: JSON.stringify({
-            sender: env.AFRIKTALK_SENDER,
-            to: parent.phone,
-            message: messages.smsBody
-          })
-        });
-        if (!response.ok) throw new Error(`SMS provider responded with ${response.status}`);
-        status.sms = "SENT";
-      } else {
-        console.log(`[parent-welcome-sms:dry-run] To: ${parent.phone}\n${messages.smsBody}`);
-        status.sms = "SIMULATED";
-      }
-    } catch (error) {
-      console.error("Parent welcome SMS failed", error);
-      status.sms = "FAILED";
-    }
+    status.sms = await sendSms({ to: parent.phone, text: messages.smsBody });
     await prisma.notificationLog.create({
       data: {
         schoolId,

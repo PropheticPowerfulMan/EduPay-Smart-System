@@ -5,6 +5,7 @@ import { z } from "zod";
 import { prisma } from "../../prisma";
 import { env } from "../../config/env";
 import { authGuard, AuthenticatedRequest } from "../../middlewares/auth";
+import { sendEmail } from "../../utils/messaging";
 
 const registerSchema = z.object({
   fullName: z.string().min(3),
@@ -98,7 +99,26 @@ authRouter.post("/forgot-password", async (req, res) => {
   const payload = z.object({ email: z.string().email() }).safeParse(req.body);
   if (!payload.success) return res.json({ message: "Si cet email existe, un lien de reinitialisation sera envoye." });
 
-  console.log(`[forgot-password] Reset requested for: ${payload.data.email}`);
+  try {
+    const user = await prisma.user.findUnique({ where: { email: payload.data.email } });
+    if (user) {
+      await sendEmail({
+        to: user.email,
+        subject: "Demande de reinitialisation EduPay",
+        text: [
+          `Bonjour ${user.fullName},`,
+          "",
+          "Une demande de reinitialisation de mot de passe a ete recue pour votre compte EduPay.",
+          "Veuillez contacter l'administration de l'ecole pour recevoir un mot de passe temporaire securise.",
+          "",
+          "Si vous n'etes pas a l'origine de cette demande, ignorez ce message."
+        ].join("\n")
+      });
+    }
+  } catch (error) {
+    console.error("Forgot password email flow failed", error);
+  }
+
   return res.json({ message: "Si cet email existe, un lien de reinitialisation sera envoye." });
 });
 
@@ -118,6 +138,17 @@ authRouter.post("/change-password", authGuard, async (req: AuthenticatedRequest,
   await prisma.user.update({
     where: { id: user.id },
     data: { passwordHash }
+  });
+
+  await sendEmail({
+    to: user.email,
+    subject: "Mot de passe EduPay modifie",
+    text: [
+      `Bonjour ${user.fullName},`,
+      "",
+      "Votre mot de passe EduPay vient d'etre modifie avec succes.",
+      "Si vous n'avez pas effectue cette action, contactez immediatement l'administration de l'ecole."
+    ].join("\n")
   });
 
   return res.json({ message: "Mot de passe modifie avec succes." });

@@ -13,6 +13,7 @@ const envSchema = z.object({
   SMTP_HOST: z.string().default("smtp.example.com"),
   SMTP_PORT: z.string().default("587"),
   SMTP_USER: z.string().default("school@example.com"),
+  SMTP_FROM: z.string().default(""),
   SMTP_PASS: z.string().default("CHANGE_ME"),
   AFRIKTALK_API_KEY: z.string().default("CHANGE_ME"),
   AFRIKTALK_API_URL: z.string().default(""),

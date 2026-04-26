@@ -2,11 +2,10 @@ import { Router } from "express";
 import dayjs from "dayjs";
 import PDFDocument from "pdfkit";
 import { PNG } from "pngjs";
-import nodemailer from "nodemailer";
 import { z } from "zod";
 import { prisma } from "../../prisma";
-import { env } from "../../config/env";
 import { amountToWords } from "../../utils/amount-words";
+import { sendEmail, sendSms } from "../../utils/messaging";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
 
 const createPaymentSchema = z.object({
@@ -73,14 +72,6 @@ function generateReceiptPng() {
     }
   }
   return PNG.sync.write(png);
-}
-
-function hasSmtpConfig() {
-  return Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.SMTP_PASS !== "CHANGE_ME");
-}
-
-function hasSmsConfig() {
-  return Boolean(env.AFRIKTALK_API_URL && env.AFRIKTALK_API_KEY && env.AFRIKTALK_API_KEY !== "CHANGE_ME");
 }
 
 function getMethodLabel(method: string) {
@@ -157,28 +148,11 @@ async function sendPaymentNotifications(input: {
   };
 
   if (input.parent.email) {
-    try {
-      if (hasSmtpConfig()) {
-        const transporter = nodemailer.createTransport({
-          host: env.SMTP_HOST,
-          port: Number(env.SMTP_PORT),
-          auth: { user: env.SMTP_USER, pass: env.SMTP_PASS }
-        });
-        await transporter.sendMail({
-          from: env.SMTP_USER,
-          to: input.parent.email,
-          subject: messages.subject,
-          text: messages.emailBody
-        });
-        status.email = "SENT";
-      } else {
-        console.log(`[payment-email:dry-run] To: ${input.parent.email}\nSubject: ${messages.subject}\n${messages.emailBody}`);
-        status.email = "SIMULATED";
-      }
-    } catch (error) {
-      console.error("Payment email notification failed", error);
-      status.email = "FAILED";
-    }
+    status.email = await sendEmail({
+      to: input.parent.email,
+      subject: messages.subject,
+      text: messages.emailBody
+    });
     await prisma.notificationLog.create({
       data: {
         schoolId: input.schoolId,
@@ -193,30 +167,7 @@ async function sendPaymentNotifications(input: {
   }
 
   if (input.parent.phone) {
-    try {
-      if (hasSmsConfig()) {
-        const response = await fetch(env.AFRIKTALK_API_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${env.AFRIKTALK_API_KEY}`
-          },
-          body: JSON.stringify({
-            sender: env.AFRIKTALK_SENDER,
-            to: input.parent.phone,
-            message: messages.smsBody
-          })
-        });
-        if (!response.ok) throw new Error(`SMS provider responded with ${response.status}`);
-        status.sms = "SENT";
-      } else {
-        console.log(`[payment-sms:dry-run] To: ${input.parent.phone}\n${messages.smsBody}`);
-        status.sms = "SIMULATED";
-      }
-    } catch (error) {
-      console.error("Payment SMS notification failed", error);
-      status.sms = "FAILED";
-    }
+    status.sms = await sendSms({ to: input.parent.phone, text: messages.smsBody });
     await prisma.notificationLog.create({
       data: {
         schoolId: input.schoolId,
