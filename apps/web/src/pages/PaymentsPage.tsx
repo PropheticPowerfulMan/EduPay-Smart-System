@@ -347,6 +347,14 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
     COMPLETED: "Réglé", PENDING: "En attente", FAILED: "Échoué",
   };
 
+  const brand = {
+    schoolName: escapeHtml(schoolBranding.schoolName),
+    shortName: escapeHtml(schoolBranding.shortName),
+    appName: escapeHtml(schoolBranding.appName),
+    tagline: escapeHtml(schoolBranding.tagline),
+    logoSrc: escapeHtml(schoolBranding.logoSrc)
+  };
+
   const byMethod = filtered.reduce<Record<string, number>>((acc, p) => {
     acc[p.method] = (acc[p.method] ?? 0) + p.amount;
     return acc;
@@ -408,15 +416,60 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
   <style>
     @page { size: A4 portrait; margin: 15mm 18mm; }
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family: Arial, Helvetica, sans-serif; color: #0d1b2a; background: #fff; font-size: 12px; }
+    body { position:relative; font-family: Arial, Helvetica, sans-serif; color: #0d1b2a; background: #fff; font-size: 12px; }
+    .page-shell { position:relative; z-index:1; }
+    .watermark-text {
+      position:fixed;
+      inset:0;
+      z-index:0;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:118px;
+      font-weight:900;
+      letter-spacing:18px;
+      color:rgba(30,58,95,0.055);
+      transform:rotate(-24deg);
+      pointer-events:none;
+      user-select:none;
+    }
+    .watermark-logo {
+      position:fixed;
+      left:50%;
+      top:52%;
+      z-index:0;
+      width:420px;
+      max-width:62vw;
+      opacity:0.035;
+      transform:translate(-50%, -50%) rotate(-12deg);
+      pointer-events:none;
+      user-select:none;
+    }
+    .header-logo {
+      width:58px;
+      height:58px;
+      object-fit:contain;
+      border:1px solid #cbd5e1;
+      border-radius:999px;
+      background:#fff;
+      padding:4px;
+      margin-right:14px;
+    }
     @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
   </style>
 </head>
 <body>
+  <div class="watermark-text">${brand.shortName}</div>
+  <img class="watermark-logo" src="${brand.logoSrc}" alt=""/>
+  <div class="page-shell">
   <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px double #1e3a5f; padding-bottom:14px; margin-bottom:20px;">
-    <div>
-      <div style="font-size:20px; font-weight:bold; color:#1e3a5f; letter-spacing:1px">EduPay Smart School</div>
-      <div style="font-size:11px; color:#64748b; margin-top:3px">Système de gestion des paiements - Tous montants en USD (dollars américains)</div>
+    <div style="display:flex; align-items:center;">
+      <img class="header-logo" src="${brand.logoSrc}" alt="Logo ${brand.schoolName}"/>
+      <div>
+        <div style="font-size:20px; font-weight:bold; color:#1e3a5f; letter-spacing:1px">${brand.schoolName}</div>
+        <div style="font-size:12px; font-weight:bold; color:#334155; margin-top:2px">${brand.shortName} - ${brand.tagline}</div>
+        <div style="font-size:11px; color:#64748b; margin-top:3px">${brand.appName} - Tous montants en USD (dollars am�ricains)</div>
+      </div>
     </div>
     <div style="text-align:right;">
       <div style="font-size:11px; color:#64748b">Imprimé le</div>
@@ -468,8 +521,9 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
     <span style="font-size:22px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${grandTotal.toFixed(5)}</span>
   </div>
   <div style="margin-top:28px; text-align:center; font-size:10px; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:14px;">
-    Document généré officiellement par <strong>EduPay Smart System</strong> -
+    Document g�n�r� officiellement par <strong>${brand.appName}</strong> pour <strong>${brand.schoolName}</strong> -
     ${new Date().toLocaleString("fr-FR")}
+  </div>
   </div>
 </body>
 </html>`;
