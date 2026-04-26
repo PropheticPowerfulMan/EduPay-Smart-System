@@ -2,8 +2,10 @@ import { Router } from "express";
 import dayjs from "dayjs";
 import PDFDocument from "pdfkit";
 import { PNG } from "pngjs";
+import nodemailer from "nodemailer";
 import { z } from "zod";
 import { prisma } from "../../prisma";
+import { env } from "../../config/env";
 import { amountToWords } from "../../utils/amount-words";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
 
@@ -15,8 +17,15 @@ const createPaymentSchema = z.object({
   amount: z.number().positive(),
   method: z.enum(["CASH", "AIRTEL_MONEY", "MPESA", "ORANGE_MONEY"]),
   status: z.enum(["COMPLETED", "PENDING", "FAILED"]).default("COMPLETED"),
-  transactionNumber: z.string().optional()
+  transactionNumber: z.string().optional(),
+  notifyParent: z.boolean().optional()
 });
+
+const notificationSettingsSchema = z.object({
+  paymentNotificationsEnabled: z.boolean()
+});
+
+let paymentNotificationsEnabled = true;
 
 function generateTxNumber() {
   return `TX-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -66,8 +75,176 @@ function generateReceiptPng() {
   return PNG.sync.write(png);
 }
 
+function hasSmtpConfig() {
+  return Boolean(env.SMTP_HOST && env.SMTP_USER && env.SMTP_PASS && env.SMTP_PASS !== "CHANGE_ME");
+}
+
+function hasSmsConfig() {
+  return Boolean(env.AFRIKTALK_API_URL && env.AFRIKTALK_API_KEY && env.AFRIKTALK_API_KEY !== "CHANGE_ME");
+}
+
+function getMethodLabel(method: string) {
+  const labels: Record<string, string> = {
+    CASH: "Cash / Especes",
+    AIRTEL_MONEY: "Airtel Money",
+    MPESA: "M-Pesa",
+    ORANGE_MONEY: "Orange Money"
+  };
+  return labels[method] ?? method;
+}
+
+function getStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    COMPLETED: "Regle",
+    PENDING: "En attente",
+    FAILED: "Echoue"
+  };
+  return labels[status] ?? status;
+}
+
+function buildPaymentNotificationMessages(input: {
+  parent: { id: string; fullName: string; phone: string; email: string; preferredLanguage?: string | null };
+  transactionNumber: string;
+  reason: string;
+  amount: number;
+  method: string;
+  status: string;
+  createdAt: Date;
+  students: Array<{ fullName: string }>;
+}) {
+  const studentLines = input.students.length
+    ? input.students.map((student) => `- ${student.fullName}`).join("\n")
+    : "- Aucun eleve precise";
+  const amount = `$ ${input.amount.toFixed(5)} USD`;
+  const date = input.createdAt.toLocaleString("fr-FR");
+  const subject = `Confirmation de paiement ${input.transactionNumber}`;
+  const emailBody = [
+    `Bonjour ${input.parent.fullName},`,
+    "",
+    "Un paiement vient d'etre enregistre dans EduPay.",
+    "",
+    `Transaction: ${input.transactionNumber}`,
+    `Date: ${date}`,
+    `Motif: ${input.reason}`,
+    `Montant: ${amount}`,
+    `Mode de paiement: ${getMethodLabel(input.method)}`,
+    `Statut: ${getStatusLabel(input.status)}`,
+    "",
+    "Eleves concernes:",
+    studentLines,
+    "",
+    "Merci de conserver ce message comme confirmation de suivi."
+  ].join("\n");
+  const smsBody = `EduPay: paiement ${input.transactionNumber}. Parent: ${input.parent.fullName}. Motif: ${input.reason}. Montant: ${amount}. Statut: ${getStatusLabel(input.status)}.`;
+  return { subject, emailBody, smsBody };
+}
+
+async function sendPaymentNotifications(input: {
+  schoolId: string;
+  parent: { id: string; fullName: string; phone: string; email: string; preferredLanguage?: string | null };
+  transactionNumber: string;
+  reason: string;
+  amount: number;
+  method: string;
+  status: string;
+  createdAt: Date;
+  students: Array<{ fullName: string }>;
+}) {
+  const messages = buildPaymentNotificationMessages(input);
+  const status = {
+    email: input.parent.email ? "PENDING" : "SKIPPED",
+    sms: input.parent.phone ? "PENDING" : "SKIPPED"
+  };
+
+  if (input.parent.email) {
+    try {
+      if (hasSmtpConfig()) {
+        const transporter = nodemailer.createTransport({
+          host: env.SMTP_HOST,
+          port: Number(env.SMTP_PORT),
+          auth: { user: env.SMTP_USER, pass: env.SMTP_PASS }
+        });
+        await transporter.sendMail({
+          from: env.SMTP_USER,
+          to: input.parent.email,
+          subject: messages.subject,
+          text: messages.emailBody
+        });
+        status.email = "SENT";
+      } else {
+        console.log(`[payment-email:dry-run] To: ${input.parent.email}\nSubject: ${messages.subject}\n${messages.emailBody}`);
+        status.email = "SIMULATED";
+      }
+    } catch (error) {
+      console.error("Payment email notification failed", error);
+      status.email = "FAILED";
+    }
+    await prisma.notificationLog.create({
+      data: {
+        schoolId: input.schoolId,
+        parentId: input.parent.id,
+        type: "CONFIRMATION",
+        language: input.parent.preferredLanguage || "fr",
+        channel: "EMAIL",
+        content: messages.emailBody,
+        status: status.email
+      }
+    }).catch((error) => console.error("Payment email notification log failed", error));
+  }
+
+  if (input.parent.phone) {
+    try {
+      if (hasSmsConfig()) {
+        const response = await fetch(env.AFRIKTALK_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${env.AFRIKTALK_API_KEY}`
+          },
+          body: JSON.stringify({
+            sender: env.AFRIKTALK_SENDER,
+            to: input.parent.phone,
+            message: messages.smsBody
+          })
+        });
+        if (!response.ok) throw new Error(`SMS provider responded with ${response.status}`);
+        status.sms = "SENT";
+      } else {
+        console.log(`[payment-sms:dry-run] To: ${input.parent.phone}\n${messages.smsBody}`);
+        status.sms = "SIMULATED";
+      }
+    } catch (error) {
+      console.error("Payment SMS notification failed", error);
+      status.sms = "FAILED";
+    }
+    await prisma.notificationLog.create({
+      data: {
+        schoolId: input.schoolId,
+        parentId: input.parent.id,
+        type: "CONFIRMATION",
+        language: input.parent.preferredLanguage || "fr",
+        channel: "SMS",
+        content: messages.smsBody,
+        status: status.sms
+      }
+    }).catch((error) => console.error("Payment SMS notification log failed", error));
+  }
+
+  return status;
+}
+
 export const paymentRouter = Router();
 paymentRouter.use(authGuard);
+
+paymentRouter.get("/settings/notifications", authorize("ADMIN", "ACCOUNTANT"), (_req, res) => {
+  return res.json({ paymentNotificationsEnabled });
+});
+
+paymentRouter.put("/settings/notifications", authorize("ADMIN"), (req, res) => {
+  const payload = notificationSettingsSchema.parse(req.body);
+  paymentNotificationsEnabled = payload.paymentNotificationsEnabled;
+  return res.json({ paymentNotificationsEnabled });
+});
 
 paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
   let payload: z.infer<typeof createPaymentSchema>;
@@ -93,15 +270,19 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
       return res.status(409).json({ message: "Paiement dupliqué détecté" });
     }
 
+    let parent = null as null | Awaited<ReturnType<typeof prisma.parent.findFirst>>;
     let parentId = payload.parentId;
     if (!parentId) {
-      const parent = await prisma.parent.findFirst({
+      parent = await prisma.parent.findFirst({
         where: {
           schoolId: req.user!.schoolId,
           fullName: payload.parentFullName
         }
       });
       parentId = parent?.id;
+    }
+    if (!parent && parentId) {
+      parent = await prisma.parent.findFirst({ where: { id: parentId, schoolId: req.user!.schoolId } });
     }
     if (!parentId) {
       throw new Error("Parent introuvable pour ce paiement");
@@ -126,13 +307,30 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
     });
 
     const paymentWithRelations = payment as typeof payment & { parent?: { fullName: string } | null };
+    const shouldNotify = payload.notifyParent ?? paymentNotificationsEnabled;
+    const notificationStatus = shouldNotify && payment.parent
+      ? await sendPaymentNotifications({
+        schoolId: req.user!.schoolId,
+        parent: payment.parent,
+        transactionNumber: payment.transactionNumber,
+        reason: payment.reason,
+        amount: payment.amount,
+        method: payment.method,
+        status: payment.status,
+        createdAt: payment.createdAt,
+        students: payment.students
+      })
+      : { email: shouldNotify ? "SKIPPED" : "DISABLED", sms: shouldNotify ? "SKIPPED" : "DISABLED" };
+
     return res.status(201).json({
       payment: {
         ...payment,
         parentFullName: payload.parentFullName ?? paymentWithRelations.parent?.fullName
-      }
+      },
+      notificationStatus
     });
   } catch (_dbErr) {
+    const shouldNotify = payload.notifyParent ?? paymentNotificationsEnabled;
     // Demo mode — no DB available
     return res.status(201).json({
       payment: {
@@ -145,7 +343,8 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
         method: payload.method,
         status: payload.status,
         createdAt: new Date().toISOString()
-      }
+      },
+      notificationStatus: { email: shouldNotify ? "SIMULATED" : "DISABLED", sms: shouldNotify ? "SIMULATED" : "DISABLED" }
     });
   }
 });

@@ -216,6 +216,8 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
     .receipt { position:relative; width:196mm; min-height:134mm; margin:0 auto; border:1.2mm double #123047; padding:7mm; overflow:hidden; }
     .receipt:before { content:""; position:absolute; inset:0; background:linear-gradient(135deg, rgba(18,48,71,.05), transparent 32%, rgba(180,83,9,.05)); pointer-events:none; }
     .watermark { position:absolute; inset:19mm 12mm auto; text-align:center; font-size:30mm; font-weight:900; letter-spacing:4mm; color:rgba(18,48,71,.035); transform:rotate(-10deg); pointer-events:none; }
+    .seal-watermark { position:absolute; inset:30mm 0 auto; display:flex; justify-content:center; pointer-events:none; opacity:.055; }
+    .seal-watermark img { width:70mm; height:70mm; object-fit:contain; transform:rotate(-9deg); }
     .micro { position:absolute; left:5mm; right:5mm; bottom:2.5mm; color:#94a3b8; font-size:5.6px; letter-spacing:.8px; white-space:nowrap; overflow:hidden; }
     .top { position:relative; display:grid; grid-template-columns:1.1fr .9fr; gap:8mm; border-bottom:2px solid #123047; padding-bottom:4mm; }
     .brand { display:flex; gap:4mm; align-items:center; }
@@ -244,8 +246,7 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
     .box-title { font-size:8px; font-weight:900; color:#475569; text-transform:uppercase; letter-spacing:.9px; }
     .line { border-top:1px solid #475569; padding-top:1mm; text-align:center; font-size:7.5px; color:#64748b; }
     .stamp { align-items:center; justify-content:center; text-align:center; border-style:solid; }
-    .stamp-circle { width:19mm; height:19mm; border:1px solid #123047; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:auto; background:#fff; overflow:hidden; }
-    .stamp-circle img { width:15mm; height:15mm; object-fit:contain; opacity:.88; }
+    .stamp-circle { width:22mm; height:22mm; border:1px dashed #123047; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:auto; background:#fff; color:#94a3b8; font-size:6.5px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; }
     .warning { margin-top:3mm; border-left:3px solid #b45309; background:#fffbeb; color:#78350f; padding:2mm; font-size:8px; }
     .footer { margin-top:4mm; display:flex; justify-content:space-between; color:#64748b; font-size:8px; border-top:1px solid #dbe4ef; padding-top:2mm; }
     @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } .receipt { margin:0; } }
@@ -254,6 +255,7 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
 <body>
 <div class="receipt">
   <div class="watermark">${safe.shortName}</div>
+  <div class="seal-watermark"><img src="${safe.logoSrc}" alt="${safe.shortName}"/></div>
   <div class="top">
     <div class="brand">
       <img class="logo" src="${safe.logoSrc}" alt="${safe.schoolName}"/>
@@ -303,7 +305,7 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
         </div>
         <div class="box stamp">
           <div class="box-title">Sceau de l'école</div>
-          <div class="stamp-circle"><img src="${safe.logoSrc}" alt="${safe.shortName}"/></div>
+          <div class="stamp-circle">Emplacement reserve</div>
         </div>
       </div>
     </div>
@@ -510,6 +512,8 @@ const EMPTY_FORM: FormState = {
   parentFullName: "", reason: "", amount: "", method: "CASH", status: "COMPLETED",
 };
 
+const PAYMENT_NOTIFICATION_STORAGE_KEY = "edupay-payment-notifications-enabled";
+
 const STORAGE_KEY = "edupay_payments_v2";
 
 function loadPayments(): PaymentRecord[] {
@@ -595,6 +599,9 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
       <div className="pointer-events-none absolute inset-x-8 top-20 -rotate-6 text-center text-7xl font-black tracking-[0.28em] text-slate-900/[0.035]">
         {schoolBranding.shortName}
       </div>
+      <div className="pointer-events-none absolute inset-x-0 top-24 flex justify-center opacity-[0.055]">
+        <img src={schoolBranding.logoSrc} alt="" className="h-72 w-72 -rotate-6 object-contain" />
+      </div>
       <div className="relative grid gap-4 border-b-2 border-slate-800 pb-4 sm:grid-cols-[1.1fr_0.9fr]">
         <div className="flex items-center gap-4">
           <img
@@ -671,8 +678,8 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
             </div>
             <div className="flex min-h-24 flex-col items-center justify-between border border-slate-600 p-3 text-center">
               <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Sceau de l'école</p>
-              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-slate-900 bg-white p-1">
-                <img src={schoolBranding.logoSrc} alt={schoolBranding.shortName} className="h-full w-full object-contain opacity-90" />
+              <div className="flex h-20 w-20 items-center justify-center rounded-full border border-dashed border-slate-900 bg-white p-2 text-[9px] font-black uppercase tracking-wide text-slate-400">
+                Emplacement reserve
               </div>
             </div>
           </div>
@@ -698,6 +705,10 @@ export function PaymentsPage() {
   const [apiError, setApiError]             = useState<string | null>(null);
   const [saving, setSaving]                 = useState(false);
   const [currentReceipt, setCurrentReceipt] = useState<PaymentRecord | null>(null);
+  const [paymentNotificationsEnabled, setPaymentNotificationsEnabled] = useState(() => {
+    return localStorage.getItem(PAYMENT_NOTIFICATION_STORAGE_KEY) !== "false";
+  });
+  const [notificationStatus, setNotificationStatus] = useState<string | null>(null);
   // Historique
   const [searchQuery, setSearchQuery]       = useState("");
   const [filterStatus, setFilterStatus]     = useState("ALL");
@@ -706,6 +717,33 @@ export function PaymentsPage() {
   const [reportSearch, setReportSearch]     = useState("");
 
   useEffect(() => { savePayments(payments); }, [payments]);
+
+  useEffect(() => {
+    api<{ paymentNotificationsEnabled: boolean }>("/api/payments/settings/notifications")
+      .then((settings) => {
+        setPaymentNotificationsEnabled(settings.paymentNotificationsEnabled);
+        localStorage.setItem(PAYMENT_NOTIFICATION_STORAGE_KEY, String(settings.paymentNotificationsEnabled));
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const togglePaymentNotifications = async () => {
+    const next = !paymentNotificationsEnabled;
+    setPaymentNotificationsEnabled(next);
+    localStorage.setItem(PAYMENT_NOTIFICATION_STORAGE_KEY, String(next));
+    setNotificationStatus(next ? "Notifications de paiement activees." : "Notifications de paiement desactivees.");
+    try {
+      const saved = await api<{ paymentNotificationsEnabled: boolean }>("/api/payments/settings/notifications", {
+        method: "PUT",
+        body: JSON.stringify({ paymentNotificationsEnabled: next })
+      });
+      setPaymentNotificationsEnabled(saved.paymentNotificationsEnabled);
+      localStorage.setItem(PAYMENT_NOTIFICATION_STORAGE_KEY, String(saved.paymentNotificationsEnabled));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Reglage conserve localement.";
+      setNotificationStatus(`Reglage local applique. API: ${message}`);
+    }
+  };
 
   const amountNum = parseFloat(form.amount) || 0;
   const amountWords = useMemo(() => {
@@ -766,7 +804,7 @@ export function PaymentsPage() {
     };
 
     try {
-      const created = await api<{ payment: { id: string } }>("/api/payments", {
+      const created = await api<{ payment: { id: string }; notificationStatus?: { email?: string; sms?: string } }>("/api/payments", {
         method: "POST",
         body: JSON.stringify({
           parentFullName: record.parentFullName,
@@ -775,9 +813,13 @@ export function PaymentsPage() {
           method: record.method,
           transactionNumber: txNumber,
           status: record.status,
+          notifyParent: paymentNotificationsEnabled,
         }),
       });
       record.id = created?.payment?.id ?? record.id;
+      if (created?.notificationStatus) {
+        setNotificationStatus(`Notification parent - Email: ${created.notificationStatus.email ?? "SKIPPED"} | SMS: ${created.notificationStatus.sms ?? "SKIPPED"}`);
+      }
     } catch { /* Mode démo - reçu généré même sans base de données */ }
 
     setPayments((prev) => [record, ...prev]);
@@ -1218,6 +1260,27 @@ export function PaymentsPage() {
 
       <NavBar />
       <StatsBanner />
+
+      <div className="card flex flex-col gap-4 border border-cyan-500/20 bg-cyan-500/5 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-sm font-bold text-white">Notifications parent apres paiement</p>
+          <p className="mt-1 text-xs text-ink-dim">
+            Quand ce systeme est actif, chaque paiement envoie automatiquement un email et un SMS au parent avec le detail de la transaction.
+          </p>
+          {notificationStatus && <p className="mt-2 text-xs font-semibold text-cyan-200">{notificationStatus}</p>}
+        </div>
+        <button
+          type="button"
+          onClick={() => void togglePaymentNotifications()}
+          className={`rounded-xl px-5 py-2.5 text-sm font-bold transition-all ${
+            paymentNotificationsEnabled
+              ? "bg-emerald-500/20 text-emerald-200 border border-emerald-500/40"
+              : "bg-slate-700/60 text-ink-dim border border-slate-600"
+          }`}
+        >
+          {paymentNotificationsEnabled ? "Active" : "Desactive"}
+        </button>
+      </div>
 
       <div className="card animate-fadeInUp">
         <h2 className="font-display text-xl font-bold text-white mb-6">{t("paymentDetails")}</h2>

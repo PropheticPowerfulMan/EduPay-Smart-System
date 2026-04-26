@@ -131,6 +131,55 @@ const mockPayments: any[] = [
   }
 ];
 
+let paymentNotificationsEnabled = true;
+
+function getPaymentMethodLabel(method: string) {
+  const labels: Record<string, string> = {
+    CASH: "Cash / Especes",
+    AIRTEL_MONEY: "Airtel Money",
+    MPESA: "M-Pesa",
+    ORANGE_MONEY: "Orange Money"
+  };
+  return labels[method] ?? method;
+}
+
+function getPaymentStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    COMPLETED: "Regle",
+    PENDING: "En attente",
+    FAILED: "Echoue"
+  };
+  return labels[status] ?? status;
+}
+
+function sendDemoPaymentNotifications(payment: any, parent: any, students: any[]) {
+  if (!parent) return { email: "SKIPPED", sms: "SKIPPED" };
+  const amount = `$ ${Number(payment.amount || 0).toFixed(5)} USD`;
+  const studentLines = students.length ? students.map((s) => `- ${s.fullName}`).join("\n") : "- Aucun eleve precise";
+  const emailBody = [
+    `Bonjour ${parent.fullName},`,
+    "",
+    "Un paiement vient d'etre enregistre dans EduPay.",
+    "",
+    `Transaction: ${payment.transactionNumber}`,
+    `Date: ${new Date(payment.createdAt).toLocaleString("fr-FR")}`,
+    `Motif: ${payment.reason}`,
+    `Montant: ${amount}`,
+    `Mode de paiement: ${getPaymentMethodLabel(payment.method)}`,
+    `Statut: ${getPaymentStatusLabel(payment.status)}`,
+    "",
+    "Eleves concernes:",
+    studentLines
+  ].join("\n");
+  const smsBody = `EduPay: paiement ${payment.transactionNumber}. Motif: ${payment.reason}. Montant: ${amount}. Statut: ${getPaymentStatusLabel(payment.status)}.`;
+  if (parent.email) console.log(`[payment-email:demo] To: ${parent.email}\n${emailBody}`);
+  if (parent.phone) console.log(`[payment-sms:demo] To: ${parent.phone}\n${smsBody}`);
+  return {
+    email: parent.email ? "SIMULATED" : "SKIPPED",
+    sms: parent.phone ? "SIMULATED" : "SKIPPED"
+  };
+}
+
 // Routes: Auth
 const loginSchema = z.object({ email: z.string().email(), password: z.string() });
 
@@ -355,23 +404,46 @@ app.get("/api/classes", authGuard, (_req: any, res) => {
 });
 
 // Routes: Payments
+app.get("/api/payments/settings/notifications", authGuard, (req: any, res) => {
+  if (!["ADMIN", "ACCOUNTANT"].includes(req.user?.role)) {
+    return res.status(403).json({ message: "Access denied" });
+  }
+  return res.json({ paymentNotificationsEnabled });
+});
+
+app.put("/api/payments/settings/notifications", authGuard, (req: any, res) => {
+  if (req.user?.role !== "ADMIN") {
+    return res.status(403).json({ message: "Access denied" });
+  }
+  paymentNotificationsEnabled = Boolean(req.body?.paymentNotificationsEnabled);
+  return res.json({ paymentNotificationsEnabled });
+});
+
 app.post("/api/payments", authGuard, (req: any, res) => {
-  const { parentId, studentIds, reason, amount, method } = req.body;
+  const { parentId, parentFullName, studentIds, reason, amount, method, status, transactionNumber, notifyParent } = req.body;
+  const parent = mockParents.find((p) => p.id === parentId || p.fullName === parentFullName);
+  const resolvedParentId = parentId || parent?.id;
   const payment = {
     id: `payment-${Date.now()}`,
-    transactionNumber: `TX-${Date.now()}-${Math.random() * 10000}`,
-    parentId,
+    transactionNumber: transactionNumber || `TX-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+    parentId: resolvedParentId,
+    parentFullName: parentFullName || parent?.fullName,
     reason,
     amount,
     amountInWords: `${amount} dollars americains`,
     method,
-    status: "COMPLETED",
+    status: status || "COMPLETED",
     createdAt: new Date(),
     schoolId: "school-1",
     students: studentIds
   };
   mockPayments.push(payment);
-  return res.status(201).json({ payment, receipt: { id: `receipt-${Date.now()}` } });
+  const shouldNotify = notifyParent ?? paymentNotificationsEnabled;
+  const relatedStudents = mockStudents.filter((s) => Array.isArray(studentIds) ? studentIds.includes(s.id) : s.parentId === resolvedParentId);
+  const notificationStatus = shouldNotify
+    ? sendDemoPaymentNotifications(payment, parent, relatedStudents)
+    : { email: "DISABLED", sms: "DISABLED" };
+  return res.status(201).json({ payment, receipt: { id: `receipt-${Date.now()}` }, notificationStatus });
 });
 
 app.get("/api/payments", authGuard, (_req: any, res) => {
