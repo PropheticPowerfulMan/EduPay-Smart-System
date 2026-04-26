@@ -86,9 +86,9 @@ function getMethodLabel(method: string) {
 
 function getStatusLabel(status: string) {
   const labels: Record<string, string> = {
-    COMPLETED: "Regle",
+    COMPLETED: "Réglé",
     PENDING: "En attente",
-    FAILED: "Echoue"
+    FAILED: "Échoué"
   };
   return labels[status] ?? status;
 }
@@ -112,7 +112,7 @@ function buildPaymentNotificationMessages(input: {
   const emailBody = [
     `Bonjour ${input.parent.fullName},`,
     "",
-    "Un paiement vient d'etre enregistre dans EduPay.",
+    "Un paiement vient d'être enregistré dans EduPay.",
     "",
     `Transaction: ${input.transactionNumber}`,
     `Date: ${date}`,

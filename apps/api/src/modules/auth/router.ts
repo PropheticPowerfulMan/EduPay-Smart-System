@@ -97,21 +97,21 @@ authRouter.post("/login", async (req, res) => {
 
 authRouter.post("/forgot-password", async (req, res) => {
   const payload = z.object({ email: z.string().email() }).safeParse(req.body);
-  if (!payload.success) return res.json({ message: "Si cet email existe, un lien de reinitialisation sera envoye." });
+  if (!payload.success) return res.json({ message: "Si cet email existe, un lien de réinitialisation sera envoyé." });
 
   try {
     const user = await prisma.user.findUnique({ where: { email: payload.data.email } });
     if (user) {
       await sendEmail({
         to: user.email,
-        subject: "Demande de reinitialisation EduPay",
+        subject: "Demande de réinitialisation EduPay",
         text: [
           `Bonjour ${user.fullName},`,
           "",
-          "Une demande de reinitialisation de mot de passe a ete recue pour votre compte EduPay.",
-          "Veuillez contacter l'administration de l'ecole pour recevoir un mot de passe temporaire securise.",
+          "Une demande de réinitialisation de mot de passe a été reçue pour votre compte EduPay.",
+          "Veuillez contacter l'administration de l'école pour recevoir un mot de passe temporaire sécurisé.",
           "",
-          "Si vous n'etes pas a l'origine de cette demande, ignorez ce message."
+          "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message."
         ].join("\n")
       });
     }
@@ -119,7 +119,7 @@ authRouter.post("/forgot-password", async (req, res) => {
     console.error("Forgot password email flow failed", error);
   }
 
-  return res.json({ message: "Si cet email existe, un lien de reinitialisation sera envoye." });
+  return res.json({ message: "Si cet email existe, un lien de réinitialisation sera envoyé." });
 });
 
 authRouter.post("/change-password", authGuard, async (req: AuthenticatedRequest, res) => {
@@ -142,14 +142,14 @@ authRouter.post("/change-password", authGuard, async (req: AuthenticatedRequest,
 
   await sendEmail({
     to: user.email,
-    subject: "Mot de passe EduPay modifie",
+    subject: "Mot de passe EduPay modifié",
     text: [
       `Bonjour ${user.fullName},`,
       "",
-      "Votre mot de passe EduPay vient d'etre modifie avec succes.",
-      "Si vous n'avez pas effectue cette action, contactez immediatement l'administration de l'ecole."
+      "Votre mot de passe EduPay vient d'être modifié avec succès.",
+      "Si vous n'avez pas effectué cette action, contactez immédiatement l'administration de l'école."
     ].join("\n")
   });
 
-  return res.json({ message: "Mot de passe modifie avec succes." });
+  return res.json({ message: "Mot de passe modifié avec succès." });
 });

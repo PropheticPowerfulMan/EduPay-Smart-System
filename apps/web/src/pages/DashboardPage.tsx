@@ -498,7 +498,7 @@ export function DashboardPage() {
 
         <div className="card glass border border-brand-500/10 shadow-lg">
           <h2 className="font-display text-xl font-bold text-white">Matrice de sante financiere</h2>
-          <p className="mt-1 text-xs text-ink-dim">Lecture multi-axes pour detecter les fragilites systemiques.</p>
+          <p className="mt-1 text-xs text-ink-dim">Lecture multi-axes pour détecter les fragilités systémiques.</p>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <RadarChart data={radar}>
@@ -545,7 +545,7 @@ export function DashboardPage() {
                 <YAxis stroke="#94a3b8" tickFormatter={(v) => `$${Number(v) / 1000}k`} />
                 <Tooltip contentStyle={{ background: "#0b1a24", border: "1px solid rgba(20,184,222,.25)", borderRadius: 8 }} formatter={(v) => USD.format(Number(v))} />
                 <Bar dataKey="gap" name="Dette" radius={[8, 8, 0, 0]} fill="#f43f5e" />
-                <Bar dataKey="paid" name="Regle" radius={[8, 8, 0, 0]} fill="#10b981" />
+                <Bar dataKey="paid" name="Réglé" radius={[8, 8, 0, 0]} fill="#10b981" />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -576,7 +576,7 @@ export function DashboardPage() {
                 <p className="font-mono text-xl font-bold text-amber-300">{USD.format(analysis.pendingAmount)}</p>
               </div>
               <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
-                <p className="text-xs text-ink-dim">Echoues</p>
+                <p className="text-xs text-ink-dim">Échoués</p>
                 <p className="font-mono text-xl font-bold text-red-300">{USD.format(analysis.failedAmount)}</p>
               </div>
               <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">

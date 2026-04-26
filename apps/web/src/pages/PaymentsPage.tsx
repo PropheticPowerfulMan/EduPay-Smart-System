@@ -358,9 +358,9 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
     FAILED: "#dc2626"
   };
   const statusLabel: Record<string, string> = {
-    COMPLETED: "Regle",
+    COMPLETED: "Réglé",
     PENDING: "En attente",
-    FAILED: "Echoue"
+    FAILED: "Échoué"
   };
 
   const brand = {
@@ -516,7 +516,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
         <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#d97706;">$ ${pendingTotal.toFixed(5)}</div>
       </div>
       <div style="border:1px solid #fee2e2; border-radius:6px; padding:12px 14px; background:#fef2f2;">
-        <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Echoues</div>
+        <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Échoués</div>
         <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#dc2626;">$ ${failedTotal.toFixed(5)}</div>
       </div>
     </div>
@@ -540,7 +540,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
       <span style="font-size:22px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${grandTotal.toFixed(5)}</span>
     </div>
     <div style="margin-top:28px; text-align:center; font-size:10px; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:14px;">
-      Document genere officiellement par <strong>${brand.appName}</strong> pour <strong>${brand.schoolName}</strong> -
+      Document généré officiellement par <strong>${brand.appName}</strong> pour <strong>${brand.schoolName}</strong> -
       ${new Date().toLocaleString("fr-FR")}
     </div>
   </div>

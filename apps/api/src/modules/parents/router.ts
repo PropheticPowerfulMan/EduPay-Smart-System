@@ -43,7 +43,7 @@ function buildParentWelcomeMessages(parent: any, temporaryPassword: string, logi
   const emailBody = [
     `Bonjour ${parent.fullName},`,
     "",
-    "Votre compte parent EduPay vient d'etre cree par l'administration de l'ecole.",
+    "Votre compte parent EduPay vient d'être créé par l'administration de l'école.",
     "",
     `Identifiant parent: ${parent.id}`,
     `Telephone: ${parent.phone || "Non renseigne"}`,

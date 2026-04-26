@@ -342,7 +342,7 @@ export function ParentTrackingPage() {
       <div className="flex min-h-[65vh] items-center justify-center px-4">
         <div className="glass max-w-md rounded-2xl border border-amber-500/25 p-8 text-center shadow-xl">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-300">Espace parent</p>
-          <h1 className="mt-3 font-display text-2xl font-bold text-white">Donnees indisponibles</h1>
+          <h1 className="mt-3 font-display text-2xl font-bold text-white">Données indisponibles</h1>
           <p className="mt-3 text-sm text-ink-dim">
             {loadError ?? "Le backend ne repond pas pour le moment. Reessayez dans quelques instants."}
           </p>
