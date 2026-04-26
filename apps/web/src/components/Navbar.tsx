@@ -96,10 +96,10 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 border-b border-brand-300/20 bg-slate-950/70 shadow-[0_18px_60px_rgba(0,0,0,0.22)] backdrop-blur-2xl">
       {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
-      <div className="mx-auto max-w-[1440px] px-4 py-3 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between">
+      <div className="mx-auto max-w-[1440px] px-3 py-2.5 sm:px-6 sm:py-3 lg:px-8">
+        <div className="flex items-center justify-between gap-2">
           {/* Logo Section */}
-          <div className="flex items-center gap-4">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
             <div className="relative">
               <div className="absolute -inset-1 rounded-full bg-brand-300/20 blur-md" />
               <img 
@@ -122,15 +122,17 @@ export function Navbar() {
           </div>
 
           {/* Right Section */}
-          <div className="flex items-center gap-3">
-            <FontSwitch />
+          <div className="flex min-w-0 items-center gap-1.5 sm:gap-3">
+            <div className="hidden min-[420px]:block">
+              <FontSwitch />
+            </div>
             <LanguageSwitch />
 
             {/* User Menu */}
             <div className="relative">
               <button
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                className="flex items-center gap-3 rounded-full border border-brand-300/20 bg-white/[0.07] px-3 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition-all duration-200 hover:border-brand-300/40 hover:bg-brand-500/10"
+                className="flex items-center gap-2 rounded-full border border-brand-300/20 bg-white/[0.07] px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition-all duration-200 hover:border-brand-300/40 hover:bg-brand-500/10 sm:gap-3 sm:px-3"
               >
                 <div className="hidden sm:block text-right">
                   <p className="text-sm font-semibold text-white">{fullName || t("user")}</p>

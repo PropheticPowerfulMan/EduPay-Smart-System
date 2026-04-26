@@ -59,6 +59,17 @@ const EMPTY_FORM: FormState = {
 
 const EMPTY_STUDENT = { fullName: "", classId: "", annualFee: "" };
 
+const SCHOOL_SECTIONS: SchoolClass[] = [
+  ...Array.from({ length: 5 }, (_v, index) => {
+    const name = `K${index + 1}`;
+    return { id: `section-${name.toLowerCase()}`, name };
+  }),
+  ...Array.from({ length: 12 }, (_v, index) => {
+    const grade = index + 1;
+    return { id: `section-grade-${grade}`, name: `Grade ${grade}` };
+  })
+];
+
 /* ─── Icons ──────────────────────────────────────────────────────── */
 function SearchIcon() {
   return (
@@ -387,7 +398,7 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl glass rounded-2xl p-8 space-y-6 animate-fadeInUp my-4">
+      <div className="relative my-4 max-h-[92vh] w-full max-w-2xl overflow-y-auto glass rounded-2xl p-4 space-y-5 animate-fadeInUp sm:p-8 sm:space-y-6">
         <button onClick={onClose} className="absolute top-4 right-4 text-ink-dim hover:text-white transition-colors">
           <XIcon />
         </button>
@@ -427,7 +438,7 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
           {errors.photoUrl && <p className="w-full text-xs text-danger">{errors.photoUrl}</p>}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="space-y-1">
             <label className="text-xs font-semibold text-ink-dim uppercase tracking-[0.1em]">{t("pmNom")} *</label>
             <input value={form.nom} onChange={(e) => set("nom", e.target.value)} className="w-full" placeholder={t("pmNom")} />
@@ -457,7 +468,7 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
 
         {/* Children section */}
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-sm font-bold text-white uppercase tracking-[0.08em]">{t("pmChildren")}</p>
             <button type="button" onClick={addStudent}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-500/20 border border-brand-500/40 text-brand-300 hover:bg-brand-500/30 text-xs font-semibold transition-all active:scale-95">
@@ -468,7 +479,7 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
             <p className="text-sm text-ink-dim italic">{t("pmNoChildrenForm")}</p>
           )}
           {form.students.map((st, idx) => (
-            <div key={idx} className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-xl border border-slate-700/50 bg-slate-900/30">
+            <div key={idx} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-700/50 bg-slate-900/30 p-3 sm:grid-cols-[1.2fr_0.9fr_0.9fr] sm:p-4">
               <div className="space-y-1">
                 <label className="text-xs text-ink-dim">{t("pmChildName")}</label>
                 <input value={st.fullName} onChange={(e) => setStudent(idx, "fullName", e.target.value)} className="w-full" placeholder={t("pmChildNamePlaceholder")} />
@@ -477,7 +488,19 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
                 <label className="text-xs text-ink-dim">{t("pmChildClass")}</label>
                 <select value={st.classId} onChange={(e) => setStudent(idx, "classId", e.target.value)} className="w-full">
                   <option value="">{t("pmSelectClass")}</option>
-                  {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  <optgroup label="Kindergarten">
+                    {classes.filter((c) => c.name.toLowerCase().startsWith("k")).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </optgroup>
+                  <optgroup label="Grade 1 - Grade 12">
+                    {classes.filter((c) => c.name.toLowerCase().startsWith("grade")).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </optgroup>
+                  {classes.some((c) => !c.name.toLowerCase().startsWith("k") && !c.name.toLowerCase().startsWith("grade")) && (
+                    <optgroup label="Autres">
+                      {classes
+                        .filter((c) => !c.name.toLowerCase().startsWith("k") && !c.name.toLowerCase().startsWith("grade"))
+                        .map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </optgroup>
+                  )}
                 </select>
               </div>
               <div className="space-y-1">
@@ -494,7 +517,7 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
           ))}
         </div>
 
-        <div className="flex gap-3 pt-2">
+        <div className="flex flex-col gap-3 pt-2 sm:flex-row">
           <button onClick={onClose} className="flex-1 py-3 rounded-lg border border-slate-600 text-ink-dim hover:text-white font-semibold text-sm transition-all">
             {t("pmCancel")}
           </button>
@@ -538,7 +561,7 @@ export function ParentsManagementPage() {
         api<SchoolClass[]>("/api/classes")
       ]);
       setParents(p);
-      setClasses(c);
+      setClasses(c.length ? c : SCHOOL_SECTIONS);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erreur API";
       setApiError(message);

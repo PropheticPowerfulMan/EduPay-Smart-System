@@ -18,6 +18,30 @@ export function Sidebar() {
       ];
 
   return (
+    <>
+    <nav className="fixed inset-x-3 bottom-3 z-50 md:hidden">
+      <div className="glass flex items-center justify-between gap-1 rounded-2xl p-2 shadow-2xl">
+        {links.map((link) => (
+          <NavLink
+            key={link.to}
+            to={link.to}
+            className={({ isActive }) =>
+              `flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-[10px] font-bold transition-all ${
+                isActive
+                  ? "bg-brand-500/25 text-white ring-1 ring-brand-300/35"
+                  : "text-ink-dim hover:bg-white/[0.06] hover:text-white"
+              }`
+            }
+          >
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-[10px] font-black text-brand-200">
+              {link.icon}
+            </span>
+            <span className="max-w-full truncate">{link.label}</span>
+          </NavLink>
+        ))}
+      </div>
+    </nav>
+
     <aside className="hidden md:flex md:w-72 md:shrink-0 md:flex-col">
       <div className="glass sticky top-20 h-[calc(100vh-6.5rem)] space-y-6 overflow-hidden rounded-3xl p-4">
         <div className="pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full border border-brand-300/20 bg-brand-500/10 blur-sm" />
@@ -68,5 +92,6 @@ export function Sidebar() {
         </div>
       </div>
     </aside>
+    </>
   );
 }

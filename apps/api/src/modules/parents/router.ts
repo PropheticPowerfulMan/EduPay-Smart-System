@@ -164,7 +164,7 @@ let demoParents: any[] = [
     phone: "+243810000001",
     email: "jean.kabila@example.com",
     students: [
-      { id: "demo-student-1", fullName: "Kabila Marie", classId: "demo-class-1", className: "6ème A", annualFee: 45000 }
+      { id: "demo-student-1", fullName: "Kabila Marie", classId: "section-grade-1", className: "Grade 1", annualFee: 450 }
     ],
     createdAt: new Date().toISOString()
   }

@@ -105,14 +105,20 @@ async function sendParentWelcomeNotifications(parent: any, password: string, ema
 }
 
 const mockStudents: any[] = [
-  { id: "student-1", parentId: "PAR-2025-0001", classId: "class-1", fullName: "Alice Dupont", annualFee: 50000, schoolId: "school-1" },
-  { id: "student-2", parentId: "PAR-2025-0001", classId: "class-1", fullName: "Bob Dupont", annualFee: 50000, schoolId: "school-1" },
-  { id: "student-3", parentId: "PAR-2025-0002", classId: "class-2", fullName: "Charlie Pierre", annualFee: 55000, schoolId: "school-1" }
+  { id: "student-1", parentId: "PAR-2025-0001", classId: "section-grade-1", fullName: "Alice Dupont", annualFee: 500, schoolId: "school-1" },
+  { id: "student-2", parentId: "PAR-2025-0001", classId: "section-grade-1", fullName: "Bob Dupont", annualFee: 500, schoolId: "school-1" },
+  { id: "student-3", parentId: "PAR-2025-0002", classId: "section-grade-2", fullName: "Charlie Pierre", annualFee: 550, schoolId: "school-1" }
 ];
 
 const mockClasses = [
-  { id: "class-1", name: "Grade 1", level: "1st", schoolId: "school-1" },
-  { id: "class-2", name: "Grade 2", level: "2nd", schoolId: "school-1" }
+  ...Array.from({ length: 5 }, (_v, index) => {
+    const name = `K${index + 1}`;
+    return { id: `section-${name.toLowerCase()}`, name, level: "Kindergarten", schoolId: "school-1" };
+  }),
+  ...Array.from({ length: 12 }, (_v, index) => {
+    const grade = index + 1;
+    return { id: `section-grade-${grade}`, name: `Grade ${grade}`, level: "Grade", schoolId: "school-1" };
+  })
 ];
 
 const mockPayments: any[] = [

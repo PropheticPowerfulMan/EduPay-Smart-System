@@ -19,7 +19,7 @@ function ProtectedLayout() {
   return (
     <div className="min-h-screen bg-slate-950 text-ink">
       <Navbar />
-      <main className="mx-auto flex w-full max-w-[1440px] gap-6 px-4 py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto flex w-full max-w-[1440px] gap-6 px-3 pb-28 pt-4 sm:px-6 sm:py-6 md:pb-6 lg:px-8">
         <Sidebar />
         <section className="min-w-0 flex-1">
           <Outlet />

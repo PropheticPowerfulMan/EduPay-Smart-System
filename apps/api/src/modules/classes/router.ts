@@ -8,13 +8,15 @@ const classSchema = z.object({
   level: z.string().min(1)
 });
 
-const demoClasses = [
-  { id: "demo-class-1", name: "6ème A", level: "6ème", schoolId: "demo" },
-  { id: "demo-class-2", name: "5ème A", level: "5ème", schoolId: "demo" },
-  { id: "demo-class-3", name: "4ème A", level: "4ème", schoolId: "demo" },
-  { id: "demo-class-4", name: "3ème A", level: "3ème", schoolId: "demo" },
-  { id: "demo-class-5", name: "2ème A", level: "2ème", schoolId: "demo" },
-  { id: "demo-class-6", name: "1ère A", level: "1ère", schoolId: "demo" }
+const schoolSections = [
+  ...Array.from({ length: 5 }, (_v, index) => {
+    const name = `K${index + 1}`;
+    return { id: `section-${name.toLowerCase()}`, name, level: "Kindergarten", schoolId: "demo" };
+  }),
+  ...Array.from({ length: 12 }, (_v, index) => {
+    const grade = index + 1;
+    return { id: `section-grade-${grade}`, name: `Grade ${grade}`, level: "Grade", schoolId: "demo" };
+  })
 ];
 
 export const classRouter = Router();
@@ -39,10 +41,10 @@ classRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticate
 classRouter.get("/", authorize("ADMIN", "ACCOUNTANT", "PARENT"), async (req: AuthenticatedRequest, res) => {
   try {
     const rows = await prisma.class.findMany({ where: { schoolId: req.user!.schoolId } });
-    if (rows.length === 0) return res.json(demoClasses);
+    if (rows.length === 0) return res.json(schoolSections);
     return res.json(rows);
   } catch (error) {
-    console.error("DB unavailable on class list, returning demo data", error);
-    return res.json(demoClasses);
+    console.error("DB unavailable on class list, returning school sections", error);
+    return res.json(schoolSections);
   }
 });
