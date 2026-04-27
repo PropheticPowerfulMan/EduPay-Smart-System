@@ -9,6 +9,7 @@ const DEMO_PAYMENTS_KEY = "edupay_payments_v2";
 const DEMO_NOTIFICATIONS_KEY = "edupay-payment-notifications-enabled";
 const DEMO_PARENT_CREDENTIALS_KEY = "edupay_demo_parent_credentials_v1";
 const DEMO_FALLBACK_ENABLED = (import.meta.env.VITE_ENABLE_DEMO_FALLBACK ?? "").trim().toLowerCase() === "true";
+const LOCAL_API_FALLBACK_ENABLED = DEMO_FALLBACK_ENABLED || /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(API_BASE_URL);
 
 type DemoStudent = { id: string; fullName: string; classId: string; className: string; annualFee: number; payments?: DemoPayment[] };
 type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
@@ -174,7 +175,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     }
 
     if (email === "admin@school.com" && password === "password123") {
-      return { token: "demo-admin-token", role: "ADMIN", fullName: "Administrateur Demo" } as T;
+      return { token: "local-admin-token", role: "ADMIN", fullName: "Administrateur" } as T;
     }
 
     throw new Error("Identifiants invalides.");
@@ -237,7 +238,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       id: `pay-${Date.now()}`,
       transactionNumber: `TXN-${Date.now()}`,
       parentId: parent?.id || parentId || undefined,
-      parentFullName: parent?.fullName || String(body.parentFullName ?? "Parent demo"),
+      parentFullName: parent?.fullName || String(body.parentFullName ?? "Parent"),
       reason: String(body.reason ?? "Paiement"),
       method: String(body.method ?? "CASH"),
       amount: Number(body.amount ?? 0),
@@ -342,7 +343,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       }
     });
   } catch {
-    if (DEMO_FALLBACK_ENABLED && path.startsWith("/api/")) return demoApi<T>(path, init);
+    if (LOCAL_API_FALLBACK_ENABLED && path.startsWith("/api/")) return demoApi<T>(path, init);
     throw new Error("Impossible de joindre l'API. Verifiez que le backend est demarre.");
   }
 
@@ -353,7 +354,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       throw new Error("Session expiree. Veuillez vous reconnecter.");
     }
 
-    if (DEMO_FALLBACK_ENABLED && response.status >= 500 && canFallbackToDemo(path, init)) {
+    if (LOCAL_API_FALLBACK_ENABLED && response.status >= 500 && canFallbackToDemo(path, init)) {
       return demoApi<T>(path, init);
     }
 

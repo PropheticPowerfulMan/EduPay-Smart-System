@@ -596,6 +596,6 @@ app.get("/health", (_req, res) => {
 
 app.listen(Number(env.API_PORT), () => {
   console.log(`✓ API server running on http://localhost:${env.API_PORT}`);
-  console.log(`✓ Default login: admin@school.com / password123`);
+  console.log(`✓ Admin login: admin@school.com / password123`);
   console.log(`✓ Parent login: parent@school.com / password123`);
 });
