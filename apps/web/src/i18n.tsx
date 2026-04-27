@@ -247,7 +247,21 @@ const dictionaries: Record<Lang, Dict> = {
     parentPhotoHelp: "Ajoutez une photo claire pour reconnaître rapidement le parent dans les suivis et les reçus.",
     choose: "Choisir",
     resetPasswordConfirm: "Réinitialiser le mot de passe de {{name}} ?",
-    resetPassword: "Réinitialiser le mot de passe"
+    resetPassword: "Réinitialiser le mot de passe",
+    addProfilePhoto: "Ajouter une photo",
+    changeProfilePhoto: "Changer la photo",
+    removeProfilePhoto: "Retirer la photo",
+    profilePhotoFailed: "Impossible de mettre à jour la photo.",
+    parentPhotoMissing: "Aucune photo enregistrée pour ce compte parent.",
+    parentPhotoAction: "Mettre ou changer la photo",
+    adminRecoveryOpen: "Recuperation administrateur",
+    adminRecoveryTitle: "Recuperation administrateur",
+    adminRecoverySubtitle: "Utilisez le code de recuperation configure sur le serveur pour definir un nouveau mot de passe administrateur.",
+    adminRecoveryCode: "Code de recuperation",
+    adminRecoverySubmit: "Reinitialiser le mot de passe admin",
+    adminRecoverySuccess: "Mot de passe administrateur reinitialise. Vous pouvez vous connecter.",
+    adminRecoveryFailed: "Impossible de reinitialiser le mot de passe administrateur.",
+    adminRecoveryPasswordTooShort: "Le nouveau mot de passe admin doit contenir au moins 10 caracteres."
   },
   en: {
     langFr: "FR",
@@ -491,7 +505,21 @@ const dictionaries: Record<Lang, Dict> = {
     parentPhotoHelp: "Add a clear photo to recognize the parent quickly in tracking views and receipts.",
     choose: "Choose",
     resetPasswordConfirm: "Reset {{name}}'s password?",
-    resetPassword: "Reset password"
+    resetPassword: "Reset password",
+    addProfilePhoto: "Add photo",
+    changeProfilePhoto: "Change photo",
+    removeProfilePhoto: "Remove photo",
+    profilePhotoFailed: "Unable to update the photo.",
+    parentPhotoMissing: "No photo saved for this parent account.",
+    parentPhotoAction: "Add or change photo",
+    adminRecoveryOpen: "Administrator recovery",
+    adminRecoveryTitle: "Administrator recovery",
+    adminRecoverySubtitle: "Use the recovery code configured on the server to set a new administrator password.",
+    adminRecoveryCode: "Recovery code",
+    adminRecoverySubmit: "Reset admin password",
+    adminRecoverySuccess: "Administrator password reset. You can sign in.",
+    adminRecoveryFailed: "Unable to reset the administrator password.",
+    adminRecoveryPasswordTooShort: "The new admin password must contain at least 10 characters."
   }
 };
 

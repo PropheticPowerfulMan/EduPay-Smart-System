@@ -199,6 +199,35 @@ parentRouter.get("/me", authorize("PARENT"), async (req: AuthenticatedRequest, r
   }
 });
 
+parentRouter.put("/me/photo", authorize("PARENT"), async (req: AuthenticatedRequest, res) => {
+  const payload = z.object({ photoUrl: z.string().max(750_000).optional().default("") }).parse(req.body);
+
+  if (req.user!.sub.startsWith("demo-")) {
+    demoParents[0] = { ...demoParents[0], photoUrl: payload.photoUrl };
+    return res.json({ photoUrl: payload.photoUrl });
+  }
+
+  try {
+    const parent = await prisma.parent.findFirst({
+      where: { schoolId: req.user!.schoolId, userId: req.user!.sub },
+      select: { id: true }
+    });
+    if (!parent) return res.status(404).json({ message: "Parent non trouve" });
+
+    const updated = await prisma.parent.update({
+      where: { id: parent.id },
+      data: { photoUrl: payload.photoUrl || null },
+      select: { photoUrl: true }
+    });
+    return res.json({ photoUrl: updated.photoUrl || "" });
+  } catch (error) {
+    console.error("DB unavailable on parent photo update, using demo store", error);
+    const demoParent = demoParents.find((item) => item.userId === req.user!.sub) ?? demoParents[0];
+    demoParent.photoUrl = payload.photoUrl;
+    return res.json({ photoUrl: payload.photoUrl });
+  }
+});
+
 // POST create parent + students
 parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
   const payload = parentSchema.parse(req.body);

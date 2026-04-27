@@ -11,7 +11,8 @@ import { timingSafeEqual } from "crypto";
 const env = {
   JWT_SECRET: process.env.JWT_SECRET || "dev-secret-key-change-me-in-prod",
   API_PORT: process.env.API_PORT || "4000",
-  FRONTEND_URL: process.env.FRONTEND_URL || ""
+  FRONTEND_URL: process.env.FRONTEND_URL || "",
+  ADMIN_RECOVERY_CODE: process.env.ADMIN_RECOVERY_CODE || ""
 };
 
 const app = express();
@@ -53,6 +54,14 @@ const loginLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { message: "Trop de tentatives. Reessayez dans quelques minutes." }
+});
+
+const recoveryLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Trop de tentatives de recuperation. Reessayez plus tard." }
 });
 
 // Mock Data
@@ -238,7 +247,7 @@ app.post("/api/auth/login", loginLimiter, async (req, res) => {
   if (!safeCompare(payload.password, user.password)) return res.status(401).json({ message: "Invalid credentials" });
   const token = jwt.sign({ sub: user.id, role: user.role, schoolId: user.schoolId }, env.JWT_SECRET);
   const parent = user.role === "PARENT" ? mockParents.find((item) => item.userId === user.id) : null;
-  return res.json({ token, role: user.role, fullName: user.fullName, parentId: parent?.id });
+  return res.json({ token, role: user.role, fullName: user.fullName, parentId: parent?.id, photoUrl: parent?.photoUrl || "" });
 });
 
 app.post("/api/auth/change-password", authGuard, (req: any, res) => {
@@ -251,6 +260,27 @@ app.post("/api/auth/change-password", authGuard, (req: any, res) => {
   if (user.password !== payload.currentPassword) return res.status(400).json({ message: "Mot de passe actuel incorrect" });
   user.password = payload.newPassword;
   return res.json({ message: "Mot de passe modifie avec succes." });
+});
+
+app.post("/api/auth/recover-admin-password", recoveryLimiter, async (req, res) => {
+  const payload = z.object({
+    email: z.string().email(),
+    recoveryCode: z.string().min(12),
+    newPassword: z.string().min(10)
+  }).parse(req.body);
+
+  if (!env.ADMIN_RECOVERY_CODE || env.ADMIN_RECOVERY_CODE.startsWith("CHANGE_ME")) {
+    return res.status(503).json({ message: "La recuperation administrateur n'est pas configuree sur le serveur." });
+  }
+  if (payload.recoveryCode !== env.ADMIN_RECOVERY_CODE) {
+    return res.status(401).json({ message: "Code de recuperation invalide." });
+  }
+
+  const user = mockUsers.find((u) => u.email.toLowerCase() === payload.email.trim().toLowerCase() && u.role === "ADMIN");
+  if (!user) return res.status(404).json({ message: "Compte administrateur introuvable." });
+  user.password = payload.newPassword;
+  console.log(`[admin-recovery] Password reset for ${user.email}`);
+  return res.json({ message: "Mot de passe administrateur reinitialise. Vous pouvez vous connecter." });
 });
 
 // Middleware: Auth Guard
@@ -369,6 +399,17 @@ app.post("/api/parents", authGuard, requireRole("ADMIN", "ACCOUNTANT"), async (r
     temporaryPassword,
     notificationStatus
   });
+});
+
+app.put("/api/parents/me/photo", authGuard, (req: any, res) => {
+  if (req.user?.role !== "PARENT") {
+    return res.status(403).json({ message: "Access denied" });
+  }
+  const payload = z.object({ photoUrl: z.string().max(750_000).optional().default("") }).parse(req.body);
+  const parent = mockParents.find((p) => p.userId === req.user?.sub);
+  if (!parent) return res.status(404).json({ message: "Parent not found" });
+  parent.photoUrl = payload.photoUrl;
+  return res.json({ photoUrl: parent.photoUrl || "" });
 });
 
 app.post("/api/parents/:id/reset-password", authGuard, (req: any, res) => {

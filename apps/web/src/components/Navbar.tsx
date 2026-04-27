@@ -6,6 +6,39 @@ import { api } from "../services/api";
 import { useAuthStore } from "../store/auth";
 import { useState, type FormEvent } from "react";
 
+function imageFileToAvatar(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith("image/")) {
+      reject(new Error("Veuillez choisir une image valide."));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const size = 360;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Image non lisible."));
+          return;
+        }
+        const minSide = Math.min(image.width, image.height);
+        const sx = (image.width - minSide) / 2;
+        const sy = (image.height - minSide) / 2;
+        ctx.drawImage(image, sx, sy, minSide, minSide, 0, 0, size, size);
+        resolve(canvas.toDataURL("image/jpeg", 0.78));
+      };
+      image.onerror = () => reject(new Error("Image non lisible."));
+      image.src = String(reader.result);
+    };
+    reader.onerror = () => reject(new Error("Image non lisible."));
+    reader.readAsDataURL(file);
+  });
+}
+
 function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   const { t } = useI18n();
   const [currentPassword, setCurrentPassword] = useState("");
@@ -90,9 +123,42 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 
 export function Navbar() {
   const { t } = useI18n();
-  const { fullName, role, logout } = useAuthStore();
+  const { fullName, role, photoUrl, setPhotoUrl, logout } = useAuthStore();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [photoError, setPhotoError] = useState("");
+
+  const updatePhoto = async (file?: File) => {
+    if (!file) return;
+    setPhotoError("");
+    try {
+      const nextPhotoUrl = await imageFileToAvatar(file);
+      if (role === "PARENT") {
+        await api<{ photoUrl: string }>("/api/parents/me/photo", {
+          method: "PUT",
+          body: JSON.stringify({ photoUrl: nextPhotoUrl })
+        });
+      }
+      setPhotoUrl(nextPhotoUrl);
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : t("profilePhotoFailed"));
+    }
+  };
+
+  const removePhoto = async () => {
+    setPhotoError("");
+    try {
+      if (role === "PARENT") {
+        await api<{ photoUrl: string }>("/api/parents/me/photo", {
+          method: "PUT",
+          body: JSON.stringify({ photoUrl: "" })
+        });
+      }
+      setPhotoUrl(null);
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : t("profilePhotoFailed"));
+    }
+  };
 
   return (
     <header className="sticky top-0 z-50 border-b border-brand-300/20 bg-slate-950/70 shadow-[0_18px_60px_rgba(0,0,0,0.22)] backdrop-blur-2xl">
@@ -139,18 +205,46 @@ export function Navbar() {
                   <p className="text-sm font-semibold text-white">{fullName || t("user")}</p>
                   <p className="text-xs text-ink-dim capitalize">{role || t("guest")}</p>
                 </div>
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-white via-brand-200 to-brand-500 text-sm font-bold text-slate-950 ring-1 ring-white/30">
-                  {(fullName || t("user")).charAt(0).toUpperCase()}
+                <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-white via-brand-200 to-brand-500 text-sm font-bold text-slate-950 ring-1 ring-white/30">
+                  {photoUrl ? (
+                    <img src={photoUrl} alt={fullName || t("user")} className="h-full w-full object-cover" />
+                  ) : (
+                    (fullName || t("user")).charAt(0).toUpperCase()
+                  )}
                 </div>
               </button>
 
               {/* Dropdown Menu */}
               {isUserMenuOpen && (
-                <div className="glass absolute right-0 mt-2 w-48 overflow-hidden rounded-2xl py-2 shadow-xl animate-fadeInDown">
+                <div className="glass absolute right-0 mt-2 w-60 overflow-hidden rounded-2xl py-2 shadow-xl animate-fadeInDown">
                   <div className="px-4 py-3 border-b border-brand-300/15">
-                    <p className="text-sm font-semibold text-white">{fullName || t("user")}</p>
-                    <p className="text-xs text-ink-dim">{role || t("guest")}</p>
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-brand-200 to-brand-500 text-sm font-bold text-slate-950">
+                        {photoUrl ? (
+                          <img src={photoUrl} alt={fullName || t("user")} className="h-full w-full object-cover" />
+                        ) : (
+                          (fullName || t("user")).charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-white">{fullName || t("user")}</p>
+                        <p className="text-xs text-ink-dim">{role || t("guest")}</p>
+                      </div>
+                    </div>
+                    {photoError && <p className="mt-2 text-xs text-danger">{photoError}</p>}
                   </div>
+                  <label className="block w-full cursor-pointer px-4 py-2 text-sm text-ink-dim transition-all duration-200 hover:bg-brand-500/10 hover:text-white">
+                    {photoUrl ? t("changeProfilePhoto") : t("addProfilePhoto")}
+                    <input type="file" accept="image/*" className="hidden" onChange={(event) => void updatePhoto(event.target.files?.[0])} />
+                  </label>
+                  {photoUrl && (
+                    <button
+                      onClick={() => void removePhoto()}
+                      className="w-full text-left px-4 py-2 text-sm text-ink-dim transition-all duration-200 hover:bg-brand-500/10 hover:text-white"
+                    >
+                      {t("removeProfilePhoto")}
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setShowPasswordModal(true);

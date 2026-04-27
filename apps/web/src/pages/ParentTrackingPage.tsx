@@ -18,6 +18,7 @@ import {
   AlertTriangle,
   BrainCircuit,
   CalendarClock,
+  Camera,
   CheckCircle2,
   Gauge,
   Lightbulb,
@@ -28,10 +29,11 @@ import {
 } from "lucide-react";
 import { useI18n } from "../i18n";
 import { api } from "../services/api";
+import { useAuthStore } from "../store/auth";
 
 type Payment = { amount: number; status: string; createdAt: string; reason?: string };
 type Student = { id: string; fullName: string; className?: string; classId?: string; annualFee: number; payments: Payment[] };
-type ParentData = { fullName: string; phone: string; email: string; students: Student[] };
+type ParentData = { fullName: string; phone: string; email: string; photoUrl?: string; students: Student[] };
 
 type MonthRow = {
   monthName: string;
@@ -115,11 +117,42 @@ function insightToneClasses(tone: Insight["tone"]) {
   return "border-cyan-500/25 bg-cyan-500/10 text-cyan-100";
 }
 
+function imageFileToAvatar(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    if (!file.type.startsWith("image/")) {
+      reject(new Error("Veuillez choisir une image valide."));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const size = 360;
+        const canvas = document.createElement("canvas");
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("Image non lisible."));
+        const minSide = Math.min(image.width, image.height);
+        ctx.drawImage(image, (image.width - minSide) / 2, (image.height - minSide) / 2, minSide, minSide, 0, 0, size, size);
+        resolve(canvas.toDataURL("image/jpeg", 0.78));
+      };
+      image.onerror = () => reject(new Error("Image non lisible."));
+      image.src = String(reader.result);
+    };
+    reader.onerror = () => reject(new Error("Image non lisible."));
+    reader.readAsDataURL(file);
+  });
+}
+
 export function ParentTrackingPage() {
   const { t, lang } = useI18n();
+  const setPhotoUrl = useAuthStore((s) => s.setPhotoUrl);
   const [data, setData] = useState<ParentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [photoSaving, setPhotoSaving] = useState(false);
+  const [photoError, setPhotoError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -127,6 +160,7 @@ export function ParentTrackingPage() {
       .then((parentData) => {
         if (!active) return;
         setData(parentData);
+        setPhotoUrl(parentData.photoUrl || null);
         setLoadError(null);
       })
       .catch((error) => {
@@ -148,6 +182,25 @@ export function ParentTrackingPage() {
     [lang]
   );
   const formatMoney = (value: number) => moneyFormatter.format(value);
+
+  const updatePhoto = async (file?: File) => {
+    if (!file) return;
+    setPhotoSaving(true);
+    setPhotoError("");
+    try {
+      const photoUrl = await imageFileToAvatar(file);
+      const result = await api<{ photoUrl: string }>("/api/parents/me/photo", {
+        method: "PUT",
+        body: JSON.stringify({ photoUrl })
+      });
+      setData((current) => current ? { ...current, photoUrl: result.photoUrl } : current);
+      setPhotoUrl(result.photoUrl || null);
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : t("profilePhotoFailed"));
+    } finally {
+      setPhotoSaving(false);
+    }
+  };
 
   const summary = useMemo(() => {
     if (!data) return null;
@@ -382,7 +435,30 @@ export function ParentTrackingPage() {
       <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
         <div className="card glass min-w-0 overflow-hidden border border-brand-500/10 shadow-lg">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div>
+            <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-center">
+              <div className="h-20 w-20 shrink-0 overflow-hidden rounded-2xl border border-slate-700/70 bg-gradient-to-br from-brand-500 to-accent">
+                {data.photoUrl ? (
+                  <img src={data.photoUrl} alt={data.fullName} className="h-full w-full object-cover" />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center text-2xl font-black text-white">
+                    {data.fullName.charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm text-ink-dim">{t("parentName")}</p>
+                <p className="break-words font-display text-2xl font-bold text-white">{data.fullName}</p>
+                <p className="mt-2 break-words text-sm text-ink-dim">{data.phone} · {data.email}</p>
+                {!data.photoUrl && <p className="mt-2 text-xs text-amber-200">{t("parentPhotoMissing")}</p>}
+                {photoError && <p className="mt-2 text-xs text-danger">{photoError}</p>}
+                <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-brand-500/30 bg-brand-500/10 px-3 py-2 text-xs font-semibold text-brand-200 hover:bg-brand-500/20">
+                  <Camera className="h-4 w-4" />
+                  {photoSaving ? t("pmSaving") : t("parentPhotoAction")}
+                  <input type="file" accept="image/*" className="hidden" onChange={(event) => void updatePhoto(event.target.files?.[0])} />
+                </label>
+              </div>
+            </div>
+            <div className="hidden">
               <p className="text-sm text-ink-dim">{t("parentName")}</p>
               <p className="break-words font-display text-2xl font-bold text-white">{data.fullName}</p>
               <p className="mt-2 break-words text-sm text-ink-dim">{data.phone} · {data.email}</p>

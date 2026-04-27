@@ -28,9 +28,14 @@ type ForgotStep = "form" | "sent";
 
 function ForgotPasswordModal({ onClose, t }: { onClose: () => void; t: (k: string) => string }) {
   const [step, setStep] = useState<ForgotStep>("form");
+  const [adminRecovery, setAdminRecovery] = useState(false);
   const [email, setEmail] = useState("");
+  const [recoveryCode, setRecoveryCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,6 +58,43 @@ function ForgotPasswordModal({ onClose, t }: { onClose: () => void; t: (k: strin
     }
   };
 
+  const handleAdminRecovery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email.trim() || !email.includes("@")) {
+      setError(t("forgotInvalidEmail"));
+      return;
+    }
+    if (newPassword.length < 10) {
+      setError(t("adminRecoveryPasswordTooShort"));
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError(t("passwordMismatch"));
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setSuccessMessage("");
+    try {
+      const result = await api<{ message?: string }>("/api/auth/recover-admin-password", {
+        method: "POST",
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          recoveryCode,
+          newPassword
+        })
+      });
+      setSuccessMessage(result.message || t("adminRecoverySuccess"));
+      setRecoveryCode("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t("adminRecoveryFailed"));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
@@ -70,7 +112,7 @@ function ForgotPasswordModal({ onClose, t }: { onClose: () => void; t: (k: strin
           </svg>
         </button>
 
-        {step === "form" ? (
+        {step === "form" && !adminRecovery ? (
           <>
             <div>
               <h3 className="font-display text-xl font-bold text-white">{t("forgotTitle")}</h3>
@@ -100,6 +142,46 @@ function ForgotPasswordModal({ onClose, t }: { onClose: () => void; t: (k: strin
                     {t("forgotSending")}
                   </div>
                 ) : t("forgotSend")}
+              </button>
+            </form>
+            <button
+              type="button"
+              onClick={() => {
+                setAdminRecovery(true);
+                setError("");
+                setSuccessMessage("");
+              }}
+              className="w-full rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm font-semibold text-amber-200 hover:bg-amber-500/20"
+            >
+              {t("adminRecoveryOpen")}
+            </button>
+          </>
+        ) : step === "form" ? (
+          <>
+            <div>
+              <h3 className="font-display text-xl font-bold text-white">{t("adminRecoveryTitle")}</h3>
+              <p className="text-sm text-ink-dim mt-2">{t("adminRecoverySubtitle")}</p>
+            </div>
+            <form onSubmit={handleAdminRecovery} className="space-y-4">
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t("email")} className="w-full" />
+              <input type="password" value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} placeholder={t("adminRecoveryCode")} className="w-full" />
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={t("newPasswordField")} className="w-full" />
+              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder={t("confirmNewPassword")} className="w-full" />
+              {error && <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
+              {successMessage && <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">{successMessage}</p>}
+              <button type="submit" disabled={loading} className="w-full btn-primary py-3 font-semibold disabled:opacity-50">
+                {loading ? t("forgotSending") : t("adminRecoverySubmit")}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAdminRecovery(false);
+                  setError("");
+                  setSuccessMessage("");
+                }}
+                className="w-full rounded-lg border border-slate-600 px-4 py-3 text-sm font-semibold text-ink-dim hover:text-white"
+              >
+                {t("forgotClose")}
               </button>
             </form>
           </>
@@ -153,7 +235,7 @@ export function LoginPage() {
 
   const loginWithCredentials = async (values: LoginInput) => {
     setApiError(null);
-    const result = await api<{ token: string; role?: string; fullName: string; parentId?: string }>("/api/auth/login", {
+    const result = await api<{ token: string; role?: string; fullName: string; parentId?: string; photoUrl?: string | null }>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({
         email: values.email.trim().toLowerCase(),
@@ -163,7 +245,7 @@ export function LoginPage() {
     const role = normalizeRole(result.role, result.parentId);
     if (!role) throw new Error("Rôle utilisateur invalide.");
 
-    setAuth(result.token, role, result.fullName, result.parentId);
+    setAuth(result.token, role, result.fullName, result.parentId, result.photoUrl);
     window.location.replace(`${import.meta.env.BASE_URL}#${role === "PARENT" ? "/parent" : "/"}`);
   };
 

@@ -55,6 +55,14 @@ const loginLimiter = rateLimit({
   message: { message: "Trop de tentatives. Reessayez dans quelques minutes." }
 });
 
+const recoveryLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Trop de tentatives de recuperation. Reessayez plus tard." }
+});
+
 authRouter.post("/register", async (req, res) => {
   const payload = registerSchema.parse(req.body);
   const hash = await bcrypt.hash(payload.password, 10);
@@ -84,9 +92,9 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
       if (ok) {
         const token = buildToken({ id: user.id, role: user.role, schoolId: user.schoolId });
         const parent = user.role === "PARENT"
-          ? await prisma.parent.findUnique({ where: { userId: user.id }, select: { id: true } })
+          ? await prisma.parent.findUnique({ where: { userId: user.id }, select: { id: true, photoUrl: true } })
           : null;
-        return res.json({ token, role: user.role, fullName: user.fullName, parentId: parent?.id });
+        return res.json({ token, role: user.role, fullName: user.fullName, parentId: parent?.id, photoUrl: parent?.photoUrl });
       }
     }
   } catch (error) {
@@ -137,6 +145,47 @@ authRouter.post("/forgot-password", async (req, res) => {
   }
 
   return res.json({ message: "Si cet email existe, un lien de réinitialisation sera envoyé." });
+});
+
+authRouter.post("/recover-admin-password", recoveryLimiter, async (req, res) => {
+  const payload = z.object({
+    email: z.string().email(),
+    recoveryCode: z.string().min(12),
+    newPassword: z.string().min(10)
+  }).parse(req.body);
+
+  if (!env.ADMIN_RECOVERY_CODE || env.ADMIN_RECOVERY_CODE.startsWith("CHANGE_ME")) {
+    return res.status(503).json({ message: "La recuperation administrateur n'est pas configuree sur le serveur." });
+  }
+
+  if (payload.recoveryCode !== env.ADMIN_RECOVERY_CODE) {
+    return res.status(401).json({ message: "Code de recuperation invalide." });
+  }
+
+  const email = payload.email.trim().toLowerCase();
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user || user.role !== "ADMIN") {
+    return res.status(404).json({ message: "Compte administrateur introuvable." });
+  }
+
+  const passwordHash = await bcrypt.hash(payload.newPassword, 12);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash }
+  });
+
+  await sendEmail({
+    to: user.email,
+    subject: "Mot de passe administrateur EduPay reinitialise",
+    text: [
+      `Bonjour ${user.fullName},`,
+      "",
+      "Le mot de passe administrateur EduPay vient d'etre reinitialise avec le code de recuperation serveur.",
+      "Si vous n'avez pas effectue cette action, changez immediatement ADMIN_RECOVERY_CODE et JWT_SECRET."
+    ].join("\n")
+  }).catch((error) => console.error("Admin recovery email failed", error));
+
+  return res.json({ message: "Mot de passe administrateur reinitialise. Vous pouvez vous connecter." });
 });
 
 authRouter.post("/change-password", authGuard, async (req: AuthenticatedRequest, res) => {

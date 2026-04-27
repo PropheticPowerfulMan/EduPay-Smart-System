@@ -139,6 +139,7 @@ function parentMe() {
     fullName: parent.fullName,
     phone: parent.phone,
     email: parent.email,
+    photoUrl: parent.photoUrl || "",
     students: parent.students.map((student) => ({ ...student, payments }))
   };
 }
@@ -154,7 +155,8 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const email = String(body.email ?? "").toLowerCase();
     const password = String(body.password ?? "");
     if (email === "parent@school.com" && password === "password123") {
-      return { token: "demo-parent-token", role: "PARENT", fullName: "Dupont Marie", parentId: "PAR-2025-0001" } as T;
+      const parent = getDemoParents().find((item) => item.id === "PAR-2025-0001");
+      return { token: "demo-parent-token", role: "PARENT", fullName: "Dupont Marie", parentId: "PAR-2025-0001", photoUrl: parent?.photoUrl || "" } as T;
     }
 
     const credential = getDemoParentCredentials().find((item) => item.email === email && item.password === password);
@@ -165,7 +167,8 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
           token: `demo-parent-token-${parent.id}`,
           role: "PARENT",
           fullName: parent.fullName,
-          parentId: parent.id
+          parentId: parent.id,
+          photoUrl: parent.photoUrl || ""
         } as T;
       }
     }
@@ -179,6 +182,26 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (normalizedPath === "/api/auth/forgot-password") return { message: "OK" } as T;
   if (normalizedPath === "/api/auth/change-password") return { message: "OK" } as T;
+  if (normalizedPath === "/api/auth/recover-admin-password" && method === "POST") {
+    const email = String(body.email ?? "").trim().toLowerCase();
+    const recoveryCode = String(body.recoveryCode ?? "");
+    const newPassword = String(body.newPassword ?? "");
+    const configuredCode = String(import.meta.env.VITE_ADMIN_RECOVERY_CODE ?? "");
+    if (!configuredCode || configuredCode.startsWith("CHANGE_ME")) {
+      throw new Error("La recuperation administrateur n'est pas configuree.");
+    }
+    if (recoveryCode !== configuredCode || email !== "admin@school.com" || newPassword.length < 10) {
+      throw new Error("Informations de recuperation invalides.");
+    }
+    return { message: "Mot de passe administrateur reinitialise en mode local." } as T;
+  }
+  if (normalizedPath === "/api/parents/me/photo" && method === "PUT") {
+    const parentId = localStorage.getItem(PARENT_ID_STORAGE_KEY);
+    const photoUrl = String(body.photoUrl ?? "");
+    const parents = getDemoParents().map((parent) => parent.id === parentId ? { ...parent, photoUrl } : parent);
+    writeJson(DEMO_PARENTS_KEY, parents);
+    return { photoUrl } as T;
+  }
   if (normalizedPath === "/api/ai/assistant") {
     const query = String(body.query ?? "").toLowerCase();
     const hasDebtQuestion = query.includes("impay") || query.includes("non pay") || query.includes("unpaid");
