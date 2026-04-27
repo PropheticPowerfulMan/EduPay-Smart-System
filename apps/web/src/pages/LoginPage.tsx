@@ -143,10 +143,12 @@ export function LoginPage() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showForgot, setShowForgot] = useState(false);
-  const [quickLoginRole, setQuickLoginRole] = useState<"ADMIN" | "PARENT" | null>(null);
   const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
-    defaultValues: demoCredentials
+    defaultValues: {
+      email: "",
+      password: ""
+    }
   });
 
   const loginWithCredentials = async (values: LoginInput) => {
@@ -155,7 +157,7 @@ export function LoginPage() {
       method: "POST",
       body: JSON.stringify({
         email: values.email.trim().toLowerCase(),
-        password: values.password.trim()
+        password: values.password
       })
     });
     const role = normalizeRole(result.role, result.parentId);
@@ -174,19 +176,11 @@ export function LoginPage() {
     }
   };
 
-  const handleQuickLogin = async (role: "ADMIN" | "PARENT") => {
+  const fillDemoCredentials = (role: "ADMIN" | "PARENT") => {
     const creds = role === "PARENT" ? parentDemoCredentials : demoCredentials;
     setApiError(null);
-    setQuickLoginRole(role);
     setValue("email", creds.email, { shouldValidate: true });
     setValue("password", creds.password, { shouldValidate: true });
-    try {
-      await loginWithCredentials(creds);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : t("loginFailedHint");
-      setApiError(message);
-      setQuickLoginRole(null);
-    }
   };
 
   return (
@@ -238,23 +232,23 @@ export function LoginPage() {
               </div>
             </div>
 
-            {/* Demo Button */}
+            {/* Demo fill buttons */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => void handleQuickLogin("ADMIN")}
-                disabled={isSubmitting || quickLoginRole !== null}
+                onClick={() => fillDemoCredentials("ADMIN")}
+                disabled={isSubmitting}
                 className="w-full p-3 rounded-lg border border-brand-500/30 bg-brand-500/10 text-brand-300 hover:bg-brand-500/20 hover:border-brand-500/50 active:scale-95 active:brightness-90 active:shadow-inner transition-all duration-150 text-sm font-semibold select-none disabled:opacity-60"
               >
-                {quickLoginRole === "ADMIN" ? t("signingIn") : t("fillDemoAdmin")}
+                {t("fillDemoAdmin")}
               </button>
               <button
                 type="button"
-                onClick={() => void handleQuickLogin("PARENT")}
-                disabled={isSubmitting || quickLoginRole !== null}
+                onClick={() => fillDemoCredentials("PARENT")}
+                disabled={isSubmitting}
                 className="w-full p-3 rounded-lg border border-accent/40 bg-accent/10 text-pink-300 hover:bg-accent/20 hover:border-accent/60 active:scale-95 active:brightness-90 active:shadow-inner transition-all duration-150 text-sm font-semibold select-none disabled:opacity-60"
               >
-                {quickLoginRole === "PARENT" ? t("signingIn") : t("fillDemoParent")}
+                {t("fillDemoParent")}
               </button>
             </div>
 
@@ -268,6 +262,7 @@ export function LoginPage() {
                   placeholder={t("email")}
                   className="w-full"
                   type="email"
+                  autoComplete="username"
                 />
                 {errors.email && <p className="text-xs text-danger">{errors.email.message}</p>}
               </div>
@@ -290,6 +285,7 @@ export function LoginPage() {
                     type={showPassword ? "text" : "password"}
                     placeholder={t("password")}
                     className="w-full !pr-11"
+                    autoComplete="current-password"
                   />
                   <button
                     type="button"

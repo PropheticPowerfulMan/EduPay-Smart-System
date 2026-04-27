@@ -18,7 +18,8 @@ const envSchema = z.object({
   AFRIKTALK_API_KEY: z.string().default("CHANGE_ME"),
   AFRIKTALK_API_URL: z.string().default(""),
   AFRIKTALK_SENDER: z.string().default("EduPay"),
-  DEFAULT_LANG: z.enum(["fr", "en"]).default("fr")
+  DEFAULT_LANG: z.enum(["fr", "en"]).default("fr"),
+  ENABLE_DEMO_AUTH_FALLBACK: z.enum(["true", "false"]).default("false")
 });
 
 export const env = envSchema.parse(process.env);

@@ -8,6 +8,7 @@ const DEMO_PARENTS_KEY = "edupay_demo_parents_v1";
 const DEMO_PAYMENTS_KEY = "edupay_payments_v2";
 const DEMO_NOTIFICATIONS_KEY = "edupay-payment-notifications-enabled";
 const DEMO_PARENT_CREDENTIALS_KEY = "edupay_demo_parent_credentials_v1";
+const DEMO_FALLBACK_ENABLED = (import.meta.env.VITE_ENABLE_DEMO_FALLBACK ?? "").trim().toLowerCase() === "true";
 
 type DemoStudent = { id: string; fullName: string; classId: string; className: string; annualFee: number; payments?: DemoPayment[] };
 type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
@@ -318,7 +319,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       }
     });
   } catch {
-    if (path.startsWith("/api/")) return demoApi<T>(path, init);
+    if (DEMO_FALLBACK_ENABLED && path.startsWith("/api/")) return demoApi<T>(path, init);
     throw new Error("Impossible de joindre l'API. Verifiez que le backend est demarre.");
   }
 
@@ -329,7 +330,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       throw new Error("Session expiree. Veuillez vous reconnecter.");
     }
 
-    if (response.status >= 500 && canFallbackToDemo(path, init)) {
+    if (DEMO_FALLBACK_ENABLED && response.status >= 500 && canFallbackToDemo(path, init)) {
       return demoApi<T>(path, init);
     }
 

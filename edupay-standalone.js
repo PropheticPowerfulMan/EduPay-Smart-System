@@ -98,14 +98,13 @@ const htmlPage = `
     <p style="margin-bottom:1.5rem; color:#666;">Plateforme de gestion scolaire</p>
     <div class="form-group">
       <label>Email</label>
-      <input type="email" id="loginEmail" value="admin@school.com" />
+      <input type="email" id="loginEmail" autocomplete="username" />
     </div>
     <div class="form-group">
       <label>Mot de passe</label>
-      <input type="password" id="loginPass" value="password123" />
+      <input type="password" id="loginPass" autocomplete="current-password" />
     </div>
     <button class="btn btn-primary" style="width:100%;" onclick="login()">Se connecter</button>
-    <p style="margin-top:1rem; text-align:center; color:#999; font-size:0.9rem;">Demo: admin@school.com / password123</p>
   </div>
 </div>
 

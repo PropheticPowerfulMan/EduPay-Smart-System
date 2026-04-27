@@ -1,6 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { prisma } from "../../prisma";
 import { env } from "../../config/env";
@@ -46,6 +47,14 @@ function buildToken(user: { id: string; role: "ADMIN" | "ACCOUNTANT" | "PARENT";
 
 export const authRouter = Router();
 
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Trop de tentatives. Reessayez dans quelques minutes." }
+});
+
 authRouter.post("/register", async (req, res) => {
   const payload = registerSchema.parse(req.body);
   const hash = await bcrypt.hash(payload.password, 10);
@@ -53,7 +62,7 @@ authRouter.post("/register", async (req, res) => {
   const user = await prisma.user.create({
     data: {
       fullName: payload.fullName,
-      email: payload.email,
+      email: payload.email.trim().toLowerCase(),
       role: payload.role,
       schoolId: payload.schoolId,
       passwordHash: hash
@@ -63,11 +72,12 @@ authRouter.post("/register", async (req, res) => {
   res.status(201).json({ id: user.id });
 });
 
-authRouter.post("/login", async (req, res) => {
+authRouter.post("/login", loginLimiter, async (req, res) => {
   const payload = loginSchema.parse(req.body);
+  const email = payload.email.trim().toLowerCase();
 
   try {
-    const user = await prisma.user.findUnique({ where: { email: payload.email } });
+    const user = await prisma.user.findUnique({ where: { email } });
 
     if (user) {
       const ok = await bcrypt.compare(payload.password, user.passwordHash);
@@ -80,11 +90,18 @@ authRouter.post("/login", async (req, res) => {
       }
     }
   } catch (error) {
-    console.error("Database unavailable on login, using demo fallback", error);
+    console.error("Database unavailable on login", error);
+    if (env.ENABLE_DEMO_AUTH_FALLBACK !== "true") {
+      return res.status(503).json({ message: "Service de connexion temporairement indisponible" });
+    }
+  }
+
+  if (env.ENABLE_DEMO_AUTH_FALLBACK !== "true") {
+    return res.status(401).json({ message: "Identifiants invalides" });
   }
 
   const demoUser = demoUsers.find((entry) =>
-    entry.email.toLowerCase() === payload.email.toLowerCase() && entry.password === payload.password
+    entry.email.toLowerCase() === email && entry.password === payload.password
   );
 
   if (demoUser) {

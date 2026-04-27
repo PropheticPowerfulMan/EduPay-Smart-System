@@ -6,6 +6,7 @@ import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
+import { timingSafeEqual } from "crypto";
 
 const env = {
   JWT_SECRET: process.env.JWT_SECRET || "dev-secret-key-change-me-in-prod",
@@ -45,6 +46,14 @@ app.use(cors({
 app.use(express.json({ limit: "3mb" }));
 app.use(morgan("combined"));
 app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 500 }));
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Trop de tentatives. Reessayez dans quelques minutes." }
+});
 
 // Mock Data
 const mockUsers = [
@@ -212,13 +221,21 @@ function sendDemoPaymentNotifications(payment: any, parent: any, students: any[]
 }
 
 // Routes: Auth
-const loginSchema = z.object({ email: z.string().email(), password: z.string() });
+const loginSchema = z.object({ email: z.string().email(), password: z.string().min(8) });
 
-app.post("/api/auth/login", async (req, res) => {
+function safeCompare(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.length !== rightBuffer.length) return false;
+  return timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+app.post("/api/auth/login", loginLimiter, async (req, res) => {
   const payload = loginSchema.parse(req.body);
-  const user = mockUsers.find((u) => u.email === payload.email);
+  const email = payload.email.trim().toLowerCase();
+  const user = mockUsers.find((u) => u.email.toLowerCase() === email);
   if (!user) return res.status(401).json({ message: "Invalid credentials" });
-  if (payload.password !== user.password) return res.status(401).json({ message: "Invalid credentials" });
+  if (!safeCompare(payload.password, user.password)) return res.status(401).json({ message: "Invalid credentials" });
   const token = jwt.sign({ sub: user.id, role: user.role, schoolId: user.schoolId }, env.JWT_SECRET);
   const parent = user.role === "PARENT" ? mockParents.find((item) => item.userId === user.id) : null;
   return res.json({ token, role: user.role, fullName: user.fullName, parentId: parent?.id });
@@ -248,6 +265,15 @@ function authGuard(req: any, res: Response, next: Function) {
   } catch {
     return res.status(401).json({ message: "Invalid token" });
   }
+}
+
+function requireRole(...roles: string[]) {
+  return (req: any, res: Response, next: Function) => {
+    if (!roles.includes(req.user?.role)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    return next();
+  };
 }
 
 // Routes: Parents
@@ -280,7 +306,7 @@ function parentWithStudents(parent: any) {
   return { ...parent, students };
 }
 
-app.get("/api/parents", authGuard, (req: any, res) => {
+app.get("/api/parents", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: any, res) => {
   const q = (req.query.search as string || "").toLowerCase();
   let list = mockParents.map(parentWithStudents);
   if (q) {
@@ -294,7 +320,7 @@ app.get("/api/parents", authGuard, (req: any, res) => {
   return res.json(list);
 });
 
-app.post("/api/parents", authGuard, async (req: any, res) => {
+app.post("/api/parents", authGuard, requireRole("ADMIN", "ACCOUNTANT"), async (req: any, res) => {
   const { nom, postnom, prenom, fullName, phone, email, photoUrl, students: reqStudents } = req.body;
   const id = generateParentId();
   const temporaryPassword = generateTemporaryPassword();
@@ -373,7 +399,7 @@ app.post("/api/parents/:id/reset-password", authGuard, (req: any, res) => {
   return res.json({ parentId: parent.id, email: user.email, temporaryPassword });
 });
 
-app.put("/api/parents/:id", authGuard, (req: any, res) => {
+app.put("/api/parents/:id", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: any, res) => {
   const idx = mockParents.findIndex((p) => p.id === req.params.id);
   if (idx === -1) return res.status(404).json({ message: "Parent not found" });
   const { nom, postnom, prenom, fullName, phone, email, photoUrl, students: reqStudents } = req.body;
@@ -414,7 +440,7 @@ app.put("/api/parents/:id", authGuard, (req: any, res) => {
   return res.json(parentWithStudents(mockParents[idx]));
 });
 
-app.delete("/api/parents/:id", authGuard, (req: any, res) => {
+app.delete("/api/parents/:id", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: any, res) => {
   const idx = mockParents.findIndex((p) => p.id === req.params.id);
   if (idx === -1) return res.status(404).json({ message: "Parent not found" });
   mockParents.splice(idx, 1);
@@ -426,7 +452,7 @@ app.delete("/api/parents/:id", authGuard, (req: any, res) => {
 });
 
 // Routes: Students
-app.get("/api/students", authGuard, (_req: any, res) => {
+app.get("/api/students", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (_req: any, res) => {
   return res.json(mockStudents);
 });
 
@@ -451,7 +477,7 @@ app.put("/api/payments/settings/notifications", authGuard, (req: any, res) => {
   return res.json({ paymentNotificationsEnabled });
 });
 
-app.post("/api/payments", authGuard, (req: any, res) => {
+app.post("/api/payments", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: any, res) => {
   const { parentId, parentFullName, studentIds, reason, amount, method, status, transactionNumber, notifyParent } = req.body;
   const parent = mockParents.find((p) => p.id === parentId || p.fullName === parentFullName);
   const resolvedParentId = parentId || parent?.id;
@@ -478,12 +504,12 @@ app.post("/api/payments", authGuard, (req: any, res) => {
   return res.status(201).json({ payment, receipt: { id: `receipt-${Date.now()}` }, notificationStatus });
 });
 
-app.get("/api/payments", authGuard, (_req: any, res) => {
+app.get("/api/payments", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (_req: any, res) => {
   return res.json(mockPayments);
 });
 
 // Routes: Analytics
-app.get("/api/analytics/overview", authGuard, (_req: any, res) => {
+app.get("/api/analytics/overview", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (_req: any, res) => {
   const totalRevenue = mockPayments.reduce((s, p) => s + (p.status === "COMPLETED" ? p.amount : 0), 0);
   const monthlyRevenue = totalRevenue * 0.3;
   const paymentSuccessRate = 85;
@@ -492,7 +518,7 @@ app.get("/api/analytics/overview", authGuard, (_req: any, res) => {
 });
 
 // Routes: AI Assistant
-app.post("/api/ai/assistant", authGuard, (req: any, res) => {
+app.post("/api/ai/assistant", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: any, res) => {
   const { query } = req.body;
   return res.json({
     answer: "Query understood. Here is your answer from the AI assistant.",
@@ -500,7 +526,7 @@ app.post("/api/ai/assistant", authGuard, (req: any, res) => {
   });
 });
 
-app.get("/api/ai/insights", authGuard, (_req: any, res) => {
+app.get("/api/ai/insights", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (_req: any, res) => {
   return res.json({
     anomalies: [{ class: "Grade 3", unpaid_rate: 0.40 }],
     suggestions: ["Send reminder to 25 parents", "Review payment plan"],
@@ -509,7 +535,7 @@ app.get("/api/ai/insights", authGuard, (_req: any, res) => {
 });
 
 // Routes: Notifications (stub)
-app.post("/api/notifications/send", authGuard, (req: any, res) => {
+app.post("/api/notifications/send", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: any, res) => {
   return res.status(201).json({ id: `log-${Date.now()}`, status: "SENT" });
 });
 
