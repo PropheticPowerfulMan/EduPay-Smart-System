@@ -4,7 +4,7 @@ import { schoolBranding } from "../config/branding";
 import { useI18n } from "../i18n";
 import { api } from "../services/api";
 import { useAuthStore } from "../store/auth";
-import { useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 
 function imageFileToAvatar(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -127,6 +127,28 @@ export function Navbar() {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [photoError, setPhotoError] = useState("");
+  const userMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isUserMenuOpen) return;
+
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && userMenuRef.current?.contains(target)) return;
+      setIsUserMenuOpen(false);
+    };
+
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsUserMenuOpen(false);
+    };
+
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutsidePointer);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [isUserMenuOpen]);
 
   const updatePhoto = async (file?: File) => {
     if (!file) return;
@@ -196,9 +218,11 @@ export function Navbar() {
             </div>
 
             {/* User Menu */}
-            <div className="relative">
+            <div className="relative z-[70]" ref={userMenuRef}>
               <button
                 onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                aria-expanded={isUserMenuOpen}
+                aria-haspopup="menu"
                 className="flex items-center gap-2 rounded-full border border-brand-300/20 bg-white/[0.07] px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition-all duration-200 hover:border-brand-300/40 hover:bg-brand-500/10 sm:gap-3 sm:px-3"
               >
                 <div className="hidden sm:block text-right">
@@ -216,7 +240,7 @@ export function Navbar() {
 
               {/* Dropdown Menu */}
               {isUserMenuOpen && (
-                <div className="glass absolute right-0 mt-2 w-60 overflow-hidden rounded-2xl py-2 shadow-xl animate-fadeInDown">
+                <div className="glass absolute right-0 top-full z-[90] mt-2 w-[min(92vw,15rem)] overflow-hidden rounded-2xl py-2 shadow-2xl animate-fadeInDown sm:w-60">
                   <div className="px-4 py-3 border-b border-brand-300/15">
                     <div className="flex items-center gap-3">
                       <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-brand-200 to-brand-500 text-sm font-bold text-slate-950">
