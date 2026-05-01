@@ -302,12 +302,10 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       createdAt: new Date().toISOString()
     };
     demoParents.push(newParent);
-    const notificationStatus = {
-      email: payload.notifyEmail && newParent.email ? "SIMULATED" : "SKIPPED",
-      sms: payload.notifySms && newParent.phone ? "SIMULATED" : "SKIPPED"
-    };
-    if (payload.notifyEmail) console.log("[parent-welcome-email:demo]", buildParentWelcomeMessages(newParent, temporaryPassword, newParent.email).emailBody);
-    if (payload.notifySms) console.log("[parent-welcome-sms:demo]", buildParentWelcomeMessages(newParent, temporaryPassword, newParent.email).smsBody);
+    const notificationStatus = await sendParentWelcomeNotifications(newParent, temporaryPassword, req.user!.schoolId, {
+      notifyEmail: payload.notifyEmail,
+      notifySms: payload.notifySms
+    });
     return res.status(201).json({ ...newParent, notificationStatus });
   }
 });
@@ -355,14 +353,12 @@ parentRouter.post("/:id/reset-password", authorize("ADMIN", "ACCOUNTANT"), async
     const parent = demoParents.find((p) => p.id === id);
     if (!parent) return res.status(404).json({ message: "Parent non trouve" });
     parent.temporaryPassword = temporaryPassword;
+    const notificationStatus = await sendParentWelcomeNotifications(parent, temporaryPassword, req.user!.schoolId, preferences);
     return res.json({
       parentId: parent.id,
       email: parent.email,
       temporaryPassword,
-      notificationStatus: {
-        email: preferences.notifyEmail && parent.email ? "SIMULATED" : "SKIPPED",
-        sms: preferences.notifySms && parent.phone ? "SIMULATED" : "SKIPPED"
-      }
+      notificationStatus
     });
   }
 });

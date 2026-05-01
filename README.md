@@ -150,7 +150,9 @@ cd apps/web && pnpm test
 | DATABASE_URL | URL PostgreSQL |
 | JWT_SECRET | Clé secrète JWT (min 32 chars) |
 | SMTP_HOST/PORT/USER/PASS | Configuration email Nodemailer |
-| AFRIKTALK_API_KEY | Clé AfrikTalk pour SMS DRC |
+| AFRIKTALK_USERNAME / AFRIKTALK_API_KEY | Compte et clé API AfrikTalk/Africa's Talking pour SMS réels |
+| AFRIKTALK_API_URL | Endpoint SMS, par défaut `https://api.africastalking.com/version1/messaging` |
+| AFRIKTALK_SENDER | Nom d'expéditeur SMS approuvé par le fournisseur |
 | AI_SERVICE_URL | URL du microservice IA |
 
 ---

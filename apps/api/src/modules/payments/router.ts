@@ -295,7 +295,7 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
         status: payload.status,
         createdAt: new Date().toISOString()
       },
-      notificationStatus: { email: shouldNotify ? "SIMULATED" : "DISABLED", sms: shouldNotify ? "SIMULATED" : "DISABLED" }
+      notificationStatus: { email: shouldNotify ? "SKIPPED" : "DISABLED", sms: shouldNotify ? "SKIPPED" : "DISABLED" }
     });
   }
 });

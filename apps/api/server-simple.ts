@@ -7,6 +7,7 @@ import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { timingSafeEqual } from "crypto";
+import { sendEmail, sendSms } from "./src/utils/messaging";
 
 const env = {
   JWT_SECRET: process.env.JWT_SECRET || "dev-secret-key-change-me-in-prod",
@@ -136,12 +137,14 @@ async function sendParentWelcomeNotifications(parent: any, password: string, ema
   };
 
   if (parent.email) {
-    console.log(`[parent-welcome-email] To: ${parent.email}\nSubject: ${messages.subject}\n${messages.emailBody}`);
-    status.email = "SIMULATED";
+    status.email = await sendEmail({
+      to: parent.email,
+      subject: messages.subject,
+      text: messages.emailBody
+    });
   }
   if (parent.phone) {
-    console.log(`[parent-welcome-sms] To: ${parent.phone}\n${messages.smsBody}`);
-    status.sms = "SIMULATED";
+    status.sms = await sendSms({ to: parent.phone, text: messages.smsBody });
   }
 
   return status;
@@ -201,7 +204,7 @@ function getPaymentStatusLabel(status: string) {
   return labels[status] ?? status;
 }
 
-function sendDemoPaymentNotifications(payment: any, parent: any, students: any[]) {
+async function sendDemoPaymentNotifications(payment: any, parent: any, students: any[]) {
   if (!parent) return { email: "SKIPPED", sms: "SKIPPED" };
   const amount = `$ ${Number(payment.amount || 0).toFixed(5)} USD`;
   const studentLines = students.length ? students.map((s) => `- ${s.fullName}`).join("\n") : "- Aucun eleve precise";
@@ -221,11 +224,11 @@ function sendDemoPaymentNotifications(payment: any, parent: any, students: any[]
     studentLines
   ].join("\n");
   const smsBody = `EduPay: paiement ${payment.transactionNumber}. Motif: ${payment.reason}. Montant: ${amount}. Statut: ${getPaymentStatusLabel(payment.status)}.`;
-  if (parent.email) console.log(`[payment-email:demo] To: ${parent.email}\n${emailBody}`);
-  if (parent.phone) console.log(`[payment-sms:demo] To: ${parent.phone}\n${smsBody}`);
   return {
-    email: parent.email ? "SIMULATED" : "SKIPPED",
-    sms: parent.phone ? "SIMULATED" : "SKIPPED"
+    email: parent.email
+      ? await sendEmail({ to: parent.email, subject: "Paiement enregistre dans EduPay", text: emailBody })
+      : "SKIPPED",
+    sms: parent.phone ? await sendSms({ to: parent.phone, text: smsBody }) : "SKIPPED"
   };
 }
 
@@ -518,7 +521,7 @@ app.put("/api/payments/settings/notifications", authGuard, (req: any, res) => {
   return res.json({ paymentNotificationsEnabled });
 });
 
-app.post("/api/payments", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: any, res) => {
+app.post("/api/payments", authGuard, requireRole("ADMIN", "ACCOUNTANT"), async (req: any, res) => {
   const { parentId, parentFullName, studentIds, reason, amount, method, status, transactionNumber, notifyParent } = req.body;
   const parent = mockParents.find((p) => p.id === parentId || p.fullName === parentFullName);
   const resolvedParentId = parentId || parent?.id;
@@ -540,7 +543,7 @@ app.post("/api/payments", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: a
   const shouldNotify = notifyParent ?? paymentNotificationsEnabled;
   const relatedStudents = mockStudents.filter((s) => Array.isArray(studentIds) ? studentIds.includes(s.id) : s.parentId === resolvedParentId);
   const notificationStatus = shouldNotify
-    ? sendDemoPaymentNotifications(payment, parent, relatedStudents)
+    ? await sendDemoPaymentNotifications(payment, parent, relatedStudents)
     : { email: "DISABLED", sms: "DISABLED" };
   return res.status(201).json({ payment, receipt: { id: `receipt-${Date.now()}` }, notificationStatus });
 });
@@ -576,16 +579,38 @@ app.get("/api/ai/insights", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (_req
 });
 
 // Routes: Notifications (stub)
-app.post("/api/notifications/send", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: any, res) => {
-  return res.status(201).json({ id: `log-${Date.now()}`, status: "SENT" });
+app.post("/api/notifications/send", authGuard, requireRole("ADMIN", "ACCOUNTANT"), async (req: any, res) => {
+  const payload = z.object({
+    parentId: z.string(),
+    channel: z.enum(["SMS", "EMAIL"]),
+    subject: z.string().optional(),
+    body: z.string().min(3)
+  }).parse(req.body);
+  const parent = mockParents.find((p) => p.id === payload.parentId);
+  if (!parent) return res.status(404).json({ message: "Parent introuvable" });
+
+  const status = payload.channel === "EMAIL"
+    ? await sendEmail({
+      to: parent.email,
+      subject: payload.subject || "Notification EduPay",
+      text: payload.body
+    })
+    : await sendSms({ to: parent.phone, text: payload.body });
+
+  return res.status(201).json({ id: `log-${Date.now()}`, status });
 });
 
 // Routes: Forgot password (always responds success to avoid leaking account existence)
-app.post("/api/auth/forgot-password", (req: any, res) => {
+app.post("/api/auth/forgot-password", async (req: any, res) => {
   const { email } = req.body;
-  // In production this would send a real email with a reset link.
-  // For demo we just acknowledge the request.
-  console.log(`[forgot-password] Reset requested for: ${email || "unknown"}`);
+  const user = mockUsers.find((item) => item.email.toLowerCase() === String(email || "").trim().toLowerCase());
+  if (user) {
+    await sendEmail({
+      to: user.email,
+      subject: "Recuperation de mot de passe EduPay",
+      text: `Bonjour ${user.fullName},\n\nUne demande de recuperation de mot de passe a ete recue pour votre compte EduPay.\nContactez l'administration si vous n'etes pas a l'origine de cette demande.`
+    });
+  }
   return res.json({ message: "If this email exists, a reset link was sent." });
 });
 
