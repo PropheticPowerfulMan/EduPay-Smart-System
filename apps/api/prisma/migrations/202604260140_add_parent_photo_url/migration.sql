@@ -1,0 +1,1 @@
+ALTER TABLE "Parent" ADD COLUMN "photoUrl" TEXT;

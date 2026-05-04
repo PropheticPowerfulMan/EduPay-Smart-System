@@ -1,0 +1,19 @@
+{
+  "name": "edupay-smart-system",
+  "private": true,
+  "version": "1.0.0",
+  "packageManager": "pnpm@9.15.9",
+  "scripts": {
+    "setup:dev": "pnpm install && pnpm --filter \"@edupay/api\" prisma:generate",
+    "dev": "pnpm --filter \"@edupay/web\" --filter \"@edupay/api\" --parallel dev",
+    "dev:demo": "pnpm --filter \"@edupay/web\" --filter \"@edupay/api\" --parallel dev:demo",
+    "session:save": "powershell -ExecutionPolicy Bypass -File scripts/save-session.ps1",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ]
+}

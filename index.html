@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/jpeg" href="public/kcs.jpg?v=3">
+  <link rel="shortcut icon" type="image/x-icon" href="public/favicon.ico?v=3">
+  <link rel="apple-touch-icon" href="public/logo-school.png?v=3">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EduPay Smart System</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap");
+
+    :root {
+      --brand: #0b2e59;
+      --brand-soft: #1f4f8f;
+      --bg-main: #f5f9ff;
+      --ink: #0f172a;
+      --line: #d7e3f3;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: "Manrope", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 0% 0%, rgba(31, 79, 143, 0.15), transparent 36%),
+        radial-gradient(circle at 100% 20%, rgba(11, 46, 89, 0.15), transparent 34%),
+        var(--bg-main);
+      min-height: 100vh;
+    }
+
+    header {
+      background: linear-gradient(140deg, #0b2e59, #1f4f8f 65%, #153868);
+      color: white;
+      padding: 1rem 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+      box-shadow: 0 12px 30px rgba(9, 31, 58, 0.22);
+    }
+
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.9rem;
+    }
+
+    .header-brand img {
+      width: 46px;
+      height: 46px;
+      border-radius: 999px;
+      object-fit: cover;
+      border: 2px solid rgba(255, 255, 255, 0.35);
+      background: #fff;
+      padding: 2px;
+    }
+
+    .header-brand h1 {
+      font-size: 1.1rem;
+      line-height: 1.1;
+      letter-spacing: 0.01em;
+    }
+
+    .header-brand p {
+      font-size: 0.75rem;
+      opacity: 0.88;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      font-weight: 700;
+    }
+
+    .container {
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 1.5rem;
+      animation: fadeIn 280ms ease-out;
+    }
+
+    .sidebar {
+      display: flex;
+      gap: 0.65rem;
+      margin-bottom: 1.4rem;
+      flex-wrap: wrap;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      padding: 0.55rem;
+      box-shadow: 0 10px 24px rgba(16, 47, 88, 0.08);
+      backdrop-filter: blur(6px);
+    }
+
+    .btn {
+      padding: 0.72rem 1.1rem;
+      border: none;
+      border-radius: 11px;
+      cursor: pointer;
+      font-weight: 700;
+      font-family: inherit;
+      transition: transform 150ms ease, box-shadow 150ms ease, background-color 150ms ease;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .btn-nav {
+      background: #eef3fb;
+      color: #183861;
+    }
+
+    .btn-nav.active {
+      background: var(--brand);
+      color: white;
+      box-shadow: 0 8px 20px rgba(11, 46, 89, 0.32);
+    }
+
+    .logout-btn {
+      background: rgba(255, 255, 255, 0.18);
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1rem;
+      margin-bottom: 1.6rem;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.96);
+      border: 1px solid var(--line);
+      padding: 1.15rem;
+      border-radius: 16px;
+      box-shadow: 0 12px 25px rgba(12, 45, 86, 0.08);
+    }
+
+    .card h3 {
+      color: #17385f;
+      font-size: 0.95rem;
+    }
+
+    .value {
+      margin-top: 0.55rem;
+      font-size: 2rem;
+      font-weight: 800;
+      color: var(--brand-soft);
+      line-height: 1.1;
+    }
+
+    .section { display: none; }
+    .section.active { display: block; }
+
+    .section h2 {
+      color: var(--brand);
+      margin-bottom: 1rem;
+      font-size: 1.45rem;
+      letter-spacing: 0.01em;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.8rem 0 0.2rem;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+    }
+
+    th {
+      background: #edf3fc;
+      color: #183a65;
+      padding: 0.72rem;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      font-size: 0.84rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    td {
+      padding: 0.78rem 0.72rem;
+      border-bottom: 1px solid #ebf0f8;
+      font-size: 0.93rem;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .form-group {
+      margin: 0.95rem 0;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 0.4rem;
+      font-weight: 700;
+      color: var(--brand);
+      font-size: 0.92rem;
+    }
+
+    input, select, textarea {
+      width: 100%;
+      padding: 0.72rem;
+      border: 1px solid #ccdaee;
+      border-radius: 10px;
+      font-family: inherit;
+      background: #fff;
+    }
+
+    input:focus, select:focus, textarea:focus {
+      border-color: var(--brand-soft);
+      box-shadow: 0 0 0 3px rgba(31, 79, 143, 0.14);
+      outline: none;
+    }
+
+    .status {
+      padding: 0.32rem 0.62rem;
+      border-radius: 999px;
+      font-size: 0.76rem;
+      font-weight: 700;
+    }
+
+    .status.completed { background: #dcfce7; color: #166534; }
+    .status.pending { background: #fef3c7; color: #92400e; }
+
+    .login-page {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      padding: 1.2rem;
+    }
+
+    .login-card {
+      background: #ffffff;
+      width: 100%;
+      max-width: 460px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      overflow: hidden;
+      box-shadow: 0 28px 50px rgba(16, 46, 86, 0.2);
+    }
+
+    .login-hero {
+      padding: 1.45rem;
+      color: white;
+      background: linear-gradient(140deg, #0b2e59, #1f4f8f 68%, #153868);
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
+    }
+
+    .login-hero img {
+      width: 62px;
+      height: 62px;
+      border-radius: 999px;
+      object-fit: cover;
+      background: #fff;
+      padding: 3px;
+      border: 3px solid rgba(255, 255, 255, 0.35);
+    }
+
+    .login-hero p {
+      margin-top: 0.15rem;
+      font-size: 0.82rem;
+      opacity: 0.9;
+    }
+
+    .login-body {
+      padding: 1.45rem;
+    }
+
+    .login-title {
+      color: var(--brand);
+      margin-bottom: 0.9rem;
+      font-size: 1.32rem;
+    }
+
+    .demo-text {
+      text-align: center;
+      margin-top: 0.95rem;
+      color: #5f728e;
+      font-size: 0.85rem;
+    }
+
+    .lang-switcher {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.92);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px;
+      display: flex;
+      gap: 4px;
+      box-shadow: 0 8px 20px rgba(12, 45, 86, 0.16);
+      backdrop-filter: blur(6px);
+    }
+
+    .lang-btn {
+      border: none;
+      border-radius: 999px;
+      padding: 0.35rem 0.62rem;
+      font-size: 0.74rem;
+      font-weight: 800;
+      color: #30445f;
+      background: transparent;
+      cursor: pointer;
+    }
+
+    .lang-btn.active {
+      background: var(--brand);
+      color: white;
+      box-shadow: 0 6px 14px rgba(11, 46, 89, 0.3);
+    }
+
+    .amount-words {
+      margin-top: 0.55rem;
+      padding: 0.75rem;
+      border-radius: 10px;
+      border: 1px dashed #b8cbe8;
+      background: #f3f8ff;
+      color: #153a66;
+      font-size: 0.9rem;
+      line-height: 1.35;
+    }
+
+    .receipt-wrap {
+      margin-top: 1rem;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #ffffff;
+      padding: 1rem;
+    }
+
+    .receipt-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.8rem;
+      border-bottom: 1px solid #e2ebf7;
+      padding-bottom: 0.8rem;
+      margin-bottom: 0.8rem;
+    }
+
+    .receipt-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.6rem 1rem;
+      margin-bottom: 0.9rem;
+    }
+
+    .receipt-label {
+      font-size: 0.78rem;
+      color: #4b607d;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 700;
+    }
+
+    .receipt-value {
+      font-weight: 700;
+      color: #0f2848;
+      margin-top: 0.1rem;
+      font-size: 0.93rem;
+    }
+
+    .receipt-actions {
+      display: flex;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+      margin-top: 0.8rem;
+    }
+
+    .signature-zone {
+      margin-top: 0.9rem;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0.9rem;
+    }
+
+    .sig-box {
+      min-height: 95px;
+      border: 1px dashed #9eb8db;
+      border-radius: 10px;
+      padding: 0.7rem;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      color: #4f6685;
+      font-size: 0.85rem;
+      background: #fafcff;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: repeat(2, 1fr); }
+      header { padding: 1rem; }
+    }
+
+    @media (max-width: 620px) {
+      .grid { grid-template-columns: 1fr; }
+      .header-brand p { display: none; }
+      .btn { width: 100%; }
+      .sidebar { display: grid; grid-template-columns: 1fr 1fr; }
+      .receipt-grid, .signature-zone { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="lang-switcher" aria-label="Language switcher">
+  <button id="langFr" class="lang-btn" type="button" onclick="setLanguage('fr')">FR</button>
+  <button id="langEn" class="lang-btn" type="button" onclick="setLanguage('en')">EN</button>
+</div>
+
+<header id="header" style="display:none;">
+  <div class="header-brand">
+    <img src="public/kcs.jpg" alt="Logo KCS">
+    <div>
+      <h1>EduPay Smart System</h1>
+      <p>KCS</p>
+    </div>
+  </div>
+  <button onclick="logout()" class="btn logout-btn" data-i18n="logout">Deconnexion</button>
+</header>
+
+<div id="loginPage" class="login-page">
+  <div class="login-card">
+    <div class="login-hero">
+      <img src="public/kcs.jpg" alt="Logo KCS">
+      <div>
+        <strong>Kinshasa Christian School</strong>
+        <p>Paiement scolaire intelligent</p>
+      </div>
+    </div>
+    <div class="login-body">
+      <h1 class="login-title" data-i18n="loginTitle">Connexion EduPay</h1>
+      <div class="form-group">
+        <label data-i18n="emailLabel">Email</label>
+        <input type="email" id="email" autocomplete="username" />
+      </div>
+      <div class="form-group">
+        <label data-i18n="passwordLabel">Mot de passe</label>
+        <input type="password" id="password" autocomplete="current-password" />
+      </div>
+      <button onclick="login()" class="btn" style="width:100%;background:#0b2e59;color:white;" data-i18n="signIn">Se connecter</button>
+    </div>
+  </div>
+</div>
+
+<div id="appPage" style="display:none;">
+  <div class="container">
+    <div class="sidebar">
+      <button class="btn btn-nav active" onclick="switchPage('dashboard',this)" data-i18n="navDashboard">Dashboard</button>
+      <button class="btn btn-nav" onclick="switchPage('payments',this)" data-i18n="navPayments">Paiements</button>
+      <button class="btn btn-nav" onclick="switchPage('parents',this)" data-i18n="navParents">Suivi Parents</button>
+      <button class="btn btn-nav" onclick="switchPage('ai',this)" data-i18n="navAI">Assistant IA</button>
+    </div>
+
+    <div id="dashboard" class="section active">
+      <h2 data-i18n="dashboardTitle">Dashboard</h2>
+      <div class="grid">
+        <div class="card"><h3 data-i18n="kpiTotalRevenue">Revenu Total</h3><div class="value">240,000 FC</div></div>
+        <div class="card"><h3 data-i18n="kpiMonthlyRevenue">Revenu Mensuel</h3><div class="value">72,000 FC</div></div>
+        <div class="card"><h3 data-i18n="kpiSuccessRate">Taux Succes</h3><div class="value">87%</div></div>
+        <div class="card"><h3 data-i18n="kpiDebt">Dette</h3><div class="value">445,000 FC</div></div>
+      </div>
+      <h3 style="color:#0b2e59; margin-bottom:0.4rem;" data-i18n="recentPayments">Paiements Recents</h3>
+      <table>
+        <thead><tr><th data-i18n="colTransaction">Transaction</th><th data-i18n="colParent">Parent</th><th data-i18n="colAmount">Montant</th><th data-i18n="colDate">Date</th><th data-i18n="colStatus">Statut</th></tr></thead>
+        <tbody>
+          <tr><td>TX-1000000-1234</td><td>Marie Dupont</td><td>25,000 FC</td><td>2026-04-20</td><td><span class="status completed" data-i18n="statusCompleted">Complété</span></td></tr>
+          <tr><td>TX-1000001-5678</td><td>Jean Pierre</td><td>30,000 FC</td><td>2026-04-19</td><td><span class="status pending" data-i18n="statusPending">Attente</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div id="payments" class="section">
+      <h2 data-i18n="paymentsTitle">Enregistrer un Paiement</h2>
+      <div class="card">
+        <div class="form-group"><label data-i18n="parentLabel">Parent</label><select id="paymentParent"><option>Marie Dupont</option><option>Jean Pierre</option></select></div>
+        <div class="form-group"><label data-i18n="reasonLabel">Motif</label><input id="paymentReason" type="text" data-i18n-placeholder="reasonPlaceholder" placeholder="Scolarite mensuelle" /></div>
+        <div class="form-group"><label data-i18n="amountLabel">Montant (FC)</label><input id="paymentAmount" type="number" placeholder="25000" oninput="updateAmountWords()" /></div>
+        <div class="form-group"><label data-i18n="methodLabel">Methode</label><select id="paymentMethod"><option data-i18n="methodCash">Cash</option><option>Airtel Money</option><option>M-Pesa</option></select></div>
+        <div class="amount-words"><strong data-i18n="amountInWordsLabel">Montant en toutes lettres:</strong> <span id="amountWordsValue">zero franc congolais</span></div>
+        <button class="btn" style="width:100%;background:#22c55e;color:white;" data-i18n="savePayment" onclick="registerPayment()">Enregistrer</button>
+
+        <div id="receiptSection" class="receipt-wrap" style="display:none;">
+          <div id="receiptPrintArea">
+            <div class="receipt-header">
+              <div>
+                <div class="receipt-label" data-i18n="receiptTitle">Recu de paiement</div>
+                <div class="receipt-value">Kinshasa Christian School</div>
+              </div>
+              <div>
+                <div class="receipt-label" data-i18n="receiptNumber">Numero</div>
+                <div class="receipt-value" id="receiptNumberValue">RCPT-0001</div>
+              </div>
+            </div>
+
+            <div class="receipt-grid">
+              <div>
+                <div class="receipt-label" data-i18n="colParent">Parent</div>
+                <div class="receipt-value" id="receiptParentValue">-</div>
+              </div>
+              <div>
+                <div class="receipt-label" data-i18n="colDate">Date</div>
+                <div class="receipt-value" id="receiptDateValue">-</div>
+              </div>
+              <div>
+                <div class="receipt-label" data-i18n="reasonLabel">Motif</div>
+                <div class="receipt-value" id="receiptReasonValue">-</div>
+              </div>
+              <div>
+                <div class="receipt-label" data-i18n="methodLabel">Methode</div>
+                <div class="receipt-value" id="receiptMethodValue">-</div>
+              </div>
+              <div>
+                <div class="receipt-label" data-i18n="colAmount">Montant</div>
+                <div class="receipt-value" id="receiptAmountValue">-</div>
+              </div>
+              <div>
+                <div class="receipt-label" data-i18n="amountInWordsLabel">Montant en toutes lettres:</div>
+                <div class="receipt-value" id="receiptAmountWordsValue">-</div>
+              </div>
+            </div>
+
+            <div class="signature-zone">
+              <div class="sig-box" data-i18n="signatureLabel">Signature</div>
+              <div class="sig-box" data-i18n="stampLabel">Cachet de l'ecole</div>
+            </div>
+          </div>
+
+          <div class="receipt-actions">
+            <button type="button" class="btn" style="background:#0b2e59;color:white;" onclick="printReceipt()" data-i18n="printReceipt">Imprimer le recu</button>
+            <button type="button" class="btn" style="background:#1f4f8f;color:white;" onclick="downloadReceiptPng()" data-i18n="downloadPng">Telecharger PNG</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="parents" class="section">
+      <h2 data-i18n="parentsTitle">Suivi des Parents</h2>
+      <div class="card" style="margin-bottom:1.5rem;">
+        <h3>Marie Dupont</h3>
+        <p style="color:#666;margin:0.5rem 0;">📞 +243 999 123 456 | 📧 marie@example.com</p>
+        <table style="margin-top:1rem;"><tr><td data-i18n="annualFee">Frais annuels</td><td>50,000 FC</td></tr><tr><td data-i18n="paidLabel">Payé</td><td style="color:#22c55e;">25,000 FC</td></tr><tr><td data-i18n="remainingLabel">Restant</td><td style="color:#ef4444;">25,000 FC</td></tr></table>
+        <p style="margin-top:0.5rem;font-size:0.9rem;"><span data-i18n="childrenLabel">Enfants:</span> Alice Dupont, Bob Dupont</p>
+      </div>
+      <div class="card">
+        <h3>Jean Pierre</h3>
+        <p style="color:#666;margin:0.5rem 0;">📞 +243 999 234 567 | 📧 jean@example.com</p>
+        <table style="margin-top:1rem;"><tr><td data-i18n="annualFee">Frais annuels</td><td>55,000 FC</td></tr><tr><td data-i18n="paidLabel">Payé</td><td style="color:#22c55e;">0 FC</td></tr><tr><td data-i18n="remainingLabel">Restant</td><td style="color:#ef4444;">55,000 FC</td></tr></table>
+        <p style="margin-top:0.5rem;font-size:0.9rem;"><span data-i18n="childrenLabel">Enfants:</span> Charlie Pierre</p>
+      </div>
+    </div>
+
+    <div id="ai" class="section">
+      <h2 data-i18n="aiTitle">Assistant IA</h2>
+      <div class="card">
+        <p style="color:#666;margin-bottom:1rem;" data-i18n="aiDescription">Posez une question en langage naturel sur vos donnees scolaires</p>
+        <div class="form-group"><label data-i18n="yourQuestion">Votre Question</label><textarea data-i18n-placeholder="aiPlaceholder" placeholder="Ex: Quels parents n'ont pas paye? Quel est le revenu par classe?" style="min-height:100px;"></textarea></div>
+        <button class="btn" style="background:#0b2e59;color:white;width:100%;" onclick="askAI()" data-i18n="getAnswer">Obtenir Reponse</button>
+        <div id="aiResult" style="margin-top:1.5rem;display:none;">
+          <h3 style="color:#0b2e59;margin-bottom:0.8rem;" data-i18n="aiResponse">Reponse IA</h3>
+          <div class="card" style="background:#f9fafb;">
+            <p id="aiText"></p>
+            <ul id="aiSuggestions" style="margin-left:1.5rem;margin-top:1rem;"></ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+var currentLang = localStorage.getItem('edupay_lang') || 'fr';
+
+var translations = {
+  fr: {
+    logout: 'Deconnexion',
+    loginTitle: 'Connexion EduPay',
+    emailLabel: 'Email',
+    passwordLabel: 'Mot de passe',
+    signIn: 'Se connecter',
+    demoCredentials: 'Demo: admin@school.com / password123',
+    navDashboard: 'Dashboard',
+    navPayments: 'Paiements',
+    navParents: 'Suivi Parents',
+    navAI: 'Assistant IA',
+    dashboardTitle: 'Dashboard',
+    kpiTotalRevenue: 'Revenu Total',
+    kpiMonthlyRevenue: 'Revenu Mensuel',
+    kpiSuccessRate: 'Taux Succes',
+    kpiDebt: 'Dette',
+    recentPayments: 'Paiements Recents',
+    colTransaction: 'Transaction',
+    colParent: 'Parent',
+    colAmount: 'Montant',
+    colDate: 'Date',
+    colStatus: 'Statut',
+    statusCompleted: 'Complété',
+    statusPending: 'Attente',
+    paymentsTitle: 'Enregistrer un Paiement',
+    parentLabel: 'Parent',
+    reasonLabel: 'Motif',
+    reasonPlaceholder: 'Scolarite mensuelle',
+    amountLabel: 'Montant (FC)',
+    methodLabel: 'Methode',
+    methodCash: 'Cash',
+    savePayment: 'Enregistrer',
+    parentsTitle: 'Suivi des Parents',
+    annualFee: 'Frais annuels',
+    paidLabel: 'Payé',
+    remainingLabel: 'Restant',
+    childrenLabel: 'Enfants:',
+    aiTitle: 'Assistant IA',
+    aiDescription: 'Posez une question en langage naturel sur vos donnees scolaires',
+    yourQuestion: 'Votre Question',
+    aiPlaceholder: 'Ex: Quels parents n\'ont pas paye? Quel est le revenu par classe?',
+    getAnswer: 'Obtenir Reponse',
+    aiResponse: 'Reponse IA',
+    invalidCredentials: 'Identifiants invalides',
+    aiDefaultAnswer: 'Requete comprise. Consultez le dashboard pour les details.',
+    aiSuggestionOne: 'Essayer une autre question',
+    aiSuggestionTwo: 'Consulter les statistiques',
+    aiPayAnswer: '8 parents n\'ont pas paye ce mois.',
+    aiPaySuggestionOne: 'Envoyer rappel doux',
+    aiPaySuggestionTwo: 'Escalader hauts risques',
+    aiRevenueAnswer: 'Revenu total: 240,000 FC. +12% vs mois dernier.',
+    aiRevenueSuggestionOne: 'Comparer trimestre',
+    aiRevenueSuggestionTwo: 'Analyser par classe',
+    amountInWordsLabel: 'Montant en toutes lettres:',
+    receiptTitle: 'Recu de paiement',
+    receiptNumber: 'Numero',
+    signatureLabel: 'Signature',
+    stampLabel: 'Cachet de l\'ecole',
+    printReceipt: 'Imprimer le recu',
+    downloadPng: 'Telecharger PNG',
+    missingPaymentFields: 'Veuillez remplir le parent, le motif et le montant.',
+    fcSuffix: 'franc congolais'
+  },
+  en: {
+    logout: 'Logout',
+    loginTitle: 'Sign in to EduPay',
+    emailLabel: 'Email',
+    passwordLabel: 'Password',
+    signIn: 'Sign in',
+    demoCredentials: 'Demo: admin@school.com / password123',
+    navDashboard: 'Dashboard',
+    navPayments: 'Payments',
+    navParents: 'Parent Tracking',
+    navAI: 'AI Assistant',
+    dashboardTitle: 'Dashboard',
+    kpiTotalRevenue: 'Total Revenue',
+    kpiMonthlyRevenue: 'Monthly Revenue',
+    kpiSuccessRate: 'Success Rate',
+    kpiDebt: 'Outstanding Debt',
+    recentPayments: 'Recent Payments',
+    colTransaction: 'Transaction',
+    colParent: 'Parent',
+    colAmount: 'Amount',
+    colDate: 'Date',
+    colStatus: 'Status',
+    statusCompleted: 'Completed',
+    statusPending: 'Pending',
+    paymentsTitle: 'Register a Payment',
+    parentLabel: 'Parent',
+    reasonLabel: 'Reason',
+    reasonPlaceholder: 'Monthly tuition',
+    amountLabel: 'Amount (FC)',
+    methodLabel: 'Method',
+    methodCash: 'Cash',
+    savePayment: 'Save Payment',
+    parentsTitle: 'Parent Tracking',
+    annualFee: 'Annual fee',
+    paidLabel: 'Paid',
+    remainingLabel: 'Remaining',
+    childrenLabel: 'Children:',
+    aiTitle: 'AI Assistant',
+    aiDescription: 'Ask a natural language question about school finance data',
+    yourQuestion: 'Your Question',
+    aiPlaceholder: 'Ex: Which parents did not pay? What is revenue per class?',
+    getAnswer: 'Get Answer',
+    aiResponse: 'AI Response',
+    invalidCredentials: 'Invalid credentials',
+    aiDefaultAnswer: 'Request understood. Check the dashboard for details.',
+    aiSuggestionOne: 'Try another question',
+    aiSuggestionTwo: 'Review statistics',
+    aiPayAnswer: '8 parents did not pay this month.',
+    aiPaySuggestionOne: 'Send gentle reminders',
+    aiPaySuggestionTwo: 'Escalate high-risk cases',
+    aiRevenueAnswer: 'Total revenue: 240,000 FC. +12% vs last month.',
+    aiRevenueSuggestionOne: 'Compare quarters',
+    aiRevenueSuggestionTwo: 'Analyze by class',
+    amountInWordsLabel: 'Amount in words:',
+    receiptTitle: 'Payment receipt',
+    receiptNumber: 'Number',
+    signatureLabel: 'Signature',
+    stampLabel: 'School stamp',
+    printReceipt: 'Print receipt',
+    downloadPng: 'Download PNG',
+    missingPaymentFields: 'Please fill in parent, reason, and amount.',
+    fcSuffix: 'Congolese franc'
+  }
+};
+
+function t(key) {
+  return (translations[currentLang] && translations[currentLang][key]) || key;
+}
+
+function applyTranslations() {
+  document.documentElement.lang = currentLang;
+  var textNodes = document.querySelectorAll('[data-i18n]');
+  for (var i = 0; i < textNodes.length; i++) {
+    var key = textNodes[i].getAttribute('data-i18n');
+    if (key) textNodes[i].textContent = t(key);
+  }
+
+  var placeholderNodes = document.querySelectorAll('[data-i18n-placeholder]');
+  for (var j = 0; j < placeholderNodes.length; j++) {
+    var pKey = placeholderNodes[j].getAttribute('data-i18n-placeholder');
+    if (pKey) placeholderNodes[j].setAttribute('placeholder', t(pKey));
+  }
+
+  var frBtn = document.getElementById('langFr');
+  var enBtn = document.getElementById('langEn');
+  frBtn.classList.toggle('active', currentLang === 'fr');
+  enBtn.classList.toggle('active', currentLang === 'en');
+}
+
+function setLanguage(lang) {
+  if (lang !== 'fr' && lang !== 'en') return;
+  currentLang = lang;
+  localStorage.setItem('edupay_lang', lang);
+  applyTranslations();
+  updateAmountWords();
+}
+
+function convertHundredsFr(n) {
+  var units = ['zero', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize'];
+  var tens = ['', 'dix', 'vingt', 'trente', 'quarante', 'cinquante', 'soixante'];
+  if (n < 17) return units[n];
+  if (n < 20) return 'dix-' + units[n - 10];
+  if (n < 70) {
+    var t = Math.floor(n / 10);
+    var u = n % 10;
+    if (u === 0) return tens[t];
+    if (u === 1) return tens[t] + ' et un';
+    return tens[t] + '-' + units[u];
+  }
+  if (n < 80) return 'soixante-' + convertHundredsFr(n - 60);
+  if (n < 100) {
+    if (n === 80) return 'quatre-vingts';
+    return 'quatre-vingt-' + convertHundredsFr(n - 80);
+  }
+  var h = Math.floor(n / 100);
+  var rest = n % 100;
+  var hText = h === 1 ? 'cent' : units[h] + ' cent';
+  if (rest === 0) return hText;
+  return hText + ' ' + convertHundredsFr(rest);
+}
+
+function convertHundredsEn(n) {
+  var units = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+  var tens = ['', '', 'twenty', 'thirty', 'forty', 'fifty', 'sixty', 'seventy', 'eighty', 'ninety'];
+  if (n < 20) return units[n];
+  if (n < 100) {
+    var t = Math.floor(n / 10);
+    var u = n % 10;
+    return u ? tens[t] + '-' + units[u] : tens[t];
+  }
+  var h = Math.floor(n / 100);
+  var rest = n % 100;
+  var hText = units[h] + ' hundred';
+  if (rest === 0) return hText;
+  return hText + ' ' + convertHundredsEn(rest);
+}
+
+function numberToWords(n) {
+  if (!Number.isFinite(n) || n < 0) return '-';
+  if (n === 0) return currentLang === 'fr' ? 'zero' : 'zero';
+  var millions = Math.floor(n / 1000000);
+  var thousands = Math.floor((n % 1000000) / 1000);
+  var rest = n % 1000;
+  var chunks = [];
+
+  if (currentLang === 'fr') {
+    if (millions) chunks.push((millions === 1 ? 'un million' : convertHundredsFr(millions) + ' millions'));
+    if (thousands) chunks.push((thousands === 1 ? 'mille' : convertHundredsFr(thousands) + ' mille'));
+    if (rest) chunks.push(convertHundredsFr(rest));
+    return chunks.join(' ').trim();
+  }
+
+  if (millions) chunks.push(convertHundredsEn(millions) + ' million');
+  if (thousands) chunks.push(convertHundredsEn(thousands) + ' thousand');
+  if (rest) chunks.push(convertHundredsEn(rest));
+  return chunks.join(' ').trim();
+}
+
+function updateAmountWords() {
+  var amount = Number(document.getElementById('paymentAmount').value || 0);
+  var text = numberToWords(Math.max(0, Math.floor(amount))) + ' ' + t('fcSuffix');
+  document.getElementById('amountWordsValue').textContent = text;
+}
+
+function registerPayment() {
+  var parent = document.getElementById('paymentParent').value;
+  var reason = document.getElementById('paymentReason').value.trim();
+  var amount = Number(document.getElementById('paymentAmount').value || 0);
+  var method = document.getElementById('paymentMethod').value;
+
+  if (!parent || !reason || amount <= 0) {
+    alert(t('missingPaymentFields'));
+    return;
+  }
+
+  var now = new Date();
+  var receiptNo = 'RCPT-' + now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '-' + String(Math.floor(Math.random() * 9000) + 1000);
+  var amountWords = numberToWords(Math.floor(amount)) + ' ' + t('fcSuffix');
+
+  document.getElementById('receiptNumberValue').textContent = receiptNo;
+  document.getElementById('receiptParentValue').textContent = parent;
+  document.getElementById('receiptDateValue').textContent = now.toLocaleString(currentLang === 'fr' ? 'fr-FR' : 'en-US');
+  document.getElementById('receiptReasonValue').textContent = reason;
+  document.getElementById('receiptMethodValue').textContent = method;
+  document.getElementById('receiptAmountValue').textContent = amount.toLocaleString() + ' FC';
+  document.getElementById('receiptAmountWordsValue').textContent = amountWords;
+  document.getElementById('receiptSection').style.display = 'block';
+}
+
+function printReceipt() {
+  var area = document.getElementById('receiptPrintArea');
+  var popup = window.open('', '_blank');
+  if (!popup) return;
+  popup.document.write('<!DOCTYPE html><html><head><title>Receipt</title><style>body{font-family:Arial,sans-serif;padding:24px;color:#0f172a}.box{border:1px solid #cbd5e1;border-radius:10px;padding:14px}h2{color:#0b2e59;margin:0 0 10px}.row{margin:8px 0}.sig{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}.sig div{min-height:90px;border:1px dashed #94a3b8;border-radius:8px;display:flex;align-items:flex-end;justify-content:center;padding:8px;color:#475569}</style></head><body>');
+  popup.document.write('<div class="box">' + area.innerHTML + '</div>');
+  popup.document.write('</body></html>');
+  popup.document.close();
+  popup.focus();
+  popup.print();
+}
+
+function downloadReceiptPng() {
+  var canvas = document.createElement('canvas');
+  canvas.width = 1200;
+  canvas.height = 1500;
+  var ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  var num = document.getElementById('receiptNumberValue').textContent || '-';
+  var parent = document.getElementById('receiptParentValue').textContent || '-';
+  var date = document.getElementById('receiptDateValue').textContent || '-';
+  var reason = document.getElementById('receiptReasonValue').textContent || '-';
+  var method = document.getElementById('receiptMethodValue').textContent || '-';
+  var amount = document.getElementById('receiptAmountValue').textContent || '-';
+  var words = document.getElementById('receiptAmountWordsValue').textContent || '-';
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#0b2e59';
+  ctx.fillRect(0, 0, canvas.width, 150);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 44px Arial';
+  ctx.fillText(t('receiptTitle'), 55, 90);
+
+  ctx.fillStyle = '#0f172a';
+  ctx.font = 'bold 30px Arial';
+  ctx.fillText('Kinshasa Christian School', 55, 210);
+  ctx.font = '24px Arial';
+  ctx.fillText(t('receiptNumber') + ': ' + num, 55, 260);
+
+  ctx.font = 'bold 23px Arial';
+  ctx.fillText(t('colParent') + ':', 55, 330);
+  ctx.font = '23px Arial';
+  ctx.fillText(parent, 300, 330);
+
+  ctx.font = 'bold 23px Arial';
+  ctx.fillText(t('colDate') + ':', 55, 380);
+  ctx.font = '23px Arial';
+  ctx.fillText(date, 300, 380);
+
+  ctx.font = 'bold 23px Arial';
+  ctx.fillText(t('reasonLabel') + ':', 55, 430);
+  ctx.font = '23px Arial';
+  ctx.fillText(reason, 300, 430);
+
+  ctx.font = 'bold 23px Arial';
+  ctx.fillText(t('methodLabel') + ':', 55, 480);
+  ctx.font = '23px Arial';
+  ctx.fillText(method, 300, 480);
+
+  ctx.font = 'bold 23px Arial';
+  ctx.fillText(t('colAmount') + ':', 55, 530);
+  ctx.font = '23px Arial';
+  ctx.fillText(amount, 300, 530);
+
+  ctx.font = 'bold 22px Arial';
+  ctx.fillText(t('amountInWordsLabel'), 55, 595);
+  ctx.font = '21px Arial';
+  ctx.fillText(words, 55, 635);
+
+  ctx.strokeStyle = '#94a3b8';
+  ctx.setLineDash([8, 8]);
+  ctx.strokeRect(55, 760, 500, 220);
+  ctx.strokeRect(645, 760, 500, 220);
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#475569';
+  ctx.font = '22px Arial';
+  ctx.fillText(t('signatureLabel'), 245, 950);
+  ctx.fillText(t('stampLabel'), 800, 950);
+
+  var link = document.createElement('a');
+  link.href = canvas.toDataURL('image/png');
+  link.download = (num || 'receipt') + '.png';
+  link.click();
+}
+
+function login() {
+  var e=document.getElementById('email').value, p=document.getElementById('password').value;
+  if(e==='admin@school.com' && p==='password123') {
+    document.getElementById('loginPage').style.display='none';
+    document.getElementById('appPage').style.display='block';
+    document.getElementById('header').style.display='flex';
+  } else alert(t('invalidCredentials'));
+}
+
+function logout() {
+  document.getElementById('appPage').style.display='none';
+  document.getElementById('header').style.display='none';
+  document.getElementById('loginPage').style.display='flex';
+}
+
+function switchPage(p,btn) {
+  var s=document.querySelectorAll('.section');
+  for(var i=0;i<s.length;i++) s[i].classList.remove('active');
+  document.getElementById(p).classList.add('active');
+  var bs=document.querySelectorAll('.btn-nav');
+  for(var i=0;i<bs.length;i++) bs[i].classList.remove('active');
+  btn.classList.add('active');
+}
+
+function askAI() {
+  var q=document.querySelector('textarea').value.toLowerCase();
+  var ans=t('aiDefaultAnswer');
+  var sugg=[t('aiSuggestionOne'), t('aiSuggestionTwo')];
+  if(q.includes('pay') || q.includes('paye')) { ans=t('aiPayAnswer'); sugg=[t('aiPaySuggestionOne'), t('aiPaySuggestionTwo')]; }
+  else if(q.includes('revenu') || q.includes('revenue')) { ans=t('aiRevenueAnswer'); sugg=[t('aiRevenueSuggestionOne'), t('aiRevenueSuggestionTwo')]; }
+  document.getElementById('aiText').textContent=ans;
+  document.getElementById('aiSuggestions').innerHTML=sugg.map(s=>'<li>'+s+'</li>').join('');
+  document.getElementById('aiResult').style.display='block';
+}
+
+applyTranslations();
+updateAmountWords();
+</script>
+</body>
+</html>

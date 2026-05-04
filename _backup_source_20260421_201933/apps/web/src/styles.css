@@ -1,0 +1,334 @@
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,500;1,700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,500&family=IBM+Plex+Mono:wght@400;500;600;700&family=Manrope:wght@300;400;500;600;700;800&family=Sora:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-main: #0f172a;
+  --bg-panel: #1a2847;
+  --bg-panel-light: #252d4a;
+  --brand: #6366f1;
+  --brand-dark: #4f46e5;
+  --brand-light: #818cf8;
+  --accent: #ec4899;
+  --accent-dark: #db2777;
+  --ink: #f1f5f9;
+  --ink-dim: #cbd5e1;
+  --ok: #10b981;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --glass-dark: rgba(30, 41, 59, 0.4);
+  --glass-light: rgba(226, 232, 240, 0.05);
+  --font-body: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Cormorant Garamond", Georgia, serif;
+  --font-heading: "Cormorant Garamond", Georgia, serif;
+  --font-mono: "IBM Plex Mono", monospace;
+  --font-body-tracking: .012em;
+  --font-heading-tracking: .028em;
+  --font-body-weight: 500;
+  --font-heading-weight: 700;
+}
+
+/* ── Style Executif : Manrope + Cormorant Garamond ─────────────── */
+html[data-font="executif"] {
+  --font-body: "Manrope", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Cormorant Garamond", Georgia, serif;
+  --font-heading: "Cormorant Garamond", Georgia, serif;
+  --font-mono: "IBM Plex Mono", monospace;
+  --font-body-tracking: .012em;
+  --font-heading-tracking: .028em;
+  --font-body-weight: 500;
+  --font-heading-weight: 700;
+}
+
+/* ── Style Scientifique : EB Garamond ───────────────────────────── */
+html[data-font="scientifique"] {
+  --font-body: "EB Garamond", "Times New Roman", serif;
+  --font-display: "EB Garamond", "Times New Roman", serif;
+  --font-heading: "EB Garamond", "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", monospace;
+  --font-body-tracking: .006em;
+  --font-heading-tracking: .016em;
+  --font-body-weight: 500;
+  --font-heading-weight: 600;
+}
+
+/* ── Style Tech : Space Grotesk + Sora ──────────────────────────── */
+html[data-font="tech"] {
+  --font-body: "Space Grotesk", "Sora", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Sora", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-heading: "Sora", "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", monospace;
+  --font-body-tracking: .014em;
+  --font-heading-tracking: .03em;
+  --font-body-weight: 500;
+  --font-heading-weight: 700;
+}
+
+* {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease,
+              font-family 0.22s ease, letter-spacing 0.22s ease;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: linear-gradient(135deg, #0f172a 0%, #1a2847 25%, #16213e 50%, #0f172a 100%);
+  background-attachment: fixed;
+  position: relative;
+  overflow-x: hidden;
+  letter-spacing: var(--font-body-tracking);
+  font-weight: var(--font-body-weight);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+.font-display {
+  font-family: var(--font-heading) !important;
+  letter-spacing: var(--font-heading-tracking) !important;
+  font-weight: var(--font-heading-weight) !important;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: 
+    radial-gradient(circle at 20% 50%, rgba(99, 102, 241, 0.15) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.1) 0%, transparent 50%);
+  pointer-events: none;
+  z-index: -1;
+}
+
+/* Glassmorphism utilitaires */
+.glass {
+  background: var(--glass-dark);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  transition: all 0.3s ease;
+}
+
+.glass:hover {
+  background: var(--glass-light);
+  border-color: rgba(148, 163, 184, 0.2);
+}
+
+/* Brand surface avec gradient moderne */
+.brand-surface {
+  background: linear-gradient(135deg, #6366f1 0%, #818cf8 50%, #a78bfa 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.brand-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: 
+    radial-gradient(circle at 20% 0%, rgba(255, 255, 255, 0.3) 0%, transparent 50%),
+    radial-gradient(circle at 100% 100%, rgba(0, 0, 0, 0.1) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+/* Cards modernes */
+.card {
+  @apply rounded-2xl p-6 shadow-xl border border-slate-700/50;
+  background: linear-gradient(135deg, #1a2847 0%, #252d4a 100%);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(20px);
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 25px 50px -12px rgba(99, 102, 241, 0.25);
+  background: linear-gradient(135deg, #252d4a 0%, #2c3659 100%);
+}
+
+/* Animation fade-in */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(99, 102, 241, 0.8);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.animate-fadeInUp {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+.animate-fadeInDown {
+  animation: fadeInDown 0.6s ease-out;
+}
+
+.animate-slideInLeft {
+  animation: slideInLeft 0.6s ease-out;
+}
+
+.animate-slideInRight {
+  animation: slideInRight 0.6s ease-out;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Boutons modernes */
+.btn-primary {
+  @apply px-6 py-3 rounded-lg font-semibold transition-all duration-300;
+  background: linear-gradient(135deg, #6366f1 0%, #818cf8 100%);
+  color: white;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-primary::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.1);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 15px 30px rgba(99, 102, 241, 0.4);
+}
+
+.btn-primary:active {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  @apply px-6 py-3 rounded-lg font-semibold border border-slate-600 transition-all duration-300;
+  background: transparent;
+  color: var(--brand-light);
+  cursor: pointer;
+}
+
+.btn-secondary:hover {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: var(--brand);
+  transform: translateY(-2px);
+}
+
+/* Input styles modernes */
+input, textarea, select {
+  background: rgba(30, 41, 59, 0.5) !important;
+  border: 1px solid rgba(148, 163, 184, 0.2) !important;
+  color: var(--ink) !important;
+  border-radius: 0.5rem !important;
+  padding: 0.75rem 1rem !important;
+  transition: all 0.3s ease !important;
+  font-family: inherit !important;
+}
+
+input:focus, textarea:focus, select:focus {
+  background: rgba(30, 41, 59, 0.7) !important;
+  border-color: var(--brand) !important;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1) !important;
+  outline: none !important;
+}
+
+input::placeholder {
+  color: var(--ink-dim) !important;
+}
+
+/* Texte avec gradient */
+.text-gradient {
+  background: linear-gradient(135deg, #6366f1 0%, #818cf8 50%, #a78bfa 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Section dividers */
+.section-divider {
+  @apply my-12 h-px;
+  background: linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, 0.3) 50%, transparent 100%);
+}
+
+/* Badge styles */
+.badge {
+  @apply inline-block px-4 py-2 rounded-full text-sm font-semibold;
+  background: rgba(99, 102, 241, 0.2);
+  color: var(--brand-light);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+}
+
+.badge-success {
+  background: rgba(16, 185, 129, 0.2);
+  color: #86efac;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.badge-danger {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.3);
+}
