@@ -6,6 +6,7 @@ import { z } from "zod";
 import { prisma } from "../../prisma";
 import { syncPaymentToOrbit } from "../../integrations/orbit";
 import { amountToWords } from "../../utils/amount-words";
+import { orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
 import { sendEmail, sendSms } from "../../utils/messaging";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
 
@@ -13,12 +14,21 @@ const createPaymentSchema = z.object({
   parentFullName: z.string().min(1),
   parentId: z.string().optional(),
   studentIds: z.array(z.string()).optional().default([]),
+  studentExternalIds: z.array(z.string().min(1)).optional().default([]),
   reason: z.string().min(3),
   amount: z.number().positive(),
   method: z.enum(["CASH", "AIRTEL_MONEY", "MPESA", "ORANGE_MONEY"]),
   status: z.enum(["COMPLETED", "PENDING", "FAILED"]).default("COMPLETED"),
   transactionNumber: z.string().optional(),
   notifyParent: z.boolean().optional()
+}).superRefine((payload, context) => {
+  if (orbitRegistryIsEnabled() && payload.studentExternalIds.length === 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["studentExternalIds"],
+      message: "Au moins un eleve partage doit etre selectionne pour synchroniser le paiement via Orbit."
+    });
+  }
 });
 
 const notificationSettingsSchema = z.object({
@@ -86,6 +96,7 @@ function getMethodLabel(method: string) {
 }
 
 function getStatusLabel(status: string) {
+  function orbitRegistryIsEnabled() {
   const labels: Record<string, string> = {
     COMPLETED: "Réglé",
     PENDING: "En attente",
@@ -209,6 +220,9 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
   const txNumber = payload.transactionNumber ?? generateTxNumber();
 
   try {
+    if (orbitRegistryIsEnabled()) {
+      await syncOrbitRegistryMirror(req.user!.schoolId);
+    }
     // Check for duplicate in last 5 minutes
     const duplicate = await prisma.payment.findFirst({
       where: {
@@ -259,23 +273,37 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
     });
 
     try {
-      await syncPaymentToOrbit({
-        payment: {
-          id: payment.id,
-          transactionNumber: payment.transactionNumber,
-          amount: payment.amount,
-          reason: payment.reason,
-          method: payment.method,
-          status: payment.status,
-          createdAt: payment.createdAt,
-          schoolId: payment.schoolId,
-          parentId: payment.parentId
-        },
-        studentExternalIds: payment.students
-          .map((student) => student.externalStudentId ?? student.id)
-          .filter((value): value is string => Boolean(value)),
-        localStudentIds: payment.students.map((student) => student.id)
-      });
+      const syncedStudentExternalIds = payload.studentExternalIds.length > 0
+        ? payload.studentExternalIds
+        : payment.students
+          .map((student) => student.externalStudentId)
+          .filter((value): value is string => Boolean(value));
+
+      const studentsMissingExternalIds = payment.students.filter((student) => !student.externalStudentId);
+
+      if (orbitRegistryIsEnabled() && (syncedStudentExternalIds.length === 0 || studentsMissingExternalIds.length > 0)) {
+        console.warn("Orbit payment sync skipped: one or more EduPay students are not linked to a shared external student id", {
+          paymentId: payment.id,
+          localStudentIds: studentsMissingExternalIds.map((student) => student.id),
+          requestedStudentExternalIds: payload.studentExternalIds
+        });
+      } else {
+        await syncPaymentToOrbit({
+          payment: {
+            id: payment.id,
+            transactionNumber: payment.transactionNumber,
+            amount: payment.amount,
+            reason: payment.reason,
+            method: payment.method,
+            status: payment.status,
+            createdAt: payment.createdAt,
+            schoolId: payment.schoolId,
+            parentId: payment.parentId
+          },
+          studentExternalIds: syncedStudentExternalIds,
+          localStudentIds: payment.students.map((student) => student.id)
+        });
+      }
     } catch (error) {
       console.error("Orbit payment sync failed", error);
     }

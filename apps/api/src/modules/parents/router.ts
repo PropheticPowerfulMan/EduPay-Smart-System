@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import bcrypt from "bcrypt";
+import { orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
 import { prisma } from "../../prisma";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
 import { sendEmail, sendSms } from "../../utils/messaging";
@@ -165,6 +166,11 @@ parentRouter.use(authGuard);
 
 // GET all parents
 parentRouter.get("/", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
+  if (orbitRegistryIsEnabled()) {
+    const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);
+    return res.json(mirrored.parents);
+  }
+
   try {
     const parents = await prisma.parent.findMany({
       where: { schoolId: req.user!.schoolId },
@@ -230,6 +236,12 @@ parentRouter.put("/me/photo", authorize("PARENT"), async (req: AuthenticatedRequ
 
 // POST create parent + students
 parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
+  if (orbitRegistryIsEnabled()) {
+    return res.status(409).json({
+      message: "La creation locale des parents et eleves est desactivee dans EduPay quand le registre Orbit est actif. Creez d'abord la famille dans SAVANEX."
+    });
+  }
+
   const payload = parentSchema.parse(req.body);
   const temporaryPassword = generateTemporaryPassword();
   try {

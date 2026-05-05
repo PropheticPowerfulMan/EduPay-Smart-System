@@ -593,6 +593,7 @@ type PaymentRecord = {
 
 type FormState = {
   parentId: string;
+  studentIds: string[];
   parentFullName: string;
   reason: string;
   amount: string;
@@ -600,17 +601,27 @@ type FormState = {
   status: "COMPLETED" | "PENDING" | "FAILED";
 };
 
+type ParentStudentOption = {
+  id: string;
+  externalStudentId?: string;
+  fullName: string;
+  classId: string;
+  className: string;
+  annualFee: number;
+};
+
 type ParentOption = {
   id: string;
   fullName: string;
   phone?: string;
   email?: string;
+  students?: ParentStudentOption[];
 };
 
 type View = "form" | "receipt" | "history" | "report";
 
 const EMPTY_FORM: FormState = {
-  parentId: "", parentFullName: "", reason: "", amount: "", method: "CASH", status: "COMPLETED",
+  parentId: "", studentIds: [], parentFullName: "", reason: "", amount: "", method: "CASH", status: "COMPLETED",
 };
 
 const PAYMENT_NOTIFICATION_STORAGE_KEY = "edupay-payment-notifications-enabled";
@@ -880,6 +891,7 @@ export function PaymentsPage() {
   const validate = () => {
     const errs: Partial<Record<keyof FormState, string>> = {};
     if (paymentNotificationsEnabled && !form.parentId) errs.parentId = "Choisissez le parent qui recevra l'email et le SMS.";
+    if (selectedParent && (selectedParent.students?.length ?? 0) > 0 && form.studentIds.length === 0) errs.studentIds = "Selectionnez au moins un eleve pour synchroniser ce paiement.";
     if (!form.parentFullName.trim()) errs.parentFullName = t("pmRequired");
     if (!form.reason.trim())         errs.reason         = t("pmRequired");
     if (!form.amount || parseFloat(form.amount) <= 0) errs.amount = t("pmRequired");
@@ -897,9 +909,25 @@ export function PaymentsPage() {
     setForm((prev) => ({
       ...prev,
       parentId,
+      studentIds: [],
       parentFullName: parent?.fullName ?? prev.parentFullName
     }));
-    setFieldErrors((prev) => ({ ...prev, parentFullName: undefined }));
+    setFieldErrors((prev) => ({ ...prev, parentFullName: undefined, studentIds: undefined }));
+  };
+
+  const selectedStudents = useMemo(
+    () => (selectedParent?.students ?? []).filter((student) => form.studentIds.includes(student.id)),
+    [form.studentIds, selectedParent]
+  );
+
+  const toggleStudentTarget = (studentId: string) => {
+    setForm((prev) => ({
+      ...prev,
+      studentIds: prev.studentIds.includes(studentId)
+        ? prev.studentIds.filter((value) => value !== studentId)
+        : [...prev.studentIds, studentId]
+    }));
+    setFieldErrors((prev) => ({ ...prev, studentIds: undefined }));
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -934,6 +962,8 @@ export function PaymentsPage() {
         body: JSON.stringify({
           parentFullName: record.parentFullName,
           parentId: record.parentId,
+          studentIds: form.studentIds,
+          studentExternalIds: selectedStudents.map((student) => student.externalStudentId).filter(Boolean),
           reason: record.reason,
           amount: record.amount,
           method: record.method,
@@ -1479,6 +1509,38 @@ export function PaymentsPage() {
               </p>
               {fieldErrors.parentId && <p className="text-xs text-danger">{fieldErrors.parentId}</p>}
             </div>
+
+            {selectedParent && (selectedParent.students?.length ?? 0) > 0 && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-ink-dim uppercase tracking-wide">
+                  Eleves concernes <span className="text-danger">*</span>
+                </label>
+                <div className="space-y-2 rounded-xl border border-slate-700 bg-slate-950/50 p-3">
+                  {selectedParent.students?.map((student) => {
+                    const active = form.studentIds.includes(student.id);
+                    return (
+                      <button
+                        key={student.id}
+                        type="button"
+                        onClick={() => toggleStudentTarget(student.id)}
+                        className={`flex w-full items-start justify-between rounded-lg border px-3 py-2 text-left transition-colors ${
+                          active
+                            ? "border-brand-500 bg-brand-500/15 text-white"
+                            : "border-slate-700 bg-slate-900/70 text-ink-dim hover:border-brand-400/50 hover:text-white"
+                        }`}
+                      >
+                        <span>
+                          <span className="block text-sm font-semibold">{student.fullName}</span>
+                          <span className="block text-xs">{student.className} · Frais annuels $ {student.annualFee.toFixed(2)}</span>
+                        </span>
+                        <span className="text-xs font-bold uppercase tracking-wide">{active ? "Selectionne" : "Choisir"}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {fieldErrors.studentIds && <p className="text-xs text-danger">{fieldErrors.studentIds}</p>}
+              </div>
+            )}
 
             {/* Nom complet du parent */}
             <div className="space-y-1.5">

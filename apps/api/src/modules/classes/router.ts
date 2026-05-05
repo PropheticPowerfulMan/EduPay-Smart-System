@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
 import { prisma } from "../../prisma";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
 
@@ -23,6 +24,12 @@ export const classRouter = Router();
 classRouter.use(authGuard);
 
 classRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
+  if (orbitRegistryIsEnabled()) {
+    return res.status(409).json({
+      message: "La creation locale de classes est desactivee dans EduPay quand le registre Orbit est actif. Creez d'abord la classe dans SAVANEX."
+    });
+  }
+
   const payload = classSchema.parse(req.body);
   try {
     const result = await prisma.class.create({
@@ -39,6 +46,11 @@ classRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticate
 });
 
 classRouter.get("/", authorize("ADMIN", "ACCOUNTANT", "PARENT"), async (req: AuthenticatedRequest, res) => {
+  if (orbitRegistryIsEnabled()) {
+    const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);
+    return res.json(mirrored.classes);
+  }
+
   try {
     const rows = await prisma.class.findMany({ where: { schoolId: req.user!.schoolId } });
     if (rows.length === 0) return res.json(schoolSections);
