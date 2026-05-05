@@ -1,39 +1,25 @@
 import { prisma } from "../prisma";
 
-type OrbitFamilyParent = {
-  id: string;
-  externalId?: string;
-  relation: string;
-  parent: {
-    firstName: string;
-    lastName: string;
+type OrbitSharedDirectory = {
+  source: "orbit";
+  visibility: "shared-directory";
+  parents: Array<{
+    id: string;
     fullName: string;
-    email?: string | null;
-    phone?: string | null;
-  };
-};
-
-type OrbitFamilyChild = {
-  id: string;
-  externalId?: string;
-  studentNumber: string;
-  grade: string;
-  section: string;
-  status: string;
-  student: {
-    firstName: string;
-    lastName: string;
+    studentIds: string[];
+    externalIds: Array<{ appSlug: string; externalId: string }>;
+  }>;
+  students: Array<{
+    id: string;
     fullName: string;
-    email?: string | null;
-  };
-};
-
-type OrbitFamily = {
-  id: string;
-  familyLabel: string;
-  studentCount: number;
-  parents: OrbitFamilyParent[];
-  children: OrbitFamilyChild[];
+    classId?: string | null;
+    externalIds: Array<{ appSlug: string; externalId: string }>;
+  }>;
+  teachers: Array<{
+    id: string;
+    fullName: string;
+    externalIds: Array<{ appSlug: string; externalId: string }>;
+  }>;
 };
 
 export type SharedStudentOption = {
@@ -57,54 +43,44 @@ export function orbitRegistryIsEnabled() {
   return Boolean(process.env.KCS_ORBIT_API_URL && process.env.KCS_ORBIT_API_KEY && process.env.KCS_ORBIT_ORGANIZATION_ID);
 }
 
-function buildClassName(child: OrbitFamilyChild) {
-  return child.section && child.section !== "-"
-    ? `${child.grade} - ${child.section}`
-    : child.grade;
+function buildParentLookupKey(parent: { fullName: string; email?: string; phone?: string }) {
+  if (parent.email?.trim()) {
+    return `email:${parent.email.trim().toLowerCase()}`;
+  }
+
+  if (parent.phone?.trim()) {
+    return `phone:${parent.phone.trim()}`;
+  }
+
+  return `name:${parent.fullName.trim().toLowerCase()}`;
 }
 
-function buildParentLookupKey(parent: OrbitFamilyParent | undefined, familyLabel: string) {
-  if (!parent) {
-    return `label:${familyLabel.toLowerCase()}`;
-  }
-
-  if (parent.parent.email?.trim()) {
-    return `email:${parent.parent.email.trim().toLowerCase()}`;
-  }
-
-  if (parent.parent.phone?.trim()) {
-    return `phone:${parent.parent.phone.trim()}`;
-  }
-
-  return `name:${parent.parent.fullName.trim().toLowerCase() || familyLabel.toLowerCase()}`;
-}
-
-export function mapOrbitFamiliesToSharedOptions(families: OrbitFamily[]) {
+export function mapOrbitDirectoryToSharedOptions(directory: OrbitSharedDirectory) {
   const classNames = new Set<string>();
-  const parents = families.map((family) => {
-    const primaryParent = family.parents[0];
-    const fullName = primaryParent?.parent.fullName?.trim() || family.familyLabel;
-    const phone = primaryParent?.parent.phone?.trim() || "";
-    const email = primaryParent?.parent.email?.trim() || "";
+  const studentsById = new Map(directory.students.map((student) => [student.id, student]));
 
-    const students = family.children.map((child) => {
-      const className = buildClassName(child);
-      classNames.add(className);
-      return {
-        id: child.id,
-        externalStudentId: child.externalId,
-        fullName: child.student.fullName,
-        classId: className,
-        className,
-        annualFee: 0,
-      };
-    });
+  const parents = directory.parents.map((parent) => {
+    const students = parent.studentIds
+      .map((studentId) => studentsById.get(studentId))
+      .filter((student): student is OrbitSharedDirectory["students"][number] => Boolean(student))
+      .map((student) => {
+        const className = student.classId || "Classe non renseignee";
+        classNames.add(className);
+        return {
+          id: student.id,
+          externalStudentId: student.externalIds.find((item) => item.appSlug === "SAVANEX")?.externalId || student.externalIds[0]?.externalId,
+          fullName: student.fullName,
+          classId: className,
+          className,
+          annualFee: 0,
+        };
+      });
 
     return {
-      lookupKey: buildParentLookupKey(primaryParent, family.familyLabel),
-      fullName,
-      phone,
-      email,
+      lookupKey: buildParentLookupKey({ fullName: parent.fullName }),
+      fullName: parent.fullName,
+      phone: "",
+      email: "",
       students,
     };
   });
@@ -117,16 +93,17 @@ export function mapOrbitFamiliesToSharedOptions(families: OrbitFamily[]) {
   };
 }
 
-async function fetchOrbitFamilies(): Promise<OrbitFamily[]> {
+async function fetchOrbitSharedDirectory(): Promise<OrbitSharedDirectory> {
   const baseUrl = (process.env.KCS_ORBIT_API_URL || "").replace(/\/$/, "");
   const organizationId = process.env.KCS_ORBIT_ORGANIZATION_ID || "";
   const apiKey = process.env.KCS_ORBIT_API_KEY || "";
 
   const response = await fetch(
-    `${baseUrl}/api/integration/read/kcs-nexus/families?organizationId=${encodeURIComponent(organizationId)}`,
+    `${baseUrl}/api/integration/read/shared-directory?organizationId=${encodeURIComponent(organizationId)}`,
     {
       headers: {
         "x-api-key": apiKey,
+        "x-app-slug": "EDUPAY",
       },
     }
   );
@@ -135,8 +112,7 @@ async function fetchOrbitFamilies(): Promise<OrbitFamily[]> {
     throw new Error(`Orbit registry request failed with status ${response.status}`);
   }
 
-  const data = await response.json() as { families?: OrbitFamily[] };
-  return Array.isArray(data.families) ? data.families : [];
+  return response.json() as Promise<OrbitSharedDirectory>;
 }
 
 export async function syncOrbitRegistryMirror(schoolId: string) {
@@ -144,8 +120,8 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
     return { parents: [] as SharedParentOption[], classes: [] as Array<{ id: string; name: string; level: string }> };
   }
 
-  const families = await fetchOrbitFamilies();
-  const mapped = mapOrbitFamiliesToSharedOptions(families);
+  const directory = await fetchOrbitSharedDirectory();
+  const mapped = mapOrbitDirectoryToSharedOptions(directory);
 
   const classIdByName = new Map<string, string>();
   for (const className of mapped.classes) {

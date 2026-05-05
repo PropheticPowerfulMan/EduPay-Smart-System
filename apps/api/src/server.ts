@@ -13,6 +13,7 @@ import { analyticsRouter } from "./modules/analytics/router";
 import { aiRouter } from "./modules/ai/router";
 import { classRouter } from "./modules/classes/router";
 import { exportRouter } from "./modules/exports/router";
+import { sharedDirectoryRouter } from "./modules/shared-directory/router";
 import { startOrbitOutboxWorker } from "./integrations/orbit";
 
 const app = express();
@@ -63,6 +64,7 @@ app.use("/api/analytics", analyticsRouter);
 app.use("/api/ai", aiRouter);
 app.use("/api/classes", classRouter);
 app.use("/api/export", exportRouter);
+app.use("/api/shared-directory", sharedDirectoryRouter);
 
 const stopOrbitOutboxWorker = startOrbitOutboxWorker();
 
