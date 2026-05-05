@@ -5,7 +5,7 @@ export default defineConfig({
   base: "/EduPay-Smart-System/",
   plugins: [react()],
   server: {
-    port: 5173,
+    port: 5174,
     proxy: {
       "/api": "http://localhost:4000"
     }
