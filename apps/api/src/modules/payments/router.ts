@@ -96,7 +96,6 @@ function getMethodLabel(method: string) {
 }
 
 function getStatusLabel(status: string) {
-  function orbitRegistryIsEnabled() {
   const labels: Record<string, string> = {
     COMPLETED: "Réglé",
     PENDING: "En attente",
