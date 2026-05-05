@@ -13,6 +13,7 @@ import { analyticsRouter } from "./modules/analytics/router";
 import { aiRouter } from "./modules/ai/router";
 import { classRouter } from "./modules/classes/router";
 import { exportRouter } from "./modules/exports/router";
+import { startOrbitOutboxWorker } from "./integrations/orbit";
 
 const app = express();
 
@@ -63,6 +64,19 @@ app.use("/api/ai", aiRouter);
 app.use("/api/classes", classRouter);
 app.use("/api/export", exportRouter);
 
-app.listen(Number(process.env.PORT ?? env.API_PORT), "0.0.0.0", () => {
+const stopOrbitOutboxWorker = startOrbitOutboxWorker();
+
+const server = app.listen(Number(process.env.PORT ?? env.API_PORT), "0.0.0.0", () => {
   console.log(`API running on port ${process.env.PORT ?? env.API_PORT}`);
 });
+
+function shutdown(signal: string) {
+  console.log(`Received ${signal}, shutting down EduPay API`);
+  stopOrbitOutboxWorker();
+  server.close(() => {
+    process.exit(0);
+  });
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

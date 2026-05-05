@@ -8,6 +8,7 @@ const orbitApiKey = process.env.KCS_ORBIT_API_KEY || "";
 const orbitOrganizationId = process.env.KCS_ORBIT_ORGANIZATION_ID || "";
 const OUTBOX_PATH = join(__dirname, "..", "..", "var", "orbit-outbox.jsonl");
 const OUTBOX_FLUSH_BATCH_SIZE = 10;
+const DEFAULT_OUTBOX_RETRY_INTERVAL_MS = 30_000;
 
 type OutboxRecord = {
   id: string;
@@ -19,6 +20,7 @@ type OutboxRecord = {
 };
 
 let outboxLock: Promise<void> = Promise.resolve();
+let flushInFlight: Promise<number> | null = null;
 
 function orbitSyncEnabled() {
   return Boolean(orbitApiUrl && orbitApiKey && orbitOrganizationId);
@@ -123,7 +125,12 @@ async function sendJson(path: string, payload: unknown): Promise<{ success: true
   return { success: true };
 }
 
-async function flushOutbox(maxItems = OUTBOX_FLUSH_BATCH_SIZE) {
+export async function flushOutbox(maxItems = OUTBOX_FLUSH_BATCH_SIZE) {
+  if (flushInFlight) {
+    return flushInFlight;
+  }
+
+  flushInFlight = (async () => {
   if (!orbitSyncEnabled()) {
     return 0;
   }
@@ -161,6 +168,52 @@ async function flushOutbox(maxItems = OUTBOX_FLUSH_BATCH_SIZE) {
 
   await writeOutbox(remaining);
   return flushed;
+  })();
+
+  try {
+    return await flushInFlight;
+  } finally {
+    flushInFlight = null;
+  }
+}
+
+function getOutboxRetryIntervalMs() {
+  const configured = Number(process.env.KCS_ORBIT_OUTBOX_RETRY_INTERVAL_MS ?? DEFAULT_OUTBOX_RETRY_INTERVAL_MS);
+
+  if (!Number.isFinite(configured) || configured < 1_000) {
+    return DEFAULT_OUTBOX_RETRY_INTERVAL_MS;
+  }
+
+  return Math.floor(configured);
+}
+
+export function startOrbitOutboxWorker() {
+  if (!orbitSyncEnabled()) {
+    return () => undefined;
+  }
+
+  const runFlush = async () => {
+    try {
+      const flushed = await flushOutbox();
+      if (flushed) {
+        console.info(`Orbit outbox worker flushed ${flushed} pending event(s)`);
+      }
+    } catch (error) {
+      console.warn("Orbit outbox worker failed", error);
+    }
+  };
+
+  void runFlush();
+
+  const interval = setInterval(() => {
+    void runFlush();
+  }, getOutboxRetryIntervalMs());
+
+  interval.unref?.();
+
+  return () => {
+    clearInterval(interval);
+  };
 }
 
 async function postJson(path: string, payload: unknown) {
