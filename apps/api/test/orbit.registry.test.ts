@@ -1,58 +1,46 @@
 import { describe, expect, it } from "vitest";
 
-import { mapOrbitFamiliesToSharedOptions } from "../src/integrations/orbitRegistry";
+import { mapOrbitDirectoryToSharedOptions } from "../src/integrations/orbitRegistry";
 
-describe("mapOrbitFamiliesToSharedOptions", () => {
-  it("maps Orbit families into EduPay parent and student options with shared external ids", () => {
-    const mapped = mapOrbitFamiliesToSharedOptions([
-      {
-        id: "family-1",
-        familyLabel: "Tshisekedi Family",
-        studentCount: 2,
-        parents: [
-          {
-            id: "parent-1",
-            externalId: "PAR-EXT-001",
-            relation: "Parent",
-            parent: {
-              firstName: "Mireille",
-              lastName: "Tshisekedi",
-              fullName: "Mireille Tshisekedi",
-              email: "mireille@example.com",
-              phone: "+243000000111",
-            },
-          },
-        ],
-        children: [
-          {
-            id: "student-1",
-            externalId: "STU-EXT-001",
-            studentNumber: "STU-EXT-001",
-            grade: "Grade 4",
-            section: "A",
-            status: "ACTIVE",
-            student: {
-              firstName: "Nadia",
-              lastName: "Tshisekedi",
-              fullName: "Nadia Tshisekedi",
-            },
-          },
-          {
-            id: "student-2",
-            externalId: "STU-EXT-002",
-            studentNumber: "STU-EXT-002",
-            grade: "Grade 2",
-            section: "B",
-            status: "ACTIVE",
-            student: {
-              firstName: "Bryan",
-              lastName: "Tshisekedi",
-              fullName: "Bryan Tshisekedi",
-            },
-          },
-        ],
-      },
-    ]);
+describe("mapOrbitDirectoryToSharedOptions", () => {
+  it("maps the Orbit shared directory into EduPay parent and student options with shared external ids", () => {
+    const mapped = mapOrbitDirectoryToSharedOptions({
+      source: "orbit",
+      visibility: "shared-directory",
+      parents: [
+        {
+          id: "parent-1",
+          fullName: "Mireille Tshisekedi",
+          firstName: "Mireille",
+          lastName: "Tshisekedi",
+          phone: "+243000000111",
+          email: "mireille@example.com",
+          studentIds: ["student-1", "student-2"],
+          externalIds: [{ appSlug: "SAVANEX", externalId: "PAR-EXT-001" }],
+        },
+      ],
+      students: [
+        {
+          id: "student-1",
+          fullName: "Nadia Tshisekedi",
+          firstName: "Nadia",
+          lastName: "Tshisekedi",
+          studentNumber: "STU-EXT-001",
+          className: "Grade 4 - A",
+          externalIds: [{ appSlug: "SAVANEX", externalId: "STU-EXT-001" }],
+        },
+        {
+          id: "student-2",
+          fullName: "Bryan Tshisekedi",
+          firstName: "Bryan",
+          lastName: "Tshisekedi",
+          studentNumber: "STU-EXT-002",
+          className: "Grade 2 - B",
+          externalIds: [{ appSlug: "SAVANEX", externalId: "STU-EXT-002" }],
+        },
+      ],
+      teachers: [],
+    });
 
     expect(mapped.classes).toEqual(["Grade 2 - B", "Grade 4 - A"]);
     expect(mapped.parents).toHaveLength(1);
@@ -61,6 +49,7 @@ describe("mapOrbitFamiliesToSharedOptions", () => {
       {
         id: "student-1",
         externalStudentId: "STU-EXT-001",
+        studentNumber: "STU-EXT-001",
         fullName: "Nadia Tshisekedi",
         classId: "Grade 4 - A",
         className: "Grade 4 - A",
@@ -69,6 +58,7 @@ describe("mapOrbitFamiliesToSharedOptions", () => {
       {
         id: "student-2",
         externalStudentId: "STU-EXT-002",
+        studentNumber: "STU-EXT-002",
         fullName: "Bryan Tshisekedi",
         classId: "Grade 2 - B",
         className: "Grade 2 - B",

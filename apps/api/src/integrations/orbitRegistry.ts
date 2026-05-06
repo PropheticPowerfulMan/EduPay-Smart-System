@@ -9,8 +9,10 @@ type OrbitSharedDirectory = {
     firstName?: string;
     middleName?: string | null;
     lastName?: string;
+    organizationId?: string | null;
     phone?: string | null;
     email?: string | null;
+    mustChangePassword?: boolean;
     studentIds: string[];
     externalIds: Array<{ appSlug: string; externalId: string }>;
   }>;
@@ -21,8 +23,15 @@ type OrbitSharedDirectory = {
     middleName?: string | null;
     lastName?: string;
     studentNumber?: string;
+    email?: string | null;
+    phone?: string | null;
+    dateOfBirth?: string | null;
+    status?: string | null;
+    mustChangePassword?: boolean;
     classId?: string | null;
     className?: string | null;
+    parentId?: string | null;
+    organizationId?: string | null;
     externalIds: Array<{ appSlug: string; externalId: string }>;
   }>;
   teachers: Array<{
@@ -31,6 +40,15 @@ type OrbitSharedDirectory = {
     firstName?: string;
     middleName?: string | null;
     lastName?: string;
+    phone?: string | null;
+    email?: string | null;
+    subject?: string | null;
+    employeeId?: string | null;
+    employeeType?: string | null;
+    department?: string | null;
+    jobTitle?: string | null;
+    mustChangePassword?: boolean;
+    organizationId?: string | null;
     externalIds: Array<{ appSlug: string; externalId: string }>;
   }>;
 };
@@ -38,6 +56,12 @@ type OrbitSharedDirectory = {
 export type SharedStudentOption = {
   id: string;
   externalStudentId?: string;
+  studentNumber?: string;
+  email?: string | null;
+  phone?: string | null;
+  dateOfBirth?: string | null;
+  status?: string | null;
+  mustChangePassword?: boolean;
   fullName: string;
   classId: string;
   className: string;
@@ -82,6 +106,12 @@ export function mapOrbitDirectoryToSharedOptions(directory: OrbitSharedDirectory
         return {
           id: student.id,
           externalStudentId: student.externalIds.find((item) => item.appSlug === "SAVANEX")?.externalId || student.externalIds[0]?.externalId,
+          studentNumber: student.studentNumber,
+          email: student.email,
+          phone: student.phone,
+          dateOfBirth: student.dateOfBirth,
+          status: student.status,
+          mustChangePassword: student.mustChangePassword,
           fullName: student.fullName,
           classId: className,
           className,
@@ -260,6 +290,7 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
       students: parent.students.map((student) => ({
         id: student.id,
         externalStudentId: student.externalStudentId || undefined,
+        studentNumber: student.externalStudentId || undefined,
         fullName: student.fullName,
         classId: student.classId,
         className: student.class.name,
