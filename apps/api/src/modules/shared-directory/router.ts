@@ -5,6 +5,28 @@ import { prisma } from "../../prisma";
 
 export const sharedDirectoryRouter = Router();
 
+function splitFullName(fullName: string) {
+  const normalized = fullName.trim().replace(/\s+/g, " ");
+  if (!normalized) {
+    return { firstName: "", middleName: null as string | null, lastName: "" };
+  }
+
+  const parts = normalized.split(" ");
+  if (parts.length === 1) {
+    return { firstName: parts[0], middleName: null as string | null, lastName: "" };
+  }
+
+  if (parts.length === 2) {
+    return { firstName: parts[0], middleName: null as string | null, lastName: parts[1] };
+  }
+
+  return {
+    firstName: parts[0],
+    middleName: parts.slice(1, -1).join(" "),
+    lastName: parts[parts.length - 1],
+  };
+}
+
 sharedDirectoryRouter.use(authGuard);
 
 sharedDirectoryRouter.get("/", async (req: AuthenticatedRequest, res) => {
@@ -36,25 +58,39 @@ sharedDirectoryRouter.get("/", async (req: AuthenticatedRequest, res) => {
     source: "local",
     visibility: "shared-directory",
     parents: parents.map((parent) => ({
+      ...splitFullName(parent.fullName),
       id: parent.id,
       fullName: parent.fullName,
+      studentIds: parent.students.map((student) => student.id),
+      organizationId: req.user!.schoolId,
+      externalIds: [],
       phone: parent.phone,
       email: parent.email,
       students: parent.students.map((student) => ({
+        ...splitFullName(student.fullName),
         id: student.id,
+        studentNumber: student.externalStudentId || student.id,
         externalStudentId: student.externalStudentId || undefined,
         fullName: student.fullName,
         classId: student.classId,
         className: student.class?.name || student.classId,
+        parentId: parent.id,
+        organizationId: req.user!.schoolId,
+        externalIds: [],
         annualFee: student.annualFee,
       })),
     })),
     students: students.map((student) => ({
+      ...splitFullName(student.fullName),
       id: student.id,
+      studentNumber: student.externalStudentId || student.id,
       externalStudentId: student.externalStudentId || undefined,
       fullName: student.fullName,
       classId: student.classId,
       className: student.class?.name || student.classId,
+      parentId: student.parentId,
+      organizationId: req.user!.schoolId,
+      externalIds: [],
       annualFee: student.annualFee,
     })),
     teachers: [],

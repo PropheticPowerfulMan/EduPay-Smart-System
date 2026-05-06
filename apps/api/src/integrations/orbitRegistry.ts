@@ -6,18 +6,29 @@ type OrbitSharedDirectory = {
   parents: Array<{
     id: string;
     fullName: string;
+    firstName?: string;
+    middleName?: string | null;
+    lastName?: string;
     studentIds: string[];
     externalIds: Array<{ appSlug: string; externalId: string }>;
   }>;
   students: Array<{
     id: string;
     fullName: string;
+    firstName?: string;
+    middleName?: string | null;
+    lastName?: string;
+    studentNumber?: string;
     classId?: string | null;
+    className?: string | null;
     externalIds: Array<{ appSlug: string; externalId: string }>;
   }>;
   teachers: Array<{
     id: string;
     fullName: string;
+    firstName?: string;
+    middleName?: string | null;
+    lastName?: string;
     externalIds: Array<{ appSlug: string; externalId: string }>;
   }>;
 };
@@ -64,7 +75,7 @@ export function mapOrbitDirectoryToSharedOptions(directory: OrbitSharedDirectory
       .map((studentId) => studentsById.get(studentId))
       .filter((student): student is OrbitSharedDirectory["students"][number] => Boolean(student))
       .map((student) => {
-        const className = student.classId || "Classe non renseignee";
+        const className = student.className || student.classId || "Classe non renseignee";
         classNames.add(className);
         return {
           id: student.id,
