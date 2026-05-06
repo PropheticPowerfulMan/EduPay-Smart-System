@@ -4,8 +4,8 @@ const ROLE_STORAGE_KEY = "edupay_role";
 const NAME_STORAGE_KEY = "edupay_name";
 const PARENT_ID_STORAGE_KEY = "edupay_parent_id";
 const SESSION_ACTIVE_KEY = "edupay_session_active";
-const DEMO_PARENTS_KEY = "edupay_demo_parents_v1";
-const DEMO_PAYMENTS_KEY = "edupay_payments_v2";
+const DEMO_PARENTS_KEY = "edupay_demo_parents_v2";
+const DEMO_PAYMENTS_KEY = "edupay_payments_v3";
 const DEMO_NOTIFICATIONS_KEY = "edupay-payment-notifications-enabled";
 const DEMO_PARENT_CREDENTIALS_KEY = "edupay_demo_parent_credentials_v1";
 const DEMO_FALLBACK_ENABLED = (import.meta.env.VITE_ENABLE_DEMO_FALLBACK ?? "").trim().toLowerCase() === "true";
@@ -29,37 +29,38 @@ const demoClasses = [
 
 const seedParents: DemoParent[] = [
   {
-    id: "PAR-2025-0001",
-    nom: "Dupont",
+    id: "PAR-KCS-RACHEL-KABONGO",
+    nom: "Kabongo",
     postnom: "",
-    prenom: "Marie",
-    fullName: "Dupont Marie",
-    phone: "+243 999 123 456",
-    email: "marie@example.com",
+    prenom: "Rachel",
+    fullName: "Rachel Kabongo",
+    phone: "+243 812 450 221",
+    email: "rachel.kabongo@kcs.local",
     createdAt: new Date().toISOString(),
     students: [
-      { id: "STU-001", fullName: "Alice Dupont", classId: "section-grade-4", className: "Grade 4", annualFee: 1800 },
-      { id: "STU-002", fullName: "Kevin Dupont", classId: "section-grade-2", className: "Grade 2", annualFee: 1500 }
+      { id: "STU-KCS-ELISE-KABONGO", fullName: "Elise Kabongo", classId: "section-grade-11", className: "Grade 11A", annualFee: 2200 },
+      { id: "STU-KCS-DAVID-KABONGO", fullName: "David Kabongo", classId: "section-grade-8", className: "Grade 8B", annualFee: 1800 }
     ]
   },
   {
-    id: "PAR-2025-0002",
-    nom: "Pierre",
-    postnom: "Kalamba",
-    prenom: "Jean",
-    fullName: "Pierre Kalamba Jean",
-    phone: "+243 999 234 567",
-    email: "jean@example.com",
+    id: "PAR-KCS-MIREILLE-MBUYI",
+    nom: "Mbuyi",
+    postnom: "",
+    prenom: "Mireille",
+    fullName: "Mireille Mbuyi",
+    phone: "+243 899 120 882",
+    email: "mireille.mbuyi@kcs.local",
     createdAt: new Date().toISOString(),
     students: [
-      { id: "STU-003", fullName: "Sarah Kalamba", classId: "section-grade-6", className: "Grade 6", annualFee: 2200 }
+      { id: "STU-KCS-AMANI-MBUYI", fullName: "Amani Mbuyi", classId: "section-grade-10", className: "Grade 10A", annualFee: 2400 }
     ]
   }
 ];
 
 const seedPayments: DemoPayment[] = [
-  { id: "pay-1", transactionNumber: "TXN-20260420-10001", parentId: "PAR-2025-0001", parentFullName: "Dupont Marie", reason: "Frais scolaires - 1er trimestre", method: "CASH", amount: 1200, status: "COMPLETED", createdAt: new Date().toISOString(), date: new Date().toLocaleString("fr-FR") },
-  { id: "pay-2", transactionNumber: "TXN-20260421-10002", parentId: "PAR-2025-0002", parentFullName: "Pierre Kalamba Jean", reason: "Frais scolaires - 1er trimestre", method: "MPESA", amount: 800, status: "PENDING", createdAt: new Date().toISOString(), date: new Date().toLocaleString("fr-FR") }
+  { id: "pay-1", transactionNumber: "TXN-20260420-10001", parentId: "PAR-KCS-RACHEL-KABONGO", parentFullName: "Rachel Kabongo", reason: "Frais scolaires - Elise Kabongo", method: "CASH", amount: 1600, status: "COMPLETED", createdAt: new Date().toISOString(), date: new Date().toLocaleString("fr-FR") },
+  { id: "pay-2", transactionNumber: "TXN-20260421-10002", parentId: "PAR-KCS-RACHEL-KABONGO", parentFullName: "Rachel Kabongo", reason: "Frais scolaires - David Kabongo", method: "MPESA", amount: 980, status: "COMPLETED", createdAt: new Date().toISOString(), date: new Date().toLocaleString("fr-FR") },
+  { id: "pay-3", transactionNumber: "TXN-20260422-10003", parentId: "PAR-KCS-MIREILLE-MBUYI", parentFullName: "Mireille Mbuyi", reason: "Frais scolaires - Amani Mbuyi", method: "MPESA", amount: 800, status: "PENDING", createdAt: new Date().toISOString(), date: new Date().toLocaleString("fr-FR") }
 ];
 
 function clearLocalSession() {
@@ -162,8 +163,8 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const email = String(body.email ?? "").toLowerCase();
     const password = String(body.password ?? "");
     if (email === "parent@school.com" && password === "password123") {
-      const parent = getDemoParents().find((item) => item.id === "PAR-2025-0001");
-      return { token: "demo-parent-token", role: "PARENT", fullName: "Dupont Marie", parentId: "PAR-2025-0001", photoUrl: parent?.photoUrl || "" } as T;
+      const parent = getDemoParents().find((item) => item.id === "PAR-KCS-RACHEL-KABONGO");
+      return { token: "demo-parent-token", role: "PARENT", fullName: "Rachel Kabongo", parentId: "PAR-KCS-RACHEL-KABONGO", photoUrl: parent?.photoUrl || "" } as T;
     }
 
     const credential = getDemoParentCredentials().find((item) => item.email === email && item.password === password);

@@ -406,7 +406,21 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
 // DELETE parent
 parentRouter.delete("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
+  if (orbitRegistryIsEnabled()) {
+    return res.status(409).json({
+      message: "La suppression locale est desactivee quand Orbit pilote l'annuaire. Supprimez/desactivez la famille dans SAVANEX pour propager l'etat partout."
+    });
+  }
+
   try {
+    const children = await prisma.student.count({ where: { parentId: id, schoolId: req.user!.schoolId } });
+    if (children > 0) {
+      return res.status(409).json({
+        message: "Impossible de supprimer ce parent: des eleves lui sont encore rattaches.",
+        children,
+      });
+    }
+
     await prisma.parent.delete({ where: { id } });
     return res.status(204).end();
   } catch (error) {

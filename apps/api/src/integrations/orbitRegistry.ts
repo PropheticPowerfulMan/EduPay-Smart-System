@@ -9,6 +9,8 @@ type OrbitSharedDirectory = {
     firstName?: string;
     middleName?: string | null;
     lastName?: string;
+    phone?: string | null;
+    email?: string | null;
     studentIds: string[];
     externalIds: Array<{ appSlug: string; externalId: string }>;
   }>;
@@ -88,10 +90,14 @@ export function mapOrbitDirectoryToSharedOptions(directory: OrbitSharedDirectory
       });
 
     return {
-      lookupKey: buildParentLookupKey({ fullName: parent.fullName }),
+      lookupKey: buildParentLookupKey({
+        fullName: parent.fullName,
+        email: parent.email || undefined,
+        phone: parent.phone || undefined,
+      }),
       fullName: parent.fullName,
-      phone: "",
-      email: "",
+      phone: parent.phone || "",
+      email: parent.email || "",
       students,
     };
   });
