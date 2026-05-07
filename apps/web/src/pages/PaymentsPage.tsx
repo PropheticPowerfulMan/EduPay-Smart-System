@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect, type FormEvent } from "react";
+import { createPortal } from "react-dom";
 import { schoolBranding } from "../config/branding";
 import { useI18n } from "../i18n";
 import { api } from "../services/api";
@@ -625,6 +626,7 @@ const EMPTY_FORM: FormState = {
 };
 
 const PAYMENT_NOTIFICATION_STORAGE_KEY = "edupay-payment-notifications-enabled";
+const PAYMENT_PARENT_NOTIFICATION_STORAGE_KEY = "edupay-parent-payment-notifications-v1";
 
 const STORAGE_KEY = "edupay_payments_v2";
 
@@ -634,6 +636,15 @@ function loadPayments(): PaymentRecord[] {
 }
 function savePayments(ps: PaymentRecord[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(ps));
+}
+
+function loadParentNotificationPreferences(): Record<string, boolean> {
+  try { return JSON.parse(localStorage.getItem(PAYMENT_PARENT_NOTIFICATION_STORAGE_KEY) ?? "{}"); }
+  catch { return {}; }
+}
+
+function saveParentNotificationPreferences(preferences: Record<string, boolean>) {
+  localStorage.setItem(PAYMENT_PARENT_NOTIFICATION_STORAGE_KEY, JSON.stringify(preferences));
 }
 
 const METHOD_OPTIONS = [
@@ -820,7 +831,9 @@ export function PaymentsPage() {
   const [paymentNotificationsEnabled, setPaymentNotificationsEnabled] = useState(() => {
     return localStorage.getItem(PAYMENT_NOTIFICATION_STORAGE_KEY) !== "false";
   });
+  const [parentNotificationPreferences, setParentNotificationPreferences] = useState<Record<string, boolean>>(loadParentNotificationPreferences);
   const [notificationStatus, setNotificationStatus] = useState<string | null>(null);
+  const [paymentDetailsDialogOpen, setPaymentDetailsDialogOpen] = useState(true);
   const [parents, setParents] = useState<ParentOption[]>([]);
   // Historique
   const [searchQuery, setSearchQuery]       = useState("");
@@ -903,6 +916,10 @@ export function PaymentsPage() {
     () => parents.find((parent) => parent.id === form.parentId) ?? null,
     [form.parentId, parents]
   );
+  const selectedParentNotificationsEnabled = selectedParent
+    ? parentNotificationPreferences[selectedParent.id] !== false
+    : true;
+  const effectivePaymentNotificationsEnabled = paymentNotificationsEnabled && selectedParentNotificationsEnabled;
 
   const setParentTarget = (parentId: string) => {
     const parent = parents.find((item) => item.id === parentId);
@@ -913,6 +930,17 @@ export function PaymentsPage() {
       parentFullName: parent?.fullName ?? prev.parentFullName
     }));
     setFieldErrors((prev) => ({ ...prev, parentFullName: undefined, studentIds: undefined }));
+  };
+
+  const toggleParentPaymentNotifications = (parentId: string) => {
+    const parent = parents.find((item) => item.id === parentId);
+    setParentNotificationPreferences((current) => {
+      const nextValue = current[parentId] === false;
+      const next = { ...current, [parentId]: nextValue };
+      saveParentNotificationPreferences(next);
+      setNotificationStatus(`${parent?.fullName ?? "Parent"} - Email & SMS ${nextValue ? t("enabled") : t("disabled")}`);
+      return next;
+    });
   };
 
   const selectedStudents = useMemo(
@@ -969,7 +997,7 @@ export function PaymentsPage() {
           method: record.method,
           transactionNumber: txNumber,
           status: record.status,
-          notifyParent: paymentNotificationsEnabled && Boolean(record.parentId),
+          notifyParent: effectivePaymentNotificationsEnabled && Boolean(record.parentId),
         }),
       });
       record.id = created?.payment?.id ?? record.id;
@@ -1078,13 +1106,42 @@ export function PaymentsPage() {
           <p className="mt-1 max-w-3xl text-sm text-ink-dim">{t("paymentNotificationsAdminSubtitle")}</p>
           <p className="mt-2 text-xs font-semibold text-cyan-200">{t("paymentNotificationsChannels")}</p>
           {selectedParent && (
-            <p className="mt-2 rounded-lg border border-cyan-400/25 bg-cyan-400/10 px-3 py-2 text-xs font-semibold text-cyan-100">
-              Parent cible : {selectedParent.fullName}
+            <p className={`mt-2 rounded-lg border px-3 py-2 text-xs font-semibold ${
+              selectedParentNotificationsEnabled
+                ? "border-cyan-400/25 bg-cyan-400/10 text-cyan-100"
+                : "border-amber-400/30 bg-amber-400/10 text-amber-100"
+            }`}>
+              Parent cible : {selectedParent.fullName} - Email & SMS {selectedParentNotificationsEnabled ? t("enabled") : t("disabled")}
               {selectedParent.email ? ` - ${selectedParent.email}` : ""}
               {selectedParent.phone ? ` - ${selectedParent.phone}` : ""}
             </p>
           )}
           {notificationStatus && <p className="mt-2 text-xs font-semibold text-white/85">{notificationStatus}</p>}
+          {parents.length > 0 && (
+            <div className="mt-4 grid max-h-64 gap-2 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
+              {parents.map((parent) => {
+                const active = parentNotificationPreferences[parent.id] !== false;
+                return (
+                  <button
+                    key={parent.id}
+                    type="button"
+                    onClick={() => toggleParentPaymentNotifications(parent.id)}
+                    className={`rounded-xl border px-3 py-2 text-left transition-all ${
+                      active
+                        ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-100 hover:bg-emerald-400/15"
+                        : "border-slate-600/80 bg-slate-950/40 text-ink-dim hover:border-amber-400/40 hover:text-amber-100"
+                    }`}
+                  >
+                    <span className="block truncate text-xs font-black uppercase tracking-wide">{parent.fullName}</span>
+                    <span className="mt-1 block text-[11px] font-semibold">
+                      Email & SMS {active ? t("enabled") : t("disabled")}
+                      {!paymentNotificationsEnabled && active ? " - en attente globale" : ""}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
         <button
           type="button"
@@ -1468,8 +1525,37 @@ export function PaymentsPage() {
       <StatsBanner />
       <NotificationSettingsPanel />
 
-      <div className="card animate-fadeInUp">
-        <h2 className="font-display text-xl font-bold text-white mb-6">{t("paymentDetails")}</h2>
+      <div className="card flex flex-col gap-4 border-brand-500/20 bg-brand-500/5 animate-fadeInUp sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-brand-200">{t("paymentDetails")}</p>
+          <h2 className="mt-2 font-display text-xl font-bold text-white">{t("newPaymentBtn")}</h2>
+          <p className="mt-1 text-sm text-ink-dim">Le formulaire de paiement s'ouvre dans une boite dediee au centre de l'ecran.</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setPaymentDetailsDialogOpen(true)}
+          className="rounded-xl bg-brand-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-brand-500/20 transition-all hover:bg-brand-700 active:scale-95"
+        >
+          Ouvrir Payment details
+        </button>
+      </div>
+
+      {paymentDetailsDialogOpen ? createPortal((
+        <div className="edupay-payment-modal-backdrop fixed inset-0 z-[999] grid place-items-center overflow-y-auto px-4 py-8">
+          <div className="edupay-payment-modal-panel w-full max-w-5xl overflow-y-auto p-5 sm:p-6">
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.2em] text-brand-200">{t("paymentDetails")}</p>
+                <h2 className="mt-1 font-display text-xl font-bold text-white">{t("newPaymentBtn")}</h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPaymentDetailsDialogOpen(false)}
+                className="rounded-xl border border-slate-600 bg-slate-950/60 px-4 py-2 text-sm font-semibold text-ink-dim transition-all hover:border-slate-400 hover:text-white"
+              >
+                Fermer
+              </button>
+            </div>
 
         {/* Numero de transaction auto */}
         <div className="mb-6 p-4 rounded-xl bg-slate-900/60 border border-brand-500/30 flex items-center justify-between">
@@ -1683,7 +1769,9 @@ export function PaymentsPage() {
             {saving ? "Enregistrement..." : t("saveAndGenerateReceipt")}
           </button>
         </form>
-      </div>
+          </div>
+        </div>
+      ), document.body) : null}
     </div>
   );
 }
