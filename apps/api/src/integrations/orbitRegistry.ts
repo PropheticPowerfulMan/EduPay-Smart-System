@@ -169,6 +169,13 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
 
   const directory = await fetchOrbitSharedDirectory();
   const mapped = mapOrbitDirectoryToSharedOptions(directory);
+  const activeParentLookupKeys = new Set(mapped.parents.map((parent) => parent.lookupKey));
+  const activeExternalStudentIds = new Set(
+    mapped.parents
+      .flatMap((parent) => parent.students)
+      .map((student) => student.externalStudentId)
+      .filter((externalStudentId): externalStudentId is string => Boolean(externalStudentId))
+  );
 
   const classIdByName = new Map<string, string>();
   for (const className of mapped.classes) {
@@ -267,6 +274,34 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
           },
         });
       }
+    }
+  }
+
+  const activeExternalStudentIdList = Array.from(activeExternalStudentIds);
+  await prisma.student.deleteMany({
+    where: {
+      schoolId,
+      externalStudentId: { not: null },
+      ...(activeExternalStudentIdList.length > 0
+        ? { NOT: { externalStudentId: { in: activeExternalStudentIdList } } }
+        : {}),
+    },
+  });
+
+  const mirroredParents = await prisma.parent.findMany({
+    where: { schoolId },
+    include: { students: { select: { id: true } } },
+  });
+
+  for (const parent of mirroredParents) {
+    const lookupKey = buildParentLookupKey({
+      fullName: parent.fullName,
+      email: parent.email,
+      phone: parent.phone,
+    });
+
+    if (!activeParentLookupKeys.has(lookupKey) && parent.students.length === 0) {
+      await prisma.parent.delete({ where: { id: parent.id } });
     }
   }
 
