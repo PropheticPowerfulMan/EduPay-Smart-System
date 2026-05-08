@@ -92,6 +92,16 @@ function buildParentLookupKey(parent: { fullName: string; email?: string; phone?
   return `name:${parent.fullName.trim().toLowerCase()}`;
 }
 
+function pickSharedStudentId(student: OrbitSharedDirectory["students"][number]) {
+  const priority = ["SAVANEX", "KCS_NEXUS", "EDUSYNCAI", "EDUPAY"];
+  for (const appSlug of priority) {
+    const match = student.externalIds.find((item) => item.appSlug === appSlug)?.externalId;
+    if (match?.trim()) return match.trim();
+  }
+
+  return student.studentNumber?.trim() || student.id;
+}
+
 export function mapOrbitDirectoryToSharedOptions(directory: OrbitSharedDirectory) {
   const classNames = new Set<string>();
   const studentsById = new Map(directory.students.map((student) => [student.id, student]));
@@ -105,7 +115,7 @@ export function mapOrbitDirectoryToSharedOptions(directory: OrbitSharedDirectory
         classNames.add(className);
         return {
           id: student.id,
-          externalStudentId: student.externalIds.find((item) => item.appSlug === "SAVANEX")?.externalId || student.externalIds[0]?.externalId,
+          externalStudentId: pickSharedStudentId(student),
           studentNumber: student.studentNumber,
           email: student.email,
           phone: student.phone,
