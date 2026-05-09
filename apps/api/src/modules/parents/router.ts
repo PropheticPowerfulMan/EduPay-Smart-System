@@ -37,6 +37,51 @@ function generateTemporaryPassword() {
   return `KCS-${pick(4)}-${pick(4)}`;
 }
 
+function buildReadableEntityId(prefix: "PAR" | "STU", fullName: string) {
+  const tokens = fullName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const safeTokens = tokens.length ? tokens : [prefix === "PAR" ? "PARENT" : "STUDENT"];
+  return `${prefix}-KCS-${safeTokens.join("-")}`;
+}
+
+async function generateUniqueParentId(tx: typeof prisma, schoolId: string, fullName: string) {
+  const baseId = buildReadableEntityId("PAR", fullName);
+
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const candidateId = attempt === 0 ? baseId : `${baseId}-${String(attempt + 1).padStart(2, "0")}`;
+    const existing = await tx.parent.findFirst({
+      where: { id: candidateId, schoolId },
+      select: { id: true }
+    });
+    if (!existing) return candidateId;
+  }
+
+  return `${baseId}-${Date.now().toString().slice(-6)}`;
+}
+
+async function generateUniqueStudentId(tx: typeof prisma, schoolId: string, fullName: string) {
+  const baseId = buildReadableEntityId("STU", fullName);
+
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const candidateId = attempt === 0 ? baseId : `${baseId}-${String(attempt + 1).padStart(2, "0")}`;
+    const existing = await tx.student.findFirst({
+      where: { id: candidateId, schoolId },
+      select: { id: true }
+    });
+    if (!existing) return candidateId;
+  }
+
+  return `${baseId}-${Date.now().toString().slice(-6)}`;
+}
+
 function buildParentWelcomeMessages(parent: any, temporaryPassword: string, loginEmail: string) {
   const students = (parent.students || []).map((student: any) => ({
     fullName: student.fullName,
@@ -168,7 +213,12 @@ parentRouter.use(authGuard);
 parentRouter.get("/", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
   if (orbitRegistryIsEnabled()) {
     const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);
-    return res.json(mirrored.parents);
+    return res.json(mirrored.parents.map((parent) => enrichParent({
+      ...parent,
+      id: parent.id,
+      displayId: parent.displayId || parent.id,
+      createdAt: parent.createdAt || new Date(0),
+    })));
   }
 
   try {
@@ -247,6 +297,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
   try {
     const parent = await prisma.$transaction(async (tx) => {
       const passwordHash = await bcrypt.hash(temporaryPassword, 10);
+      const parentId = await generateUniqueParentId(tx as typeof prisma, req.user!.schoolId, payload.fullName);
       const user = await tx.user.create({
         data: {
           fullName: payload.fullName,
@@ -258,6 +309,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       });
       const p = await tx.parent.create({
         data: {
+          id: parentId,
           fullName: payload.fullName,
           phone: payload.phone,
           email: payload.email,
@@ -268,8 +320,10 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
         }
       });
       for (const st of payload.students) {
+        const studentId = await generateUniqueStudentId(tx as typeof prisma, req.user!.schoolId, st.fullName);
         await tx.student.create({
           data: {
+            id: studentId,
             fullName: st.fullName,
             classId: st.classId,
             annualFee: st.annualFee,
@@ -294,8 +348,9 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
     });
   } catch (error) {
     console.error("DB unavailable on parent create, using demo store", error);
+    const parentId = buildReadableEntityId("PAR", payload.fullName);
     const newParent = {
-      id: `demo-parent-${Date.now()}`,
+      id: parentId,
       nom: payload.nom,
       postnom: payload.postnom,
       prenom: payload.prenom,
@@ -305,7 +360,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       photoUrl: payload.photoUrl,
       temporaryPassword,
       students: payload.students.map((s, i) => ({
-        id: `demo-student-${Date.now()}-${i}`,
+        id: `${buildReadableEntityId("STU", s.fullName)}-${String(i + 1).padStart(2, "0")}`,
         fullName: s.fullName,
         classId: s.classId,
         className: "Classe",

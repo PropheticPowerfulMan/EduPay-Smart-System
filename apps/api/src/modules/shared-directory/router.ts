@@ -32,11 +32,22 @@ sharedDirectoryRouter.use(authGuard);
 sharedDirectoryRouter.get("/", async (req: AuthenticatedRequest, res) => {
   if (orbitRegistryIsEnabled()) {
     const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);
+    const students = mirrored.parents.flatMap((parent) => parent.students);
     return res.json({
       source: "orbit",
       visibility: "shared-directory",
+      counts: mirrored.counts,
+      families: mirrored.parents.map((parent) => ({
+        id: parent.id,
+        displayId: parent.displayId || parent.id,
+        familyLabel: `${splitFullName(parent.fullName).lastName || parent.fullName} Family`,
+        parentIds: [parent.id],
+        studentIds: parent.students.map((student) => student.id),
+        organizationId: req.user!.schoolId,
+        externalIds: [],
+      })),
       parents: mirrored.parents,
-      students: mirrored.parents.flatMap((parent) => parent.students),
+      students,
       teachers: [],
     });
   }
@@ -57,9 +68,25 @@ sharedDirectoryRouter.get("/", async (req: AuthenticatedRequest, res) => {
   return res.json({
     source: "local",
     visibility: "shared-directory",
+    counts: {
+      families: parents.length,
+      parents: parents.length,
+      students: students.length,
+      teachers: 0,
+    },
+    families: parents.map((parent) => ({
+      id: parent.id,
+      displayId: parent.id,
+      familyLabel: `${splitFullName(parent.fullName).lastName || parent.fullName} Family`,
+      parentIds: [parent.id],
+      studentIds: parent.students.map((student) => student.id),
+      organizationId: req.user!.schoolId,
+      externalIds: [],
+    })),
     parents: parents.map((parent) => ({
       ...splitFullName(parent.fullName),
       id: parent.id,
+      displayId: parent.id,
       fullName: parent.fullName,
       studentIds: parent.students.map((student) => student.id),
       organizationId: req.user!.schoolId,
@@ -83,6 +110,7 @@ sharedDirectoryRouter.get("/", async (req: AuthenticatedRequest, res) => {
     students: students.map((student) => ({
       ...splitFullName(student.fullName),
       id: student.id,
+      displayId: student.externalStudentId || student.id,
       studentNumber: student.externalStudentId || student.id,
       externalStudentId: student.externalStudentId || undefined,
       fullName: student.fullName,

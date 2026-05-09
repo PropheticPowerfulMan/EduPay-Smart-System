@@ -1,4 +1,5 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/$/, "");
+const RAW_API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/$/, "");
+const API_BASE_URL = RAW_API_BASE_URL || (import.meta.env.DEV ? "http://localhost:4000" : "");
 const TOKEN_STORAGE_KEY = "edupay_token";
 const ROLE_STORAGE_KEY = "edupay_role";
 const NAME_STORAGE_KEY = "edupay_name";
@@ -14,8 +15,7 @@ const PLACEHOLDER_API_URL = /MON-BACKEND|example\.com/i.test(API_BASE_URL);
 const LOCAL_API_FALLBACK_ENABLED =
   DEMO_FALLBACK_ENABLED ||
   STATIC_APP_FALLBACK_ENABLED ||
-  PLACEHOLDER_API_URL ||
-  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(API_BASE_URL);
+  PLACEHOLDER_API_URL;
 
 type DemoStudent = { id: string; fullName: string; classId: string; className: string; annualFee: number; payments?: DemoPayment[] };
 type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
@@ -90,6 +90,33 @@ function readJson<T>(key: string, fallback: T): T {
 
 function writeJson(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+function buildReadableEntityId(prefix: "PAR" | "STU", fullName: string) {
+  const tokens = fullName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const safeTokens = tokens.length ? tokens : [prefix === "PAR" ? "PARENT" : "STUDENT"];
+  return `${prefix}-KCS-${safeTokens.join("-")}`;
+}
+
+function buildUniqueDemoEntityId(prefix: "PAR" | "STU", fullName: string, existingIds: string[]) {
+  const baseId = buildReadableEntityId(prefix, fullName);
+  if (!existingIds.includes(baseId)) return baseId;
+
+  for (let attempt = 2; attempt < 100; attempt += 1) {
+    const candidateId = `${baseId}-${String(attempt).padStart(2, "0")}`;
+    if (!existingIds.includes(candidateId)) return candidateId;
+  }
+
+  return `${baseId}-${Date.now().toString().slice(-6)}`;
 }
 
 function getDemoParents() {
@@ -259,18 +286,26 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (normalizedPath === "/api/parents" && method === "GET") return getDemoParents() as T;
   if (normalizedPath === "/api/parents" && method === "POST") {
-    const id = `PAR-2025-${String(Date.now()).slice(-4)}`;
+    const existingParents = getDemoParents();
+    const parentFullName = String(body.fullName ?? `${body.nom ?? ""} ${body.prenom ?? ""}`).trim() || "Nouveau parent";
+    const id = buildUniqueDemoEntityId("PAR", parentFullName, existingParents.map((parent) => parent.id));
+    const existingStudentIds = existingParents.flatMap((parent) => parent.students.map((student) => student.id));
     const parent: DemoParent = {
       id,
       nom: String(body.nom ?? ""),
       postnom: String(body.postnom ?? ""),
       prenom: String(body.prenom ?? ""),
-      fullName: String(body.fullName ?? `${body.nom ?? ""} ${body.prenom ?? ""}`).trim() || "Nouveau parent",
+      fullName: parentFullName,
       phone: String(body.phone ?? ""),
       email: String(body.email ?? ""),
       photoUrl: String(body.photoUrl ?? ""),
       createdAt: new Date().toISOString(),
-      students: Array.isArray(body.students) ? body.students as DemoStudent[] : []
+      students: Array.isArray(body.students)
+        ? (body.students as DemoStudent[]).map((student) => ({
+            ...student,
+            id: buildUniqueDemoEntityId("STU", student.fullName || "Student", existingStudentIds),
+          }))
+        : []
     };
     const notifyEmail = body.notifyEmail !== false;
     const notifySms = body.notifySms !== false;
@@ -278,7 +313,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     if (parent.email) {
       saveDemoParentCredential({ parentId: parent.id, email: parent.email, password: temporaryPassword });
     }
-    writeJson(DEMO_PARENTS_KEY, [parent, ...getDemoParents()]);
+    writeJson(DEMO_PARENTS_KEY, [parent, ...existingParents]);
     return {
       ...parent,
       temporaryPassword,
@@ -336,7 +371,9 @@ function canFallbackToDemo(path: string, init?: RequestInit) {
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (shouldUseDemoApi(path)) return demoApi<T>(path, init);
 
-  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+  const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+  const token = storedToken && !storedToken.startsWith("local-") && !storedToken.startsWith("demo-") ? storedToken : "";
+  if (storedToken && !token) clearLocalSession();
   const url = resolveApiUrl(path);
 
   let response: Response;
@@ -350,7 +387,7 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       }
     });
   } catch {
-    if (LOCAL_API_FALLBACK_ENABLED && path.startsWith("/api/")) return demoApi<T>(path, init);
+    if (LOCAL_API_FALLBACK_ENABLED && canFallbackToDemo(path, init)) return demoApi<T>(path, init);
     throw new Error("Impossible de joindre l'API. Verifiez que le backend est demarre.");
   }
 

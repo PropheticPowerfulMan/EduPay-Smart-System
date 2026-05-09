@@ -5,6 +5,7 @@ import { api } from "../services/api";
 /* ─── Types ─────────────────────────────────────────────────────── */
 type Student = {
   id: string;
+  displayId?: string;
   fullName: string;
   classId: string;
   className: string;
@@ -13,6 +14,7 @@ type Student = {
 
 type Parent = {
   id: string;
+  displayId?: string;
   nom: string;
   postnom: string;
   prenom: string;
@@ -309,7 +311,7 @@ function DetailModal({ parent, onClose, t }: { parent: Parent; onClose: () => vo
           <XIcon />
         </button>
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.15em] text-brand-300 mb-1">{t("pmParentId")}: {parent.id}</p>
+          <p className="text-xs font-bold uppercase tracking-[0.15em] text-brand-300 mb-1">{t("pmParentId")}: {parent.displayId || parent.id}</p>
           <div className="flex items-center gap-4">
             <div className="h-16 w-16 overflow-hidden rounded-2xl border border-slate-700/60 bg-gradient-to-br from-brand-500 to-accent shrink-0">
               {parent.photoUrl ? (
@@ -672,17 +674,30 @@ export function ParentsManagementPage() {
   const load = async () => {
     setLoading(true);
     setApiError(null);
-    try {
-      const [p, c] = await Promise.all([
-        api<Parent[]>("/api/parents"),
-        api<SchoolClass[]>("/api/classes")
-      ]);
-      setParents(p);
-      setClasses(c.length ? c : SCHOOL_SECTIONS);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Erreur API";
-      setApiError(message);
+    let nextApiError: string | null = null;
+    const [parentsResult, classesResult] = await Promise.allSettled([
+      api<Parent[]>("/api/parents"),
+      api<SchoolClass[]>("/api/classes")
+    ]);
+
+    if (parentsResult.status === "fulfilled") {
+      setParents(parentsResult.value);
+    } else {
+      const message = parentsResult.reason instanceof Error ? parentsResult.reason.message : "Erreur API";
+      nextApiError = message;
     }
+
+    if (classesResult.status === "fulfilled") {
+      setClasses(classesResult.value.length ? classesResult.value : SCHOOL_SECTIONS);
+    } else {
+      setClasses(SCHOOL_SECTIONS);
+      if (!nextApiError) {
+        nextApiError = classesResult.reason instanceof Error ? classesResult.reason.message : "Erreur API";
+      }
+    }
+
+    setApiError(nextApiError);
+
     setLoading(false);
   };
 
@@ -694,6 +709,7 @@ export function ParentsManagementPage() {
     return parents.filter((p) =>
       p.fullName.toLowerCase().includes(q) ||
       p.id.toLowerCase().includes(q) ||
+      (p.displayId || "").toLowerCase().includes(q) ||
       p.phone.includes(q) ||
       p.email.toLowerCase().includes(q)
     );
@@ -877,7 +893,7 @@ export function ParentsManagementPage() {
                   >
                     <td className="py-4 px-5">
                       <span className="font-mono text-xs font-bold text-brand-300 bg-brand-500/10 border border-brand-500/20 px-2 py-1 rounded">
-                        {parent.id}
+                        {parent.displayId || parent.id}
                       </span>
                     </td>
                     <td className="py-4 px-5">
