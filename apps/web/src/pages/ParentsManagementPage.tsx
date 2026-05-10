@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
+import { SearchField } from "../components/SearchField";
 import { api } from "../services/api";
 
 /* ─── Types ─────────────────────────────────────────────────────── */
@@ -78,13 +79,6 @@ const SCHOOL_SECTIONS: SchoolClass[] = [
 ];
 
 /* ─── Icons ──────────────────────────────────────────────────────── */
-function SearchIcon() {
-  return (
-    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <circle cx="11" cy="11" r="8" /><path d="m21 21-4.35-4.35" />
-    </svg>
-  );
-}
 function PlusIcon() {
   return (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -863,17 +857,7 @@ export function ParentsManagementPage() {
       </div>
 
       {/* Search bar */}
-      <div className="relative animate-fadeInUp">
-        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-dim pointer-events-none">
-          <SearchIcon />
-        </span>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={t("pmSearchPlaceholder")}
-          className="w-full !pl-11"
-        />
-      </div>
+      <SearchField value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t("pmSearchPlaceholder")} wrapperClassName="animate-fadeInUp" />
 
       {apiError && (
         <div className="rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger animate-fadeInUp">

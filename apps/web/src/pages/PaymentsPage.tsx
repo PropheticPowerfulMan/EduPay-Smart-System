@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, type FormEvent } from "react";
 import { createPortal } from "react-dom";
+import { SearchField } from "../components/SearchField";
 import { schoolBranding } from "../config/branding";
 import { useI18n } from "../i18n";
 import { api } from "../services/api";
@@ -1224,12 +1225,11 @@ export function PaymentsPage() {
           <div className="grid gap-4 md:grid-cols-3">
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-ink-dim block mb-2">Recherche</label>
-              <input
-                type="text"
+              <SearchField
                 placeholder="Nom, motif, numéro..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full"
+                inputClassName="text-sm"
               />
             </div>
             <div>
