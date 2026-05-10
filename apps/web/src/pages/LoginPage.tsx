@@ -120,12 +120,12 @@ function ForgotPasswordModal({ onClose, t }: { onClose: () => void; t: (k: strin
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-ink-dim">{t("email")}</label>
+                <label className="text-sm font-medium text-ink-dim">Email ou code d'accès</label>
                 <input
-                  type="email"
+                  type="text"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder={t("forgotEmailPlaceholder")}
+                  placeholder="email@exemple.com ou ACC-PAR-XXXXXX"
                   className="w-full"
                   autoFocus
                 />
@@ -163,7 +163,7 @@ function ForgotPasswordModal({ onClose, t }: { onClose: () => void; t: (k: strin
               <p className="text-sm text-ink-dim mt-2">{t("adminRecoverySubtitle")}</p>
             </div>
             <form onSubmit={handleAdminRecovery} className="space-y-4">
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t("email")} className="w-full" />
+              <input type="text" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email ou code d'accès" className="w-full" />
               <input type="password" value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} placeholder={t("adminRecoveryCode")} className="w-full" />
               <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={t("newPasswordField")} className="w-full" />
               <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder={t("confirmNewPassword")} className="w-full" />
@@ -203,7 +203,7 @@ function ForgotPasswordModal({ onClose, t }: { onClose: () => void; t: (k: strin
 }
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().min(1, 'Identifiant requis'),
   password: z.string().min(8)
 });
 
@@ -338,12 +338,12 @@ export function LoginPage() {
             <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
               {/* Email Input */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-ink-dim">{t("email")}</label>
+                <label className="text-sm font-medium text-ink-dim">Email ou code d'accès</label>
                 <input 
                   {...register("email")} 
-                  placeholder={t("email")}
+                  placeholder="email@school.com ou ACC-PAR-XXXXXX"
                   className="w-full"
-                  type="email"
+                  type="text"
                   autoComplete="username"
                 />
                 {errors.email && <p className="text-xs text-danger">{errors.email.message}</p>}

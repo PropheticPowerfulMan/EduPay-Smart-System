@@ -8,6 +8,21 @@ import { env } from "../../config/env";
 import { authGuard, AuthenticatedRequest } from "../../middlewares/auth";
 import { sendEmail } from "../../utils/messaging";
 
+function generateAccessCode(role: "ADMIN" | "ACCOUNTANT" | "PARENT") {
+  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `ACC-${role.slice(0, 3)}-${suffix}`;
+}
+
+async function generateUniqueAccessCode(role: "ADMIN" | "ACCOUNTANT" | "PARENT") {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const accessCode = generateAccessCode(role);
+    const existing = await prisma.user.findUnique({ where: { accessCode } });
+    if (!existing) return accessCode;
+  }
+
+  return `ACC-${role.slice(0, 3)}-${Date.now().toString(36).toUpperCase()}`;
+}
+
 const registerSchema = z.object({
   fullName: z.string().min(3),
   email: z.string().email(),
@@ -17,7 +32,7 @@ const registerSchema = z.object({
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  email: z.string().min(1),
   password: z.string().min(8)
 });
 
@@ -71,6 +86,7 @@ authRouter.post("/register", async (req, res) => {
     data: {
       fullName: payload.fullName,
       email: payload.email.trim().toLowerCase(),
+      accessCode: await generateUniqueAccessCode(payload.role),
       role: payload.role,
       schoolId: payload.schoolId,
       passwordHash: hash
@@ -82,10 +98,18 @@ authRouter.post("/register", async (req, res) => {
 
 authRouter.post("/login", loginLimiter, async (req, res) => {
   const payload = loginSchema.parse(req.body);
-  const email = payload.email.trim().toLowerCase();
+  const identifier = payload.email.trim();
+  const normalizedIdentifier = identifier.toLowerCase();
 
   try {
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: normalizedIdentifier },
+          { accessCode: identifier.toUpperCase() }
+        ]
+      }
+    });
 
     if (user) {
       const ok = await bcrypt.compare(payload.password, user.passwordHash);
@@ -94,7 +118,7 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
         const parent = user.role === "PARENT"
           ? await prisma.parent.findUnique({ where: { userId: user.id }, select: { id: true, photoUrl: true } })
           : null;
-        return res.json({ token, role: user.role, fullName: user.fullName, parentId: parent?.id, photoUrl: parent?.photoUrl });
+        return res.json({ token, role: user.role, fullName: user.fullName, parentId: parent?.id, photoUrl: parent?.photoUrl, accessCode: user.accessCode });
       }
     }
   } catch (error) {
@@ -109,12 +133,12 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
   }
 
   const demoUser = demoUsers.find((entry) =>
-    entry.email.toLowerCase() === email && entry.password === payload.password
+    entry.email.toLowerCase() === normalizedIdentifier && entry.password === payload.password
   );
 
   if (demoUser) {
     const token = buildToken({ id: `demo-${demoUser.role.toLowerCase()}`, role: demoUser.role, schoolId: demoUser.schoolId });
-    return res.json({ token, role: demoUser.role, fullName: demoUser.fullName, parentId: "parentId" in demoUser ? demoUser.parentId : undefined });
+    return res.json({ token, role: demoUser.role, fullName: demoUser.fullName, parentId: "parentId" in demoUser ? demoUser.parentId : undefined, accessCode: `ACC-${demoUser.role.slice(0, 3)}-DEMO01` });
   }
 
   return res.status(401).json({ message: "Identifiants invalides" });
@@ -218,4 +242,29 @@ authRouter.post("/change-password", authGuard, async (req: AuthenticatedRequest,
   });
 
   return res.json({ message: "Mot de passe modifié avec succès." });
+});
+
+authRouter.put("/access-code", authGuard, async (req: AuthenticatedRequest, res) => {
+  const payload = z.object({ accessCode: z.string().min(6).max(24) }).parse(req.body);
+  const accessCode = payload.accessCode.trim().toUpperCase();
+
+  const duplicate = await prisma.user.findFirst({
+    where: {
+      accessCode,
+      NOT: { id: req.user!.sub }
+    },
+    select: { id: true }
+  });
+
+  if (duplicate) {
+    return res.status(409).json({ message: "Ce code d'accès est déjà utilisé." });
+  }
+
+  const updated = await prisma.user.update({
+    where: { id: req.user!.sub },
+    data: { accessCode },
+    select: { accessCode: true }
+  });
+
+  return res.json(updated);
 });

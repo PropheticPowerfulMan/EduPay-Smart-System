@@ -57,6 +57,7 @@ model User {
   schoolId     String
   fullName     String
   email        String   @unique
+  accessCode   String   @unique
   passwordHash String
   role         Role
   createdAt    DateTime @default(now())

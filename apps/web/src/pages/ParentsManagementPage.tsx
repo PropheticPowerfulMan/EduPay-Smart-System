@@ -30,6 +30,7 @@ type ParentCredentials = {
   parentId: string;
   parentName: string;
   email: string;
+  accessCode?: string;
   temporaryPassword: string;
   notificationStatus?: {
     email?: string;
@@ -165,7 +166,7 @@ function Badge({ text, color }: { text: string; color: string }) {
 function CredentialsModal({ credentials, onClose }: { credentials: ParentCredentials; onClose: () => void }) {
   const { t } = useI18n();
   const [copied, setCopied] = useState(false);
-  const copyText = `Email: ${credentials.email}\nMot de passe temporaire: ${credentials.temporaryPassword}`;
+  const copyText = `Identifiant: ${credentials.email}\nCode d'accès: ${credentials.accessCode || "Non renseigne"}\nMot de passe temporaire: ${credentials.temporaryPassword}`;
 
   const copy = async () => {
     await navigator.clipboard?.writeText(copyText).catch(() => undefined);
@@ -198,6 +199,10 @@ function CredentialsModal({ credentials, onClose }: { credentials: ParentCredent
           <div className="rounded-xl border border-slate-700/50 bg-slate-900/40 p-4">
             <p className="text-xs uppercase tracking-wide text-ink-dim">{t("loginEmail")}</p>
             <p className="mt-1 font-mono text-sm font-bold text-white">{credentials.email}</p>
+          </div>
+          <div className="rounded-xl border border-slate-700/50 bg-slate-900/40 p-4">
+            <p className="text-xs uppercase tracking-wide text-ink-dim">Code d'accès</p>
+            <p className="mt-1 font-mono text-sm font-bold text-cyan-300">{credentials.accessCode || "Non renseigne"}</p>
           </div>
           <div className="rounded-xl border border-slate-700/50 bg-slate-900/40 p-4">
             <p className="text-xs uppercase tracking-wide text-ink-dim">Mot de passe temporaire</p>
@@ -704,15 +709,29 @@ export function ParentsManagementPage() {
   useEffect(() => { void load(); }, []);
 
   const filtered = useMemo(() => {
-    const q = search.toLowerCase();
+    const q = search.trim().toLowerCase();
     if (!q) return parents;
-    return parents.filter((p) =>
-      p.fullName.toLowerCase().includes(q) ||
-      p.id.toLowerCase().includes(q) ||
-      (p.displayId || "").toLowerCase().includes(q) ||
-      p.phone.includes(q) ||
-      p.email.toLowerCase().includes(q)
-    );
+
+    return parents.filter((parent) => {
+      const studentsHaystack = parent.students
+        .flatMap((student) => [student.id, student.displayId, student.fullName, student.className, student.classId])
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      const haystack = [
+        parent.fullName,
+        parent.id,
+        parent.displayId || "",
+        parent.phone,
+        parent.email,
+        studentsHaystack,
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(q);
+    });
   }, [parents, search]);
 
   const handleSave = async (form: FormState, id?: string) => {
@@ -723,12 +742,13 @@ export function ParentsManagementPage() {
       if (id) {
         await api(`/api/parents/${id}`, { method: "PUT", body: JSON.stringify(body) });
       } else {
-        const created = await api<Parent & { temporaryPassword?: string; notificationStatus?: ParentCredentials["notificationStatus"] }>("/api/parents", { method: "POST", body: JSON.stringify(body) });
+        const created = await api<Parent & { temporaryPassword?: string; accessCode?: string; notificationStatus?: ParentCredentials["notificationStatus"] }>("/api/parents", { method: "POST", body: JSON.stringify(body) });
         if (created.temporaryPassword) {
           setCredentials({
             parentId: created.id,
             parentName: created.fullName,
             email: created.email,
+            accessCode: created.accessCode,
             temporaryPassword: created.temporaryPassword,
             notificationStatus: created.notificationStatus
           });
@@ -760,7 +780,7 @@ export function ParentsManagementPage() {
     try {
       setSendingAccess(true);
       setApiError(null);
-      const result = await api<{ parentId: string; email: string; temporaryPassword: string; notificationStatus?: ParentCredentials["notificationStatus"] }>(`/api/parents/${parent.id}/reset-password`, {
+      const result = await api<{ parentId: string; email: string; accessCode?: string; temporaryPassword: string; notificationStatus?: ParentCredentials["notificationStatus"] }>(`/api/parents/${parent.id}/reset-password`, {
         method: "POST",
         body: JSON.stringify(channels)
       });
@@ -769,6 +789,7 @@ export function ParentsManagementPage() {
         parentId: result.parentId,
         parentName: parent.fullName,
         email: result.email,
+        accessCode: result.accessCode,
         temporaryPassword: result.temporaryPassword,
         notificationStatus: result.notificationStatus
       });

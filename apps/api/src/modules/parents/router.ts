@@ -1,10 +1,25 @@
 import { Router } from "express";
 import { z } from "zod";
 import bcrypt from "bcrypt";
-import { orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
+import { deleteOrbitParent, matchesSharedParentIdentifier, orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
 import { prisma } from "../../prisma";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
 import { sendEmail, sendSms } from "../../utils/messaging";
+
+function generateAccessCode() {
+  const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `ACC-PAR-${suffix}`;
+}
+
+async function generateUniqueParentAccessCode(tx: typeof prisma) {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const accessCode = generateAccessCode();
+    const existing = await tx.user.findUnique({ where: { accessCode } });
+    if (!existing) return accessCode;
+  }
+
+  return `ACC-PAR-${Date.now().toString(36).toUpperCase()}`;
+}
 
 const studentInputSchema = z.object({
   fullName: z.string().min(1),
@@ -99,8 +114,9 @@ function buildParentWelcomeMessages(parent: any, temporaryPassword: string, logi
     "Votre compte parent EduPay vient d'être créé par l'administration de l'école.",
     "",
     `Identifiant parent: ${parent.id}`,
+    `Code d'accès: ${parent.accessCode || "Non renseigne"}`,
     `Telephone: ${parent.phone || "Non renseigne"}`,
-    `Email de connexion: ${loginEmail}`,
+    `Identifiant de connexion: ${loginEmail}`,
     `Mot de passe temporaire: ${temporaryPassword}`,
     "",
     "Enfants rattaches:",
@@ -108,7 +124,7 @@ function buildParentWelcomeMessages(parent: any, temporaryPassword: string, logi
     "",
     "Pour votre securite, connectez-vous puis changez ce mot de passe depuis votre profil."
   ].join("\n");
-  const smsBody = `EduPay: compte cree pour ${parent.fullName}. Email: ${loginEmail}. Mot de passe temporaire: ${temporaryPassword}. Changez-le apres connexion.`;
+  const smsBody = `EduPay: compte cree pour ${parent.fullName}. Code: ${parent.accessCode || "N/A"}. Identifiant: ${loginEmail}. Mot de passe temporaire: ${temporaryPassword}. Changez-le apres connexion.`;
   return { subject, emailBody, smsBody };
 }
 
@@ -185,6 +201,7 @@ function enrichParent(p: any) {
   const parts = (p.fullName || "").split(" ");
   return {
     ...p,
+    accessCode: p.accessCode || p.user?.accessCode || "",
     nom: p.nom || parts[0] || "",
     postnom: p.postnom || parts[1] || "",
     prenom: p.prenom || parts[2] || "",
@@ -224,7 +241,7 @@ parentRouter.get("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticate
   try {
     const parents = await prisma.parent.findMany({
       where: { schoolId: req.user!.schoolId },
-      include: { students: { include: { class: true } } }
+      include: { user: { select: { accessCode: true } }, students: { include: { class: true } } }
     });
     return res.json(parents.map(enrichParent));
   } catch (error) {
@@ -242,7 +259,7 @@ parentRouter.get("/me", authorize("PARENT"), async (req: AuthenticatedRequest, r
   try {
     const parent = await prisma.parent.findFirst({
       where: { schoolId: req.user!.schoolId, userId: req.user!.sub },
-      include: { students: { include: { class: true, payments: true } } }
+      include: { user: { select: { accessCode: true } }, students: { include: { class: true, payments: true } } }
     });
     if (parent) return res.json(parentDashboardData(parent));
 
@@ -302,6 +319,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
         data: {
           fullName: payload.fullName,
           email: payload.email,
+          accessCode: await generateUniqueParentAccessCode(tx as typeof prisma),
           role: "PARENT",
           schoolId: req.user!.schoolId,
           passwordHash
@@ -334,7 +352,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       }
       return tx.parent.findUnique({
         where: { id: p.id },
-        include: { students: { include: { class: true } } }
+        include: { user: { select: { accessCode: true } }, students: { include: { class: true } } }
       });
     });
     const notificationStatus = await sendParentWelcomeNotifications(parent, temporaryPassword, req.user!.schoolId, {
@@ -344,6 +362,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
     return res.status(201).json({
       ...enrichParent({ ...parent, nom: payload.nom, postnom: payload.postnom, prenom: payload.prenom }),
       temporaryPassword,
+      accessCode: parent?.user?.accessCode || parent?.accessCode || "",
       notificationStatus
     });
   } catch (error) {
@@ -357,6 +376,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       fullName: payload.fullName,
       phone: payload.phone,
       email: payload.email,
+      accessCode: `ACC-PAR-DEMO${String(demoParents.length + 1).padStart(2, "0")}`,
       photoUrl: payload.photoUrl,
       temporaryPassword,
       students: payload.students.map((s, i) => ({
@@ -396,6 +416,7 @@ parentRouter.post("/:id/reset-password", authorize("ADMIN", "ACCOUNTANT"), async
         data: {
           fullName: parent.fullName,
           email: parent.email,
+          accessCode: await generateUniqueParentAccessCode(prisma),
           role: "PARENT",
           schoolId: req.user!.schoolId,
           passwordHash
@@ -414,7 +435,7 @@ parentRouter.post("/:id/reset-password", authorize("ADMIN", "ACCOUNTANT"), async
     }
 
     const notificationStatus = await sendParentWelcomeNotifications(parent, temporaryPassword, req.user!.schoolId, preferences);
-    return res.json({ parentId: parent.id, email: user.email, temporaryPassword, notificationStatus });
+    return res.json({ parentId: parent.id, email: user.email, accessCode: user.accessCode, temporaryPassword, notificationStatus });
   } catch (error) {
     console.error("DB unavailable on parent password reset, using demo store", error);
     const parent = demoParents.find((p) => p.id === id);
@@ -424,6 +445,7 @@ parentRouter.post("/:id/reset-password", authorize("ADMIN", "ACCOUNTANT"), async
     return res.json({
       parentId: parent.id,
       email: parent.email,
+      accessCode: parent.accessCode,
       temporaryPassword,
       notificationStatus
     });
@@ -462,9 +484,22 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
 parentRouter.delete("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   if (orbitRegistryIsEnabled()) {
-    return res.status(409).json({
-      message: "La suppression locale est desactivee quand Orbit pilote l'annuaire. Supprimez/desactivez la famille dans SAVANEX pour propager l'etat partout."
-    });
+    const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);
+    const parent = mirrored.parents.find((entry) => matchesSharedParentIdentifier(entry, id));
+
+    if (!parent) {
+      return res.status(404).json({ message: "Parent non trouve dans le registre partage." });
+    }
+
+    if (!parent.orbitId) {
+      return res.status(409).json({
+        message: "Impossible de supprimer ce parent car son identifiant Orbit est introuvable."
+      });
+    }
+
+    await deleteOrbitParent(parent.orbitId);
+    await syncOrbitRegistryMirror(req.user!.schoolId);
+    return res.status(204).end();
   }
 
   try {

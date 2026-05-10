@@ -102,6 +102,11 @@ export function orbitRegistryIsEnabled() {
   return Boolean(process.env.KCS_ORBIT_API_URL && process.env.KCS_ORBIT_API_KEY && process.env.KCS_ORBIT_ORGANIZATION_ID);
 }
 
+export function matchesSharedParentIdentifier(parent: SharedParentOption, identifier: string) {
+  const normalizedIdentifier = identifier.trim();
+  return parent.id === normalizedIdentifier || parent.displayId === normalizedIdentifier || parent.orbitId === normalizedIdentifier;
+}
+
 function buildParentLookupKey(parent: { fullName: string; email?: string; phone?: string }) {
   if (parent.email?.trim()) {
     return `email:${parent.email.trim().toLowerCase()}`;
@@ -433,7 +438,7 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
     });
 
     if (!activeParentLookupKeys.has(lookupKey) && parent.students.length === 0) {
-      await prisma.parent.delete({ where: { id: parent.id } });
+      await prisma.parent.deleteMany({ where: { id: parent.id, schoolId } });
     }
   }
 
