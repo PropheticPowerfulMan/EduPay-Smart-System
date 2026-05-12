@@ -18,6 +18,14 @@ type Overview = {
   outstandingDebt: number;
 };
 
+type FinanceOverview = {
+  totalCollected: number;
+  totalOutstandingDebt: number;
+  paymentBehaviorAverage: number;
+  parentsWithDebtCount: number;
+  overdueInstallmentCount: number;
+};
+
 type Student = {
   annualFee?: number;
 };
@@ -42,8 +50,22 @@ type Payment = {
 
 type AssistantContext = {
   overview: Overview | null;
+  financeOverview: FinanceOverview | null;
   parents: Parent[];
   payments: Payment[];
+  parentProfiles: Array<{
+    parent: { id: string; fullName: string; email?: string; phone?: string };
+    profile: {
+      totalPaid: number;
+      totalDebt: number;
+      totalReduction: number;
+      overdueInstallments: number;
+      paymentBehaviorScore: number;
+      completionRate: number;
+    };
+    students: Array<{ id: string; fullName: string; expectedTotal: number; paid: number; balance: number }>;
+    alerts: Array<{ id: string; title: string; severity: string }>;
+  }>;
 };
 
 type ChatMessage = {
@@ -77,15 +99,22 @@ function parseDate(payment: Payment) {
 }
 
 async function loadAssistantContext(): Promise<AssistantContext> {
-  const [overview, parents, payments] = await Promise.all([
+  const [overview, financeOverview, parents, payments] = await Promise.all([
     api<Overview>("/api/analytics/overview").catch(() => null),
+    api<FinanceOverview>("/api/finance/overview").catch(() => null),
     api<Parent[]>("/api/parents").catch(() => []),
     api<Payment[]>("/api/payments").catch(() => [])
   ]);
 
+  const parentProfiles = (await Promise.all(
+    parents.map((parent) => api<AssistantContext["parentProfiles"][number]>(`/api/finance/parents/${parent.id}/profile`).catch(() => null))
+  )).filter((profile): profile is AssistantContext["parentProfiles"][number] => Boolean(profile));
+
   return {
     overview,
+    financeOverview,
     parents,
+    parentProfiles,
     payments: payments.map((payment) => ({
       ...payment,
       amount: asNumber(payment.amount),
@@ -98,13 +127,15 @@ function buildInsights(context: AssistantContext) {
   const completed = context.payments.filter((payment) => payment.status === "COMPLETED");
   const pending = context.payments.filter((payment) => payment.status === "PENDING");
   const failed = context.payments.filter((payment) => payment.status === "FAILED");
-  const revenue = completed.reduce((sum, payment) => sum + payment.amount, 0) || asNumber(context.overview?.totalRevenue);
+  const revenue = asNumber(context.financeOverview?.totalCollected) || completed.reduce((sum, payment) => sum + payment.amount, 0) || asNumber(context.overview?.totalRevenue);
   const pendingAmount = pending.reduce((sum, payment) => sum + payment.amount, 0);
-  const expected = context.parents.reduce(
-    (sum, parent) => sum + (parent.students ?? []).reduce((studentSum, student) => studentSum + asNumber(student.annualFee), 0),
-    0
-  );
-  const outstandingDebt = Math.max(asNumber(context.overview?.outstandingDebt), expected - revenue, pendingAmount, 0);
+  const expected = context.parentProfiles.length > 0
+    ? context.parentProfiles.reduce((sum, profile) => sum + profile.students.reduce((studentSum, student) => studentSum + asNumber(student.expectedTotal), 0), 0)
+    : context.parents.reduce(
+        (sum, parent) => sum + (parent.students ?? []).reduce((studentSum, student) => studentSum + asNumber(student.annualFee), 0),
+        0
+      );
+  const outstandingDebt = Math.max(asNumber(context.financeOverview?.totalOutstandingDebt), asNumber(context.overview?.outstandingDebt), expected - revenue, pendingAmount, 0);
   const successRate = context.payments.length
     ? (completed.length / context.payments.length) * 100
     : asNumber(context.overview?.paymentSuccessRate);
@@ -116,20 +147,35 @@ function buildInsights(context: AssistantContext) {
     }
   }
 
-  const parentsWithDebt = context.parents
-    .map((parent) => {
-      const expectedForParent = (parent.students ?? []).reduce((sum, student) => sum + asNumber(student.annualFee), 0);
-      const paid = (paidByParent.get(parent.id) ?? 0) + (paidByParent.get(normalize(parent.fullName)) ?? 0);
-      return {
-        id: parent.id,
-        name: parent.fullName,
-        email: parent.email,
-        phone: parent.phone,
-        expected: expectedForParent,
-        paid,
-        debt: Math.max(expectedForParent - paid, 0)
-      };
-    })
+  const parentsWithDebt = (context.parentProfiles.length > 0
+    ? context.parentProfiles.map((profile) => ({
+        id: profile.parent.id,
+        name: profile.parent.fullName,
+        email: profile.parent.email,
+        phone: profile.parent.phone,
+        expected: profile.students.reduce((sum, student) => sum + asNumber(student.expectedTotal), 0),
+        paid: asNumber(profile.profile.totalPaid),
+        debt: asNumber(profile.profile.totalDebt),
+        overdueInstallments: asNumber(profile.profile.overdueInstallments),
+        alertCount: profile.alerts.length,
+        reduction: asNumber(profile.profile.totalReduction)
+      }))
+    : context.parents.map((parent) => {
+        const expectedForParent = (parent.students ?? []).reduce((sum, student) => sum + asNumber(student.annualFee), 0);
+        const paid = (paidByParent.get(parent.id) ?? 0) + (paidByParent.get(normalize(parent.fullName)) ?? 0);
+        return {
+          id: parent.id,
+          name: parent.fullName,
+          email: parent.email,
+          phone: parent.phone,
+          expected: expectedForParent,
+          paid,
+          debt: Math.max(expectedForParent - paid, 0),
+          overdueInstallments: 0,
+          alertCount: 0,
+          reduction: 0
+        };
+      }))
     .filter((parent) => parent.debt > 0)
     .sort((a, b) => b.debt - a.debt);
 
@@ -142,11 +188,12 @@ function buildInsights(context: AssistantContext) {
 
   const bestMonth = [...monthly.entries()].sort((a, b) => b[1] - a[1])[0];
   const latestPayments = [...context.payments].sort((a, b) => parseDate(b).getTime() - parseDate(a).getTime()).slice(0, 5);
-  const topContributors = context.parents
-    .map((parent) => ({
-      name: parent.fullName,
-      paid: (paidByParent.get(parent.id) ?? 0) + (paidByParent.get(normalize(parent.fullName)) ?? 0)
-    }))
+  const topContributors = (context.parentProfiles.length > 0
+    ? context.parentProfiles.map((profile) => ({ name: profile.parent.fullName, paid: asNumber(profile.profile.totalPaid) }))
+    : context.parents.map((parent) => ({
+        name: parent.fullName,
+        paid: (paidByParent.get(parent.id) ?? 0) + (paidByParent.get(normalize(parent.fullName)) ?? 0)
+      })))
     .filter((parent) => parent.paid > 0)
     .sort((a, b) => b.paid - a.paid)
     .slice(0, 5);
@@ -165,13 +212,18 @@ function buildInsights(context: AssistantContext) {
     topContributors,
     parentCount: context.parents.length,
     studentCount: context.parents.reduce((sum, parent) => sum + (parent.students?.length ?? 0), 0),
-    averagePayment: completed.length ? revenue / completed.length : 0
+    averagePayment: completed.length ? revenue / completed.length : 0,
+    financeHealth: asNumber(context.financeOverview?.paymentBehaviorAverage),
+    overdueInstallments: asNumber(context.financeOverview?.overdueInstallmentCount)
   };
 }
 
 function findMentionedParent(query: string, context: AssistantContext) {
   const q = normalize(query);
-  return context.parents.find((parent) => {
+  return context.parentProfiles.find((profile) => {
+    const name = normalize(profile.parent.fullName);
+    return name && (q.includes(name) || name.split(/\s+/).some((part) => part.length > 3 && q.includes(part)));
+  })?.parent ?? context.parents.find((parent) => {
     const name = normalize(parent.fullName);
     return name && (q.includes(name) || name.split(/\s+/).some((part) => part.length > 3 && q.includes(part)));
   });
@@ -185,26 +237,32 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
 
   if (mentionedParent) {
     const parentDebt = insights.parentsWithDebt.find((parent) => parent.id === mentionedParent.id);
-    const expected = parentDebt?.expected ?? (mentionedParent.students ?? []).reduce((sum, student) => sum + asNumber(student.annualFee), 0);
-    const paid = parentDebt?.paid ?? 0;
-    const debt = Math.max(expected - paid, 0);
+    const parentProfile = context.parentProfiles.find((profile) => profile.parent.id === mentionedParent.id);
+    const mentionedParentRecord = context.parents.find((parent) => parent.id === mentionedParent.id);
+    const expected = parentDebt?.expected
+      ?? parentProfile?.students.reduce((sum, student) => sum + asNumber(student.expectedTotal), 0)
+      ?? (mentionedParentRecord?.students ?? []).reduce((sum, student) => sum + asNumber(student.annualFee), 0);
+    const paid = parentDebt?.paid ?? asNumber(parentProfile?.profile.totalPaid);
+    const debt = parentDebt?.debt ?? asNumber(parentProfile?.profile.totalDebt);
     return {
       answer: lang === "fr"
         ? `Le dossier de ${mentionedParent.fullName} est identifiable et peut etre traite directement. Le point important est le solde restant, car il determine la priorite de relance.`
         : `${mentionedParent.fullName}'s file is clearly identifiable and can be handled directly. The important point is the remaining balance, because it drives follow-up priority.`,
       facts: lang === "fr"
         ? [
-            `${mentionedParent.students?.length ?? 0} enfant(s) rattache(s).`,
+          `${mentionedParentRecord?.students?.length ?? 0} enfant(s) rattache(s).`,
             `Total attendu : ${USD.format(expected)}.`,
             `Total encaisse : ${USD.format(paid)}.`,
             `Solde restant estime : ${USD.format(debt)}.`,
+            `Echeances en retard : ${parentProfile?.profile.overdueInstallments ?? 0}.`,
             `Contact disponible : ${mentionedParent.phone || mentionedParent.email || "non renseigne"}.`
           ]
         : [
-            `${mentionedParent.students?.length ?? 0} linked child(ren).`,
+          `${mentionedParentRecord?.students?.length ?? 0} linked child(ren).`,
             `Expected total: ${USD.format(expected)}.`,
             `Collected: ${USD.format(paid)}.`,
             `Estimated remaining balance: ${USD.format(debt)}.`,
+            `Overdue installments: ${parentProfile?.profile.overdueInstallments ?? 0}.`,
             `Available contact: ${mentionedParent.phone || mentionedParent.email || "not provided"}.`
           ],
       actions: lang === "fr"
@@ -231,13 +289,15 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
             `${insights.parentsWithDebt.length} parent(s) avec solde restant.`,
             topParent ? `Priorite actuelle : ${topParent.name} (${USD.format(topParent.debt)}).` : "Aucun parent prioritaire net.",
             `Dette globale estimee : ${USD.format(insights.outstandingDebt)}.`,
-            `Paiements en attente : ${USD.format(insights.pendingAmount)}.`
+            `Paiements en attente : ${USD.format(insights.pendingAmount)}.`,
+            `Echeances en retard : ${insights.overdueInstallments}.`
           ]
         : [
             `${insights.parentsWithDebt.length} parent(s) with remaining balance.`,
             topParent ? `Current priority: ${topParent.name} (${USD.format(topParent.debt)}).` : "No clear priority parent.",
             `Estimated total debt: ${USD.format(insights.outstandingDebt)}.`,
-            `Pending payments: ${USD.format(insights.pendingAmount)}.`
+            `Pending payments: ${USD.format(insights.pendingAmount)}.`,
+            `Overdue installments: ${insights.overdueInstallments}.`
           ],
       actions: lang === "fr"
         ? ["Contacter d'abord le parent prioritaire.", "Verifier si un paiement recent n'est pas encore valide.", "Preparer un echeancier court et clair."]

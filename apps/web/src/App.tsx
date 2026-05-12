@@ -2,13 +2,16 @@ import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { Sidebar } from "./components/Sidebar";
 import { AIAssistantPage } from "./pages/AIAssistantPage";
-import { AdminParentPaymentsPage } from "./pages/AdminParentPaymentsPage";
-import { DashboardPage } from "./pages/DashboardPage";
+import { FinanceDashboardPage } from "./pages/FinanceDashboardPage";
+import { FinancialOperationsPage } from "./pages/FinancialOperationsPage";
+import { FinanceParentAdminPage } from "./pages/FinanceParentAdminPage";
+import { FinanceParentPage } from "./pages/FinanceParentPage";
 import { LoginPage } from "./pages/LoginPage";
-import { ParentTrackingPage } from "./pages/ParentTrackingPage";
 import { ParentsManagementPage } from "./pages/ParentsManagementPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
-import { useAuthStore } from "./store/auth";
+import { ReportsPage } from "./pages/ReportsPage";
+import { StudentsDirectoryPage } from "./pages/StudentsDirectoryPage";
+import { STAFF_ROLES, useAuthStore } from "./store/auth";
 import type { Role } from "./store/auth";
 
 function getHomePathByRole(role: Role | null) {
@@ -50,8 +53,8 @@ function RoleHome() {
   if (role === "PARENT") {
     return <Navigate to="/parent" replace />;
   }
-  if (role === "ADMIN" || role === "ACCOUNTANT") {
-    return <DashboardPage />;
+  if (role && STAFF_ROLES.includes(role)) {
+    return <FinanceDashboardPage />;
   }
   return <Navigate to="/login" replace />;
 }
@@ -87,14 +90,17 @@ export function App() {
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<ProtectedLayout />}>
           <Route index element={<RoleHome />} />
-          <Route element={<RoleRoute allowedRoles={["ADMIN", "ACCOUNTANT"]} />}>
+          <Route element={<RoleRoute allowedRoles={STAFF_ROLES} />}>
+            <Route path="operations" element={<FinancialOperationsPage />} />
+            <Route path="reports" element={<ReportsPage />} />
             <Route path="payments" element={<PaymentsPage />} />
-            <Route path="parent-payments" element={<AdminParentPaymentsPage />} />
+            <Route path="parent-payments" element={<FinanceParentAdminPage />} />
+            <Route path="students" element={<StudentsDirectoryPage />} />
             <Route path="ai" element={<AIAssistantPage />} />
             <Route path="parents" element={<ParentsManagementPage />} />
           </Route>
           <Route element={<RoleRoute allowedRoles={["PARENT"]} />}>
-            <Route path="parent" element={<ParentTrackingPage />} />
+            <Route path="parent" element={<FinanceParentPage />} />
           </Route>
           <Route path="*" element={<NotFoundPage />} />
         </Route>

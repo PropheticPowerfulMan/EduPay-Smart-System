@@ -8,8 +8,14 @@ datasource db {
 }
 
 enum Role {
+  SUPER_ADMIN
+  OWNER
   ADMIN
+  FINANCIAL_MANAGER
   ACCOUNTANT
+  CASHIER
+  HR_MANAGER
+  AUDITOR
   PARENT
 }
 
@@ -18,6 +24,9 @@ enum PaymentMethod {
   AIRTEL_MONEY
   MPESA
   ORANGE_MONEY
+  BANK_TRANSFER
+  CHEQUE
+  INTERNAL_TRANSFER
 }
 
 enum PaymentStatus {
@@ -30,11 +39,173 @@ enum NotificationType {
   CONFIRMATION
   REMINDER
   LATE_ALERT
+  OVERDUE_INSTALLMENT
+  UNPAID_BALANCE
+  ABNORMAL_DEBT
+  MISSING_PAYMENT
+  INCOMPLETE_SCHEDULE
 }
 
 enum NotificationChannel {
   SMS
   EMAIL
+  WHATSAPP
+  DASHBOARD
+}
+
+enum AcademicYearStatus {
+  PLANNED
+  ACTIVE
+  CLOSED
+  ARCHIVED
+}
+
+enum GradeGroup {
+  K
+  GRADE_1_5
+  GRADE_6_8
+  GRADE_9_12
+  CUSTOM
+}
+
+enum PaymentOptionType {
+  FULL_PRESEPTEMBER
+  TWO_INSTALLMENTS
+  THREE_INSTALLMENTS
+  STANDARD_MONTHLY
+  SPECIAL_OWNER_AGREEMENT
+  CUSTOM
+}
+
+enum InstallmentStatus {
+  SCHEDULED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  WAIVED
+  CANCELLED
+}
+
+enum DebtStatus {
+  OPEN
+  PARTIALLY_PAID
+  CLEARED
+  WRITTEN_OFF
+}
+
+enum AgreementStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum ReductionScope {
+  STUDENT
+  PARENT
+  ACADEMIC_YEAR
+  PAYMENT_OPTION
+  GRADE_GROUP
+  AGREEMENT
+  MANUAL
+}
+
+enum ReportType {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  CUMULATIVE
+}
+
+enum FinancialAlertType {
+  OVERDUE_INSTALLMENT
+  UNPAID_BALANCE
+  ABNORMAL_DEBT_ACCUMULATION
+  MISSING_PAYMENT
+  INCOMPLETE_TUITION_SCHEDULE
+}
+
+enum ExpenseCategoryType {
+  ADMINISTRATIVE
+  ACADEMIC
+  HUMAN_RESOURCES
+  INFRASTRUCTURE
+  TRANSPORT
+  TECHNOLOGY
+  SPECIAL_INSTITUTIONAL
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum FinancialPeriodType {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  CUSTOM
+}
+
+enum BudgetStatus {
+  ACTIVE
+  EXCEEDED
+  CLOSED
+  ARCHIVED
+}
+
+enum ApprovalStepRole {
+  FINANCIAL_OFFICER
+  ADMINISTRATION
+  OWNER
+}
+
+enum ApprovalStepStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SKIPPED
+}
+
+enum PayrollFrequency {
+  MONTHLY
+  BI_MONTHLY
+  QUARTERLY
+  ANNUAL
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  PROCESSED
+  PAID
+  ARCHIVED
+}
+
+enum AccountingEntryType {
+  REVENUE
+  EXPENSE
+  PAYROLL
+  LIABILITY
+  ADJUSTMENT
+}
+
+enum CashflowDirection {
+  INFLOW
+  OUTFLOW
+}
+
+enum FinancialAttachmentKind {
+  INVOICE
+  RECEIPT
+  FINANCIAL_AGREEMENT
+  PAYMENT_PROOF
+  SALARY_SLIP
+  PURCHASE_RECORD
+  SCANNED_DOCUMENT
+  EXPENSE_SUPPORT
 }
 
 model School {
@@ -50,6 +221,28 @@ model School {
   insights    AIInsight[]
   riskScores  RiskScore[]
   audits      AuditLog[]
+  academicYears         AcademicYear[]
+  tuitionPlans          TuitionPlan[]
+  parentFinancialProfiles ParentFinancialProfile[]
+  parentPlanAssignments ParentPlanAssignment[]
+  paymentInstallments   PaymentInstallment[]
+  discounts             Discount[]
+  debts                 Debt[]
+  financialAgreements   FinancialAgreement[]
+  financialReports      FinancialReport[]
+  financialAlerts       FinancialAlert[]
+  expenseCategories     ExpenseCategory[]
+  vendors               Vendor[]
+  financialPeriods      FinancialPeriod[]
+  budgets               Budget[]
+  expenses              Expense[]
+  expenseApprovalSteps  ExpenseApprovalStep[]
+  financialAttachments  FinancialAttachment[]
+  employeeSalaryProfiles EmployeeSalaryProfile[]
+  payrollRuns           PayrollRun[]
+  payrollItems          PayrollItem[]
+  accountingEntries     AccountingEntry[]
+  cashflowEntries       CashflowEntry[]
 }
 
 model User {
@@ -65,6 +258,14 @@ model User {
   parent       Parent?
   createdPayments Payment[] @relation("CreatedPayments")
   auditLogs    AuditLog[]
+  approvedDiscounts Discount[] @relation("DiscountApprover")
+  approvedAgreements FinancialAgreement[] @relation("AgreementApprover")
+  submittedExpenses Expense[] @relation("ExpenseSubmitter")
+  approvedExpenses Expense[] @relation("ExpenseFinalApprover")
+  expenseApprovalDecisions ExpenseApprovalStep[] @relation("ExpenseApprovalDecider")
+  uploadedFinancialAttachments FinancialAttachment[] @relation("AttachmentUploader")
+  createdBudgets Budget[] @relation("BudgetCreator")
+  createdPayrollRuns PayrollRun[] @relation("PayrollCreator")
 }
 
 model Parent {
@@ -83,6 +284,13 @@ model Parent {
   payments          Payment[]
   notifications     NotificationLog[]
   riskScores        RiskScore[]
+  financialProfiles ParentFinancialProfile[]
+  planAssignments   ParentPlanAssignment[]
+  installments      PaymentInstallment[]
+  discounts         Discount[]
+  debts             Debt[]
+  agreements        FinancialAgreement[]
+  financialAlerts   FinancialAlert[]
 }
 
 model Class {
@@ -110,6 +318,10 @@ model Student {
   parent     Parent    @relation(fields: [parentId], references: [id], onDelete: Cascade)
   class      Class     @relation(fields: [classId], references: [id], onDelete: Cascade)
   payments   Payment[]
+  planAssignments ParentPlanAssignment[]
+  installments PaymentInstallment[]
+  discounts Discount[]
+  debts Debt[]
 
   @@unique([schoolId, externalStudentId])
 }
@@ -125,12 +337,21 @@ model Payment {
   method            PaymentMethod
   status            PaymentStatus
   createdById       String
+  academicYearId    String?
+  tuitionPlanId     String?
+  parentFinancialProfileId String?
+  notes             String?
   createdAt         DateTime      @default(now())
   school            School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   parent            Parent        @relation(fields: [parentId], references: [id], onDelete: Cascade)
   createdBy         User          @relation("CreatedPayments", fields: [createdById], references: [id])
+  academicYear      AcademicYear? @relation(fields: [academicYearId], references: [id])
+  tuitionPlan       TuitionPlan?  @relation(fields: [tuitionPlanId], references: [id])
+  financialProfile  ParentFinancialProfile? @relation(fields: [parentFinancialProfileId], references: [id])
   students          Student[]
   receipt           Receipt?
+  allocations       PaymentAllocation[]
+  sourceDebts       Debt[]        @relation("DebtSourcePayment")
 }
 
 model Receipt {
@@ -189,4 +410,603 @@ model AuditLog {
   createdAt DateTime @default(now())
   school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ExpenseCategory {
+  id             String              @id @default(cuid())
+  schoolId       String
+  parentCategoryId String?
+  name           String
+  slug           String
+  type           ExpenseCategoryType
+  description    String?
+  ownerApprovalRequired Boolean      @default(false)
+  isSystem       Boolean             @default(false)
+  isActive       Boolean             @default(true)
+  sortOrder      Int                 @default(0)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  school         School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  parentCategory ExpenseCategory?    @relation("ExpenseCategoryHierarchy", fields: [parentCategoryId], references: [id])
+  subcategories  ExpenseCategory[]   @relation("ExpenseCategoryHierarchy")
+  budgets        Budget[]
+  expenses       Expense[]
+
+  @@unique([schoolId, slug])
+  @@index([schoolId, type, isActive])
+}
+
+model Vendor {
+  id           String    @id @default(cuid())
+  schoolId     String
+  name         String
+  contactName  String?
+  phone        String?
+  email        String?
+  address      String?
+  notes        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  school       School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  expenses     Expense[]
+
+  @@unique([schoolId, name])
+}
+
+model FinancialPeriod {
+  id           String              @id @default(cuid())
+  schoolId     String
+  name         String
+  type         FinancialPeriodType
+  startDate    DateTime
+  endDate      DateTime
+  isClosed     Boolean             @default(false)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  school       School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  budgets      Budget[]
+  expenses     Expense[]
+  payrollRuns  PayrollRun[]
+
+  @@unique([schoolId, name])
+  @@index([schoolId, type, startDate, endDate])
+}
+
+model Budget {
+  id               String          @id @default(cuid())
+  schoolId         String
+  periodId         String
+  categoryId       String?
+  createdById      String?
+  name             String
+  department       String
+  plannedAmount    Float
+  consumedAmount   Float           @default(0)
+  alertThreshold   Float           @default(80)
+  status           BudgetStatus    @default(ACTIVE)
+  notes            String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  school           School          @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  period           FinancialPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+  category         ExpenseCategory? @relation(fields: [categoryId], references: [id])
+  createdBy        User?           @relation("BudgetCreator", fields: [createdById], references: [id])
+  expenses         Expense[]
+
+  @@index([schoolId, department, status])
+  @@unique([schoolId, periodId, name])
+}
+
+model Expense {
+  id                String         @id @default(cuid())
+  schoolId          String
+  categoryId        String
+  vendorId          String?
+  budgetId          String?
+  periodId          String?
+  submittedById     String?
+  approvedById      String?
+  title             String
+  subcategory       String?
+  description       String?
+  department        String
+  amount            Float
+  currency          String         @default("USD")
+  paymentMethod     PaymentMethod?
+  supplierName      String?
+  expenseDate       DateTime
+  financialPeriodLabel String?
+  status            ExpenseStatus  @default(PENDING)
+  requiresOwnerApproval Boolean    @default(false)
+  comments          String?
+  metadata          Json?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  school            School         @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  category          ExpenseCategory @relation(fields: [categoryId], references: [id])
+  vendor            Vendor?        @relation(fields: [vendorId], references: [id])
+  budget            Budget?        @relation(fields: [budgetId], references: [id])
+  period            FinancialPeriod? @relation(fields: [periodId], references: [id])
+  submittedBy       User?          @relation("ExpenseSubmitter", fields: [submittedById], references: [id])
+  approvedBy        User?          @relation("ExpenseFinalApprover", fields: [approvedById], references: [id])
+  approvalSteps     ExpenseApprovalStep[]
+  attachments       FinancialAttachment[]
+  accountingEntries AccountingEntry[]
+  cashflowEntries   CashflowEntry[]
+
+  @@index([schoolId, status, expenseDate])
+  @@index([department, categoryId])
+}
+
+model ExpenseApprovalStep {
+  id           String             @id @default(cuid())
+  schoolId     String
+  expenseId    String
+  stage        Int
+  role         ApprovalStepRole
+  status       ApprovalStepStatus @default(PENDING)
+  comments     String?
+  decidedById  String?
+  decidedAt    DateTime?
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+  school       School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  expense      Expense            @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  decidedBy    User?              @relation("ExpenseApprovalDecider", fields: [decidedById], references: [id])
+
+  @@unique([expenseId, stage])
+  @@index([schoolId, role, status])
+}
+
+model FinancialAttachment {
+  id            String                  @id @default(cuid())
+  schoolId      String
+  expenseId     String?
+  payrollRunId  String?
+  uploadedById  String?
+  kind          FinancialAttachmentKind
+  fileName      String
+  fileUrl       String
+  mimeType      String?
+  notes         String?
+  createdAt     DateTime                @default(now())
+  school        School                  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  expense       Expense?                @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  payrollRun    PayrollRun?             @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  uploadedBy    User?                   @relation("AttachmentUploader", fields: [uploadedById], references: [id])
+
+  @@index([schoolId, kind, createdAt])
+}
+
+model EmployeeSalaryProfile {
+  id                String           @id @default(cuid())
+  schoolId          String
+  employeeCode      String
+  fullName          String
+  department        String
+  position          String
+  baseSalary        Float
+  currency          String           @default("USD")
+  frequency         PayrollFrequency @default(MONTHLY)
+  defaultBonus      Float            @default(0)
+  defaultDeduction  Float            @default(0)
+  advanceBalance    Float            @default(0)
+  debtRecoveryRate  Float            @default(0)
+  isActive          Boolean          @default(true)
+  notes             String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  school            School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  payrollItems      PayrollItem[]
+
+  @@unique([schoolId, employeeCode])
+  @@index([schoolId, department, isActive])
+}
+
+model PayrollRun {
+  id              String           @id @default(cuid())
+  schoolId        String
+  periodId        String?
+  createdById     String?
+  title           String
+  department      String?
+  frequency       PayrollFrequency @default(MONTHLY)
+  status          PayrollRunStatus @default(DRAFT)
+  totalGross      Float            @default(0)
+  totalBonuses    Float            @default(0)
+  totalDeductions Float            @default(0)
+  totalNet        Float            @default(0)
+  processedAt     DateTime?
+  paidAt          DateTime?
+  notes           String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  school          School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  period          FinancialPeriod? @relation(fields: [periodId], references: [id])
+  createdBy       User?            @relation("PayrollCreator", fields: [createdById], references: [id])
+  items           PayrollItem[]
+  attachments     FinancialAttachment[]
+  accountingEntries AccountingEntry[]
+  cashflowEntries CashflowEntry[]
+
+  @@index([schoolId, status, createdAt])
+}
+
+model PayrollItem {
+  id                String               @id @default(cuid())
+  schoolId          String
+  payrollRunId      String
+  salaryProfileId   String
+  baseSalary        Float
+  bonuses           Float                @default(0)
+  deductions        Float                @default(0)
+  advancesRecovered Float                @default(0)
+  debtRecovered     Float                @default(0)
+  netSalary         Float
+  salarySlipNumber  String?
+  paidAt            DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  school            School               @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  payrollRun        PayrollRun           @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  salaryProfile     EmployeeSalaryProfile @relation(fields: [salaryProfileId], references: [id], onDelete: Cascade)
+  accountingEntries AccountingEntry[]
+  cashflowEntries   CashflowEntry[]
+
+  @@index([schoolId, payrollRunId])
+}
+
+model AccountingEntry {
+  id             String             @id @default(cuid())
+  schoolId       String
+  expenseId      String?
+  payrollRunId   String?
+  payrollItemId  String?
+  entryType      AccountingEntryType
+  direction      CashflowDirection
+  title          String
+  amount         Float
+  currency       String             @default("USD")
+  entryDate      DateTime           @default(now())
+  department     String?
+  metadata       Json?
+  createdAt      DateTime           @default(now())
+  school         School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  expense        Expense?           @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  payrollRun     PayrollRun?        @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  payrollItem    PayrollItem?       @relation(fields: [payrollItemId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, entryType, entryDate])
+}
+
+model CashflowEntry {
+  id             String            @id @default(cuid())
+  schoolId       String
+  expenseId      String?
+  payrollRunId   String?
+  payrollItemId  String?
+  direction      CashflowDirection
+  sourceType     String
+  amount         Float
+  currency       String            @default("USD")
+  method         PaymentMethod?
+  referenceDate  DateTime          @default(now())
+  notes          String?
+  createdAt      DateTime          @default(now())
+  school         School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  expense        Expense?          @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  payrollRun     PayrollRun?       @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  payrollItem    PayrollItem?      @relation(fields: [payrollItemId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, direction, referenceDate])
+}
+
+model AcademicYear {
+  id          String             @id @default(cuid())
+  schoolId    String
+  name        String
+  startDate   DateTime
+  endDate     DateTime
+  status      AcademicYearStatus @default(ACTIVE)
+  isCurrent   Boolean            @default(false)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  school      School             @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  tuitionPlans TuitionPlan[]
+  parentFinancialProfiles ParentFinancialProfile[]
+  parentPlanAssignments ParentPlanAssignment[]
+  paymentInstallments PaymentInstallment[]
+  discounts Discount[]
+  currentDebts Debt[]            @relation("DebtAcademicYear")
+  carriedOverDebts Debt[]        @relation("DebtCarryOverAcademicYear")
+  financialAgreements FinancialAgreement[]
+  payments Payment[]
+  financialReports FinancialReport[]
+  financialAlerts FinancialAlert[]
+
+  @@unique([schoolId, name])
+}
+
+model TuitionPlan {
+  id            String            @id @default(cuid())
+  schoolId      String
+  academicYearId String
+  code          String
+  name          String
+  paymentOptionType PaymentOptionType
+  gradeGroup    GradeGroup
+  discountRate  Float             @default(0)
+  originalAmount Float
+  reductionAmount Float           @default(0)
+  finalAmount   Float
+  currency      String            @default("USD")
+  scheduleVersion String          @default("2026-2027")
+  scheduleJson  Json
+  isOfficial    Boolean           @default(true)
+  isActive      Boolean           @default(true)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  school        School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYear  AcademicYear      @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  installments  PaymentInstallment[] @relation("PlanInstallments")
+  payments      Payment[]
+  activeProfiles ParentFinancialProfile[] @relation("ActiveTuitionPlan")
+  parentAssignments ParentPlanAssignment[]
+  discounts     Discount[]
+
+  @@unique([schoolId, academicYearId, code, gradeGroup])
+}
+
+model ParentFinancialProfile {
+  id                String    @id @default(cuid())
+  schoolId          String
+  parentId          String
+  academicYearId    String
+  activeTuitionPlanId String?
+  activeAgreementId String?
+  totalPaid         Float     @default(0)
+  totalDebt         Float     @default(0)
+  totalReduction    Float     @default(0)
+  carriedOverDebt   Float     @default(0)
+  overdueInstallments Int     @default(0)
+  paymentBehaviorScore Float  @default(0)
+  lastPaymentAt     DateTime?
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  school            School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  parent            Parent    @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  academicYear      AcademicYear @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  activeTuitionPlan TuitionPlan? @relation("ActiveTuitionPlan", fields: [activeTuitionPlanId], references: [id])
+  activeAgreement   FinancialAgreement? @relation("ActiveAgreement", fields: [activeAgreementId], references: [id])
+  installments      PaymentInstallment[]
+  discounts         Discount[]
+  debts             Debt[]
+  payments          Payment[]
+  financialAlerts   FinancialAlert[]
+  agreementHistory  FinancialAgreement[] @relation("ProfileAgreements")
+  parentAssignments ParentPlanAssignment[]
+
+  @@unique([parentId, academicYearId])
+}
+
+model ParentPlanAssignment {
+  id                String            @id @default(cuid())
+  schoolId          String
+  parentId          String
+  studentId         String?
+  academicYearId    String
+  financialProfileId String?
+  tuitionPlanId     String?
+  financialAgreementId String?
+  gradeGroup        GradeGroup
+  paymentOptionType PaymentOptionType
+  expectedTotal     Float
+  reductionTotal    Float             @default(0)
+  remainingBalanceSnapshot Float      @default(0)
+  isActive          Boolean           @default(true)
+  notes             String?
+  assignedAt        DateTime          @default(now())
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  school            School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  parent            Parent            @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  student           Student?          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear      AcademicYear      @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  financialProfile  ParentFinancialProfile? @relation(fields: [financialProfileId], references: [id])
+  tuitionPlan       TuitionPlan?      @relation(fields: [tuitionPlanId], references: [id])
+  financialAgreement FinancialAgreement? @relation(fields: [financialAgreementId], references: [id])
+
+  @@index([schoolId, parentId, academicYearId])
+  @@unique([academicYearId, parentId, studentId])
+}
+
+model PaymentInstallment {
+  id                String            @id @default(cuid())
+  schoolId          String
+  parentId          String?
+  studentId         String?
+  academicYearId    String
+  financialProfileId String?
+  tuitionPlanId     String?
+  financialAgreementId String?
+  label             String
+  sequence          Int
+  periodKey         String
+  dueDate           DateTime
+  amountDue         Float
+  amountPaid        Float             @default(0)
+  reductionAmount   Float             @default(0)
+  status            InstallmentStatus @default(SCHEDULED)
+  notes             String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  school            School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  parent            Parent?           @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  student           Student?          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear      AcademicYear      @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  financialProfile  ParentFinancialProfile? @relation(fields: [financialProfileId], references: [id])
+  tuitionPlan       TuitionPlan?      @relation("PlanInstallments", fields: [tuitionPlanId], references: [id])
+  financialAgreement FinancialAgreement? @relation(fields: [financialAgreementId], references: [id])
+  allocations       PaymentAllocation[]
+  sourceDebts       Debt[]            @relation("DebtSourceInstallment")
+  financialAlerts   FinancialAlert[]
+
+  @@index([schoolId, academicYearId, dueDate])
+  @@index([parentId, status])
+}
+
+model PaymentAllocation {
+  id            String            @id @default(cuid())
+  paymentId     String
+  installmentId String
+  amount        Float
+  createdAt     DateTime          @default(now())
+  payment       Payment           @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  installment   PaymentInstallment @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+
+  @@unique([paymentId, installmentId])
+}
+
+model Discount {
+  id                String            @id @default(cuid())
+  schoolId          String
+  parentId          String?
+  studentId         String?
+  academicYearId    String
+  financialProfileId String?
+  tuitionPlanId     String?
+  sourceAgreementId String?
+  approvedById      String?
+  title             String
+  scope             ReductionScope
+  amount            Float
+  percentage        Float?
+  description       String?
+  paymentOptionType PaymentOptionType?
+  gradeGroup        GradeGroup?
+  effectiveDate     DateTime          @default(now())
+  createdAt         DateTime          @default(now())
+  school            School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  parent            Parent?           @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  student           Student?          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear      AcademicYear      @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  financialProfile  ParentFinancialProfile? @relation(fields: [financialProfileId], references: [id])
+  tuitionPlan       TuitionPlan?      @relation(fields: [tuitionPlanId], references: [id])
+  sourceAgreement   FinancialAgreement? @relation(fields: [sourceAgreementId], references: [id])
+  approvedBy        User?             @relation("DiscountApprover", fields: [approvedById], references: [id])
+
+  @@index([schoolId, academicYearId, scope])
+  @@index([parentId, studentId])
+}
+
+model Debt {
+  id                String      @id @default(cuid())
+  schoolId          String
+  parentId          String
+  studentId         String?
+  academicYearId    String
+  financialProfileId String?
+  sourceInstallmentId String?
+  sourcePaymentId   String?
+  carriedOverFromYearId String?
+  title             String
+  reason            String?
+  originalAmount    Float
+  amountRemaining   Float
+  status            DebtStatus  @default(OPEN)
+  dueDate           DateTime?
+  settledAt         DateTime?
+  metadata          Json?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  school            School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  parent            Parent      @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  student           Student?    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear      AcademicYear @relation("DebtAcademicYear", fields: [academicYearId], references: [id], onDelete: Cascade)
+  financialProfile  ParentFinancialProfile? @relation(fields: [financialProfileId], references: [id])
+  sourceInstallment PaymentInstallment? @relation("DebtSourceInstallment", fields: [sourceInstallmentId], references: [id])
+  sourcePayment     Payment?    @relation("DebtSourcePayment", fields: [sourcePaymentId], references: [id])
+  carriedOverFromYear AcademicYear? @relation("DebtCarryOverAcademicYear", fields: [carriedOverFromYearId], references: [id])
+  financialAlerts   FinancialAlert[]
+
+  @@index([schoolId, academicYearId, status])
+  @@index([parentId, amountRemaining])
+}
+
+model FinancialAgreement {
+  id                String            @id @default(cuid())
+  schoolId          String
+  parentId          String
+  academicYearId    String
+  financialProfileId String?
+  approvedById      String?
+  title             String
+  paymentOptionType PaymentOptionType @default(SPECIAL_OWNER_AGREEMENT)
+  gradeGroup        GradeGroup?
+  status            AgreementStatus   @default(DRAFT)
+  customTotal       Float
+  reductionAmount   Float             @default(0)
+  balanceDue        Float
+  privateNotes      String?
+  notes             String?
+  history           Json?
+  approvalRequestedAt DateTime?
+  approvedAt        DateTime?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  school            School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  parent            Parent            @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  academicYear      AcademicYear      @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  financialProfile  ParentFinancialProfile? @relation("ProfileAgreements", fields: [financialProfileId], references: [id])
+  approvedBy        User?             @relation("AgreementApprover", fields: [approvedById], references: [id])
+  installments      PaymentInstallment[]
+  discounts         Discount[]
+  assignments       ParentPlanAssignment[]
+  activeProfiles    ParentFinancialProfile[] @relation("ActiveAgreement")
+
+  @@index([schoolId, parentId, academicYearId])
+}
+
+model FinancialReport {
+  id            String      @id @default(cuid())
+  schoolId      String
+  academicYearId String?
+  type          ReportType
+  periodLabel   String
+  summaryJson   Json
+  generatedAt   DateTime    @default(now())
+  createdAt     DateTime    @default(now())
+  school        School      @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYear  AcademicYear? @relation(fields: [academicYearId], references: [id])
+
+  @@index([schoolId, type, generatedAt])
+}
+
+model FinancialAlert {
+  id                String            @id @default(cuid())
+  schoolId          String
+  parentId          String
+  academicYearId    String?
+  financialProfileId String?
+  installmentId     String?
+  debtId            String?
+  type              FinancialAlertType
+  title             String
+  message           String
+  severity          String
+  status            String            @default("OPEN")
+  channel           NotificationChannel?
+  supportedChannels Json?
+  createdAt         DateTime          @default(now())
+  resolvedAt        DateTime?
+  school            School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  parent            Parent            @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  academicYear      AcademicYear?     @relation(fields: [academicYearId], references: [id])
+  financialProfile  ParentFinancialProfile? @relation(fields: [financialProfileId], references: [id])
+  installment       PaymentInstallment? @relation(fields: [installmentId], references: [id])
+  debt              Debt?             @relation(fields: [debtId], references: [id])
+
+  @@index([schoolId, parentId, status])
+  @@index([type, severity, createdAt])
 }

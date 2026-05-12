@@ -158,6 +158,47 @@ body::before {
     0 0 46px rgba(20, 184, 222, 0.14);
 }
 
+html,
+body,
+.sidebar-scroll,
+.edupay-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(125, 232, 255, 0.32) transparent;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+.sidebar-scroll::-webkit-scrollbar,
+.edupay-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track,
+.sidebar-scroll::-webkit-scrollbar-track,
+.edupay-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+.sidebar-scroll::-webkit-scrollbar-thumb,
+.edupay-scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, rgba(125, 232, 255, 0.34), rgba(20, 184, 222, 0.18));
+  background-clip: padding-box;
+}
+
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover,
+.sidebar-scroll::-webkit-scrollbar-thumb:hover,
+.edupay-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(125, 232, 255, 0.48), rgba(20, 184, 222, 0.26));
+  background-clip: padding-box;
+}
+
 /* Brand surface avec gradient moderne */
 .brand-surface {
   background: linear-gradient(135deg, #031018 0%, #0786ad 45%, #14b8de 74%, #f8fbff 115%);

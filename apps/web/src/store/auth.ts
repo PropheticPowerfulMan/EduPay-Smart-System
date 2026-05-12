@@ -1,6 +1,26 @@
 import { create } from "zustand";
 
-export type Role = "ADMIN" | "ACCOUNTANT" | "PARENT";
+export type Role =
+  | "SUPER_ADMIN"
+  | "OWNER"
+  | "ADMIN"
+  | "FINANCIAL_MANAGER"
+  | "ACCOUNTANT"
+  | "CASHIER"
+  | "HR_MANAGER"
+  | "AUDITOR"
+  | "PARENT";
+
+export const STAFF_ROLES: Role[] = [
+  "SUPER_ADMIN",
+  "OWNER",
+  "ADMIN",
+  "FINANCIAL_MANAGER",
+  "ACCOUNTANT",
+  "CASHIER",
+  "HR_MANAGER",
+  "AUDITOR"
+];
 
 const TOKEN_STORAGE_KEY = "edupay_token";
 const ROLE_STORAGE_KEY = "edupay_role";
@@ -20,7 +40,8 @@ function clearStoredAuth() {
 
 export function normalizeRole(value: unknown, parentId?: string | null): Role | null {
   const role = String(value ?? "").trim().toUpperCase();
-  if (role === "ADMIN" || role === "ACCOUNTANT" || role === "PARENT") return role;
+  if (role === "PARENT") return role;
+  if (STAFF_ROLES.includes(role as Role)) return role as Role;
   return parentId ? "PARENT" : null;
 }
 

@@ -493,9 +493,9 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div className="edupay-scrollbar fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative my-4 max-h-[92vh] w-full max-w-2xl overflow-y-auto glass rounded-2xl p-4 space-y-5 animate-fadeInUp sm:p-8 sm:space-y-6">
+      <div className="edupay-scrollbar relative my-4 max-h-[92vh] w-full max-w-2xl overflow-y-auto glass rounded-2xl p-4 space-y-5 animate-fadeInUp sm:p-8 sm:space-y-6">
         <button onClick={onClose} className="absolute top-4 right-4 text-ink-dim hover:text-white transition-colors">
           <XIcon />
         </button>
@@ -877,7 +877,7 @@ export function ParentsManagementPage() {
             <p className="text-ink-dim">{search ? t("pmNoResults") : t("pmEmpty")}</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="edupay-scrollbar overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-700/50 bg-slate-900/40">

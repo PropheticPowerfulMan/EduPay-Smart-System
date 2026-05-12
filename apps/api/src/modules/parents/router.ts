@@ -362,7 +362,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
     return res.status(201).json({
       ...enrichParent({ ...parent, nom: payload.nom, postnom: payload.postnom, prenom: payload.prenom }),
       temporaryPassword,
-      accessCode: parent?.user?.accessCode || parent?.accessCode || "",
+      accessCode: parent?.user?.accessCode || "",
       notificationStatus
     });
   } catch (error) {

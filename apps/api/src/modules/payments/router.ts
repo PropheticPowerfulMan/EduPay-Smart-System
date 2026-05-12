@@ -9,12 +9,14 @@ import { amountToWords } from "../../utils/amount-words";
 import { orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
 import { sendEmail, sendSms } from "../../utils/messaging";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
+import { applyPaymentToFinanceLedger } from "../finance/service";
 
 const createPaymentSchema = z.object({
-  parentFullName: z.string().min(1),
+  parentFullName: z.string().optional().default(""),
   parentId: z.string().optional(),
   studentIds: z.array(z.string()).optional().default([]),
   studentExternalIds: z.array(z.string().min(1)).optional().default([]),
+  studentDisplayName: z.string().optional(),
   reason: z.string().min(3),
   amount: z.number().positive(),
   method: z.enum(["CASH", "AIRTEL_MONEY", "MPESA", "ORANGE_MONEY"]),
@@ -41,9 +43,33 @@ function generateTxNumber() {
   return `TX-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 }
 
+function buildPaymentSubjectName(students: Array<{ fullName: string }>, fallback: string) {
+  if (students.length === 0) return fallback;
+  if (students.length === 1) return students[0].fullName;
+  if (students.length === 2) return `${students[0].fullName} et ${students[1].fullName}`;
+  return `${students[0].fullName} + ${students.length - 1} autres`;
+}
+
+function serializePayment(
+  payment: { parent?: { fullName: string } | null; students: Array<{ fullName: string }> } & Record<string, unknown>,
+  options: { fallbackParentName?: string; requestedStudentDisplayName?: string } = {}
+) {
+  const parentFullName = payment.parent?.fullName ?? options.fallbackParentName ?? "";
+  const studentNames = payment.students.map((student) => student.fullName);
+  const paymentSubjectName = options.requestedStudentDisplayName?.trim() || buildPaymentSubjectName(payment.students, parentFullName);
+
+  return {
+    ...payment,
+    parentFullName,
+    studentNames,
+    paymentSubjectName,
+  };
+}
+
 async function generateReceiptPdf(data: {
   receiptId: string;
   schoolName: string;
+  paymentSubjectName: string;
   parentName: string;
   students: string[];
   amount: number;
@@ -59,7 +85,8 @@ async function generateReceiptPdf(data: {
     doc.fontSize(18).fillColor("#0b2e59").text(data.schoolName);
     doc.moveDown(0.4);
     doc.fontSize(12).fillColor("#111111").text(`Receipt ID: ${data.receiptId}`);
-    doc.text(`Parent: ${data.parentName}`);
+  doc.text(`Student account: ${data.paymentSubjectName}`);
+  doc.text(`Parent notifier: ${data.parentName}`);
     doc.text(`Students: ${data.students.join(", ")}`);
     doc.text(`Amount: $ ${data.amount.toFixed(2)} USD`);
     doc.text(`Reason: ${data.reason}`);
@@ -271,6 +298,13 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
       include: { parent: true, students: true }
     });
 
+    await applyPaymentToFinanceLedger({
+      schoolId: req.user!.schoolId,
+      paymentId: payment.id,
+      parentId,
+      studentIds: payment.students.map((student) => student.id)
+    }).catch((error) => console.error("Finance ledger sync failed", error));
+
     try {
       const syncedStudentExternalIds = payload.studentExternalIds.length > 0
         ? payload.studentExternalIds
@@ -324,10 +358,10 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
       : { email: shouldNotify ? "SKIPPED" : "DISABLED", sms: shouldNotify ? "SKIPPED" : "DISABLED" };
 
     return res.status(201).json({
-      payment: {
-        ...payment,
-        parentFullName: payload.parentFullName ?? paymentWithRelations.parent?.fullName
-      },
+      payment: serializePayment(payment as typeof payment & { parent?: { fullName: string } | null }, {
+        fallbackParentName: payload.parentFullName ?? paymentWithRelations.parent?.fullName,
+        requestedStudentDisplayName: payload.studentDisplayName,
+      }),
       notificationStatus
     });
   } catch (_dbErr) {
@@ -338,6 +372,8 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
         id: `demo-${Date.now()}`,
         transactionNumber: txNumber,
         parentFullName: payload.parentFullName,
+        studentNames: [],
+        paymentSubjectName: payload.studentDisplayName?.trim() || payload.parentFullName,
         reason: payload.reason,
         amount: payload.amount,
         amountInWords: `${amountToWords(payload.amount, "fr")} dollars americains`,
@@ -366,7 +402,7 @@ paymentRouter.get("/", authorize("ADMIN", "ACCOUNTANT", "PARENT"), async (req: A
       orderBy: { createdAt: "desc" }
     });
 
-    return res.json(payments);
+    return res.json(payments.map((payment) => serializePayment(payment)));
   } catch (error) {
     console.error("DB unavailable on payment list, returning empty list", error);
     return res.json([]);

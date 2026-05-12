@@ -1,9 +1,10 @@
-import { useMemo, useState, useEffect, type FormEvent } from "react";
+import { useMemo, useState, useEffect, useRef, type FormEvent } from "react";
 import { createPortal } from "react-dom";
 import { SearchField } from "../components/SearchField";
 import { schoolBranding } from "../config/branding";
 import { useI18n } from "../i18n";
 import { api } from "../services/api";
+import { exportWorkbook } from "../utils/financeExcel";
 
 /* --- Transaction number generator ---------------------------------------- */
 function generateTxNumber(): string {
@@ -133,11 +134,11 @@ function makeSecurityHash(input: string): string {
   return (hash >>> 0).toString(16).toUpperCase().padStart(8, "0");
 }
 
-function buildReceiptSecurity(r: Pick<PaymentRecord, "transactionNumber" | "date" | "parentFullName" | "reason" | "amount" | "method" | "status">) {
+function buildReceiptSecurity(r: Pick<PaymentRecord, "transactionNumber" | "date" | "parentFullName" | "paymentSubjectName" | "studentNames" | "reason" | "amount" | "method" | "status">) {
   const payload = [
     r.transactionNumber,
     r.date,
-    r.parentFullName.trim().toUpperCase(),
+    getPaymentSubjectName(r).trim().toUpperCase(),
     r.reason.trim().toUpperCase(),
     r.amount.toFixed(5),
     r.method,
@@ -156,11 +157,11 @@ function buildSecurityMatrix(hash: string) {
   return Array.from({ length: 64 }, (_v, i) => bits[i % bits.length] === "1");
 }
 
-function analyzeReceiptRisk(r: Pick<PaymentRecord, "parentFullName" | "reason" | "amount" | "status" | "method">) {
+function analyzeReceiptRisk(r: Pick<PaymentRecord, "parentFullName" | "paymentSubjectName" | "studentNames" | "reason" | "amount" | "status" | "method">) {
   const flags: string[] = [];
   if (r.amount >= 5000) flags.push("Montant élevé : double validation conseillée");
   if (r.status !== "COMPLETED") flags.push("Statut non réglé : ne pas libérer de quittance définitive");
-  if (r.parentFullName.trim().split(/\s+/).length < 2) flags.push("Identité courte : vérifier le dossier parent");
+  if (getPaymentSubjectName(r).trim().split(/\s+/).length < 2) flags.push("Identité courte : vérifier le dossier eleve");
   if (r.reason.trim().length < 8) flags.push("Motif trop court pour un audit robuste");
   if (r.method !== "CASH") flags.push("Paiement mobile : vérifier la référence opérateur");
   const score = Math.min(100, flags.length * 22 + (r.amount >= 10000 ? 18 : 0));
@@ -197,10 +198,13 @@ function buildReceiptMicroText(r: PaymentRecord) {
 
 /* --- Reçu individuel HTML (A5 paysage) ------------------------------------ */
 function buildReceiptHtml(r: PaymentRecord, lang: string): string {
+  const parentCaption = getPaymentParentCaption(r);
   const safe = {
     tx: escapeHtml(r.transactionNumber),
     date: escapeHtml(r.date),
     parent: escapeHtml(r.parentFullName),
+    parentCaption: escapeHtml(parentCaption),
+    paymentSubject: escapeHtml(getPaymentSubjectName(r)),
     reason: escapeHtml(r.reason),
     amountWords: escapeHtml(r.amountWords),
     method: escapeHtml(getMethodLabel(r.method)),
@@ -215,6 +219,9 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
   const risk = analyzeReceiptRisk(r);
   const matrixCells = buildSecurityMatrix(security.hash).map((on) => `<span class="${on ? "on" : ""}"></span>`).join("");
   const microText = escapeHtml(buildReceiptMicroText(r));
+  const parentSecondaryLine = safe.parentCaption
+    ? `<div class="value-sub"><span class="value-sub-badge">Parent concerne</span><span>${safe.parentCaption}</span></div>`
+    : "";
   return `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
@@ -243,6 +250,9 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
     .field { display:grid; grid-template-columns:30mm 1fr; gap:2mm; padding:1.55mm 0; border-bottom:1px dotted #cbd5e1; }
     .label { color:#475569; font-size:7.2px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; }
     .value { font-weight:700; color:#101827; }
+    .value-stack { display:flex; flex-direction:column; gap:.8mm; }
+    .value-sub { display:flex; align-items:center; gap:1.2mm; font-size:7px; font-weight:700; color:#64748b; letter-spacing:.2px; }
+    .value-sub-badge { display:inline-flex; align-items:center; padding:.55mm 1.7mm; border:1px solid rgba(18,48,71,.18); border-radius:999px; background:rgba(18,48,71,.06); color:#123047; font-size:6.2px; font-weight:900; text-transform:uppercase; letter-spacing:.55px; }
     .parent { font-size:11.8px; color:#123047; }
     .amount { margin-top:2.8mm; border:1.3px solid #123047; background:#f8fafc; padding:2.7mm; }
     .amount-label { color:#64748b; font-size:7.2px; font-weight:800; text-transform:uppercase; letter-spacing:1.2px; }
@@ -287,7 +297,7 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
   <div class="grid">
     <div>
       <div class="field"><div class="label">Date et heure</div><div class="value">${safe.date}</div></div>
-      <div class="field"><div class="label">Parent</div><div class="value parent">${safe.parent}</div></div>
+      <div class="field"><div class="label">Paiement pour</div><div class="value-stack"><div class="value parent">${safe.paymentSubject}</div>${parentSecondaryLine}</div></div>
       <div class="field"><div class="label">Motif</div><div class="value">${safe.reason}</div></div>
       <div class="field"><div class="label">Méthode</div><div class="value">${safe.method}</div></div>
       <div class="field"><div class="label">Statut</div><div class="value">${safe.status}</div></div>
@@ -307,7 +317,7 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
         <div class="field" style="grid-template-columns:23mm 1fr"><div class="label">Contrôle</div><div class="value">${risk.level}</div></div>
       </div>
       <div class="warning">
-        Toute modification du montant, du parent, du statut ou du motif invalide le code de vérification. Reçu valable uniquement avec signature du caissier et sceau de l'école.
+        Toute modification du montant, de l'eleve, du statut ou du motif invalide le code de vérification. Reçu valable uniquement avec signature du caissier et sceau de l'école.
       </div>
       <div class="seal-row">
         <div class="box">
@@ -334,12 +344,13 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
 /* --- État financier HTML (général ou par parent) -------------------------- */
 function buildReportHtml(payments: PaymentRecord[], filterParent?: string): string {
   const filtered = filterParent
-    ? payments.filter((p) => p.parentFullName.toLowerCase().includes(filterParent.toLowerCase()))
+    ? payments.filter((p) => getPaymentSubjectName(p).toLowerCase().includes(filterParent.toLowerCase()))
     : payments;
 
   const byParent = filtered.reduce<Record<string, PaymentRecord[]>>((acc, p) => {
-    if (!acc[p.parentFullName]) acc[p.parentFullName] = [];
-    acc[p.parentFullName].push(p);
+    const key = getPaymentSubjectName(p);
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(p);
     return acc;
   }, {});
 
@@ -387,6 +398,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
 
   const parentBlocks = Object.entries(byParent).map(([parent, recs]) => {
     const parentName = plainPrintText(parent);
+    const parentCaption = plainPrintText(Array.from(new Set(recs.map((r) => getPaymentParentCaption(r)).filter(Boolean))).join(" / "));
     const total = recs.reduce((s, r) => s + r.amount, 0);
     const rows = recs.map((r) => `<tr>
       <td style="padding:6px 8px; font-family:monospace; font-size:11px; color:#475569">${plainPrintText(r.transactionNumber)}</td>
@@ -399,7 +411,10 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
 
     return `<div style="margin-bottom:32px; page-break-inside:avoid;">
       <div style="display:flex; justify-content:space-between; align-items:center; background:#1e3a5f; color:#fff; padding:10px 14px; border-radius:4px 4px 0 0;">
-        <div style="font-weight:bold; font-size:14px">${parentName}</div>
+        <div>
+          <div style="font-weight:bold; font-size:14px">${parentName}</div>
+          ${parentCaption ? `<div style="margin-top:4px; font-size:11px; color:rgba(255,255,255,0.78)">Parent concerne : ${parentCaption}</div>` : ""}
+        </div>
         <div style="font-family:monospace; font-weight:bold; font-size:14px">Total : $ ${total.toFixed(5)}</div>
       </div>
       <table style="width:100%; border-collapse:collapse; border:1px solid #e2e8f0; border-top:none; font-size:12px;">
@@ -579,6 +594,78 @@ function printHtml(html: string) {
   setTimeout(() => { popup.print(); }, 600);
 }
 
+function exportReceiptExcel(payment: PaymentRecord) {
+  exportWorkbook(`recu-${payment.transactionNumber}`, [
+    {
+      name: "Recu",
+      rows: [{
+        "No Transaction": payment.transactionNumber,
+        "Date": payment.date,
+        "Paiement pour": getPaymentSubjectName(payment),
+        "Parent concerne": getPaymentParentCaption(payment) || payment.parentFullName,
+        "Motif": payment.reason,
+        "Montant USD": payment.amount,
+        "Montant en lettres": payment.amountWords,
+        "Mode": getMethodLabel(payment.method),
+        "Statut": getStatusLabel(payment.status),
+        "Code verification": buildReceiptSecurity(payment).verificationCode
+      }]
+    }
+  ]);
+}
+
+function exportPaymentsExcel(filename: string, records: PaymentRecord[], parentFilter?: string) {
+  const filtered = parentFilter
+    ? records.filter((payment) => getPaymentSubjectName(payment) === parentFilter)
+    : records;
+
+  const total = filtered.reduce((sum, payment) => sum + payment.amount, 0);
+  const completed = filtered.filter((payment) => payment.status === "COMPLETED");
+  const pending = filtered.filter((payment) => payment.status === "PENDING");
+  const failed = filtered.filter((payment) => payment.status === "FAILED");
+
+  const byMethod = filtered.reduce<Record<string, number>>((acc, payment) => {
+    const key = getMethodLabel(payment.method);
+    acc[key] = (acc[key] ?? 0) + payment.amount;
+    return acc;
+  }, {});
+
+  exportWorkbook(filename, [
+    {
+      name: "Synthese",
+      rows: [{
+        "Portee": parentFilter || "Globale",
+        "Paiements": filtered.length,
+        "Total USD": total,
+        "Regles USD": completed.reduce((sum, payment) => sum + payment.amount, 0),
+        "En attente USD": pending.reduce((sum, payment) => sum + payment.amount, 0),
+        "Echoues USD": failed.reduce((sum, payment) => sum + payment.amount, 0)
+      }]
+    },
+    {
+      name: "Paiements",
+      rows: filtered.map((payment) => ({
+        "No Transaction": payment.transactionNumber,
+        "Date": payment.date,
+        "Paiement pour": getPaymentSubjectName(payment),
+        "Parent concerne": getPaymentParentCaption(payment) || payment.parentFullName,
+        "Motif": payment.reason,
+        "Mode": getMethodLabel(payment.method),
+        "Montant USD": payment.amount,
+        "Statut": getStatusLabel(payment.status),
+        "Code verification": buildReceiptSecurity(payment).verificationCode
+      }))
+    },
+    {
+      name: "Par mode",
+      rows: Object.entries(byMethod).map(([method, amount]) => ({
+        "Mode": method,
+        "Total USD": amount
+      }))
+    }
+  ]);
+}
+
 /* --- Types ---------------------------------------------------------------- */
 type PaymentRecord = {
   id: string;
@@ -586,6 +673,8 @@ type PaymentRecord = {
   date: string;
   parentId?: string;
   parentFullName: string;
+  paymentSubjectName?: string;
+  studentNames?: string[];
   reason: string;
   amount: number;
   amountWords: string;
@@ -620,6 +709,34 @@ type ParentOption = {
   students?: ParentStudentOption[];
 };
 
+type FinanceParentSnapshot = {
+  profile: {
+    activeTuitionPlan: string;
+    totalPaid: number;
+    totalDebt: number;
+    totalReduction: number;
+    overdueInstallments: number;
+    completionRate: number;
+  };
+  students: Array<{
+    id: string;
+    fullName: string;
+    paymentOptionLabel: string;
+    planName: string;
+    paid: number;
+    balance: number;
+    installments: Array<{
+      id: string;
+      label: string;
+      dueDate: string;
+      amountDue: number;
+      balance: number;
+      status: string;
+      isOverdue: boolean;
+    }>;
+  }>;
+};
+
 type View = "form" | "receipt" | "history" | "report";
 
 const EMPTY_FORM: FormState = {
@@ -646,6 +763,33 @@ function loadParentNotificationPreferences(): Record<string, boolean> {
 
 function saveParentNotificationPreferences(preferences: Record<string, boolean>) {
   localStorage.setItem(PAYMENT_PARENT_NOTIFICATION_STORAGE_KEY, JSON.stringify(preferences));
+}
+
+function getPaymentSubjectName(payment: Pick<PaymentRecord, "paymentSubjectName" | "studentNames" | "parentFullName">) {
+  if (payment.paymentSubjectName?.trim()) return payment.paymentSubjectName;
+  if ((payment.studentNames?.length ?? 0) > 0) return payment.studentNames!.join(" / ");
+  return payment.parentFullName;
+}
+
+function getPaymentParentCaption(payment: Pick<PaymentRecord, "paymentSubjectName" | "studentNames" | "parentFullName">) {
+  const parentName = payment.parentFullName.trim();
+  if (!parentName) return "";
+  const subjectName = getPaymentSubjectName(payment).trim();
+  return parentName.localeCompare(subjectName, undefined, { sensitivity: "accent" }) === 0 ? "" : parentName;
+}
+
+function getPaymentAudienceText(payment: Pick<PaymentRecord, "paymentSubjectName" | "studentNames" | "parentFullName">) {
+  const subjectName = getPaymentSubjectName(payment);
+  const parentCaption = getPaymentParentCaption(payment);
+  return parentCaption ? `${subjectName} · Parent: ${parentCaption}` : subjectName;
+}
+
+function buildReasonForStudents(baseReason: string, studentDisplayName: string) {
+  const cleanReason = baseReason.trim();
+  const cleanStudents = studentDisplayName.trim();
+  if (!cleanReason) return cleanStudents ? `Paiement scolaire - ${cleanStudents}` : "";
+  if (!cleanStudents) return cleanReason;
+  return `${cleanReason} - ${cleanStudents}`;
 }
 
 const METHOD_OPTIONS = [
@@ -679,6 +823,48 @@ const PAYMENT_REASON_SUGGESTIONS = [
   "Avance sur frais scolaires",
 ];
 
+const HISTORY_PRODUCT_FILTERS = [
+  "frais scolaires",
+  "inscription",
+  "reinscription",
+  "uniforme",
+  "transport",
+  "cantine",
+  "bibliotheque",
+  "examen"
+];
+
+const SCHOOL_PRODUCT_ALIASES: Record<string, string[]> = {
+  "frais scolaires": ["frais scolaires", "frais scolaire", "scolarite", "scolarité", "trimestre", "tuition"],
+  inscription: ["inscription", "admission", "nouvelle inscription"],
+  reinscription: ["reinscription", "réinscription", "renouvellement"],
+  uniforme: ["uniforme", "tenue", "kit scolaire"],
+  transport: ["transport", "bus", "ramassage"],
+  cantine: ["cantine", "restauration", "repas"],
+  bibliotheque: ["bibliotheque", "bibliothèque", "livre", "manuels"],
+  examen: ["examen", "epreuve", "épreuve", "test"],
+  bulletin: ["bulletin", "rapport scolaire"],
+  activites: ["activites", "activités", "parascolaire", "club", "sport"],
+  sortie: ["sortie", "pedagogique", "pédagogique", "voyage"],
+  arrieres: ["arrieres", "arriérés", "retard", "rattrapage"],
+};
+
+function normalizeSearchText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function getProductSearchTags(reason: string) {
+  const normalizedReason = normalizeSearchText(reason);
+  return Object.entries(SCHOOL_PRODUCT_ALIASES)
+    .filter(([, aliases]) => aliases.some((alias) => normalizedReason.includes(normalizeSearchText(alias))))
+    .map(([product]) => product);
+}
+
 /* --- Badge statut --------------------------------------------------------- */
 function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, string> = {
@@ -707,10 +893,22 @@ function PrintIcon({ className = "w-4 h-4" }: { className?: string }) {
   );
 }
 
+function ExcelIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" strokeWidth="1.8" viewBox="0 0 24 24">
+      <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" />
+      <path d="M14 3v5h5" />
+      <path d="m9 10 4 6" />
+      <path d="m13 10-4 6" />
+    </svg>
+  );
+}
+
 function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord; compact?: boolean }) {
   const security = buildReceiptSecurity(receipt);
   const risk = analyzeReceiptRisk(receipt);
   const matrix = buildSecurityMatrix(security.hash);
+  const parentCaption = getPaymentParentCaption(receipt);
   const riskTone = risk.score >= 60
     ? "border-red-500/40 bg-red-500/10 text-red-200"
     : risk.score >= 25
@@ -751,16 +949,25 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
 
       <div className="relative mt-3 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
         <div>
+          <div className="grid grid-cols-[120px_1fr] gap-3 border-b border-dotted border-slate-300 py-2">
+            <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">Date et heure</span>
+            <span className="text-sm font-bold text-slate-700">{receipt.date}</span>
+          </div>
+          <div className="grid grid-cols-[120px_1fr] gap-3 border-b border-dotted border-slate-300 py-2">
+            <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">Paiement pour</span>
+            <span className="flex flex-col gap-1">
+              <span className="text-sm font-bold text-slate-950">{getPaymentSubjectName(receipt)}</span>
+              {parentCaption ? <span className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-300 bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600"><span className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-500">Parent</span>{parentCaption}</span> : null}
+            </span>
+          </div>
           {[
-            ["Date et heure", receipt.date],
-            ["Parent", receipt.parentFullName],
             ["Motif", receipt.reason],
             ["Méthode", getMethodLabel(receipt.method)],
             ["Statut", getStatusLabel(receipt.status)]
           ].map(([label, value]) => (
             <div key={label} className="grid grid-cols-[120px_1fr] gap-3 border-b border-dotted border-slate-300 py-2">
               <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</span>
-              <span className={`text-sm font-bold ${label === "Parent" ? "text-slate-950" : "text-slate-700"}`}>{value}</span>
+              <span className="text-sm font-bold text-slate-700">{value}</span>
             </div>
           ))}
           <div className="mt-3 border-2 border-slate-900 bg-slate-50 p-3">
@@ -792,7 +999,7 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
           </div>
 
           <div className="mt-3 border-l-4 border-amber-600 bg-amber-50 p-3 text-xs font-semibold text-amber-900">
-            Toute modification du montant, du parent, du statut ou du motif invalide le code de vérification.
+            Toute modification du montant, de l'eleve, du statut ou du motif invalide le code de vérification.
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-3">
@@ -836,6 +1043,8 @@ export function PaymentsPage() {
   const [notificationStatus, setNotificationStatus] = useState<string | null>(null);
   const [paymentDetailsDialogOpen, setPaymentDetailsDialogOpen] = useState(true);
   const [parents, setParents] = useState<ParentOption[]>([]);
+  const [selectedParentFinance, setSelectedParentFinance] = useState<FinanceParentSnapshot | null>(null);
+  const [financeLoading, setFinanceLoading] = useState(false);
   // Historique
   const [searchQuery, setSearchQuery]       = useState("");
   const [filterStatus, setFilterStatus]     = useState("ALL");
@@ -885,11 +1094,15 @@ export function PaymentsPage() {
   }, [amountNum, lang]);
 
   const filteredPayments = useMemo(() => payments.filter((p) => {
-    const q = searchQuery.toLowerCase();
-    const matchQ = !q
-      || p.parentFullName.toLowerCase().includes(q)
-      || p.reason.toLowerCase().includes(q)
-      || p.transactionNumber.toLowerCase().includes(q);
+    const query = normalizeSearchText(searchQuery);
+    const searchableText = normalizeSearchText([
+      getPaymentSubjectName(p),
+      p.parentFullName,
+      p.reason,
+      p.transactionNumber,
+      ...getProductSearchTags(p.reason)
+    ].join(" "));
+    const matchQ = !query || query.split(/\s+/).every((token) => searchableText.includes(token));
     return matchQ
       && (filterStatus === "ALL" || p.status === filterStatus)
       && (filterMethod === "ALL" || p.method === filterMethod);
@@ -917,6 +1130,33 @@ export function PaymentsPage() {
     () => parents.find((parent) => parent.id === form.parentId) ?? null,
     [form.parentId, parents]
   );
+
+  useEffect(() => {
+    if (!form.parentId) {
+      setSelectedParentFinance(null);
+      return;
+    }
+
+    let active = true;
+    setFinanceLoading(true);
+    api<FinanceParentSnapshot>(`/api/finance/parents/${form.parentId}/profile`)
+      .then((profile) => {
+        if (!active) return;
+        setSelectedParentFinance(profile);
+      })
+      .catch(() => {
+        if (!active) return;
+        setSelectedParentFinance(null);
+      })
+      .finally(() => {
+        if (active) setFinanceLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [form.parentId]);
+
   const selectedParentNotificationsEnabled = selectedParent
     ? parentNotificationPreferences[selectedParent.id] !== false
     : true;
@@ -949,6 +1189,56 @@ export function PaymentsPage() {
     [form.studentIds, selectedParent]
   );
 
+  const selectedStudentDisplayName = useMemo(
+    () => selectedStudents.map((student) => student.fullName).join(" / "),
+    [selectedStudents]
+  );
+
+  const lastAutoReasonRef = useRef("");
+
+  useEffect(() => {
+    const nextAutoReason = selectedStudentDisplayName
+      ? buildReasonForStudents("Paiement scolaire", selectedStudentDisplayName)
+      : "";
+
+    setForm((prev) => {
+      const currentReason = prev.reason.trim();
+      const previousAutoReason = lastAutoReasonRef.current;
+      const shouldReplace = !currentReason || currentReason === previousAutoReason;
+
+      if (!shouldReplace) return prev;
+
+      lastAutoReasonRef.current = nextAutoReason;
+      if (currentReason === nextAutoReason) return prev;
+      return { ...prev, reason: nextAutoReason };
+    });
+  }, [selectedStudentDisplayName]);
+
+  const financeInstallmentSuggestions = useMemo(() => {
+    if (!selectedParentFinance) return [];
+    const targetStudentIds = form.studentIds.length > 0 ? new Set(form.studentIds) : null;
+    return selectedParentFinance.students
+      .filter((student) => !targetStudentIds || targetStudentIds.has(student.id))
+      .flatMap((student) =>
+        student.installments
+          .filter((installment) => installment.balance > 0)
+          .map((installment) => ({
+            studentId: student.id,
+            studentName: student.fullName,
+            planName: student.planName,
+            paymentOptionLabel: student.paymentOptionLabel,
+            label: installment.label,
+            dueDate: installment.dueDate,
+            amountDue: installment.amountDue,
+            balance: installment.balance,
+            isOverdue: installment.isOverdue,
+            status: installment.status
+          }))
+      )
+      .sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime())
+      .slice(0, 4);
+  }, [form.studentIds, selectedParentFinance]);
+
   const toggleStudentTarget = (studentId: string) => {
     setForm((prev) => ({
       ...prev,
@@ -972,11 +1262,17 @@ export function PaymentsPage() {
       hour: "2-digit", minute: "2-digit", second: "2-digit",
     });
 
+    const paymentSubjectName = selectedStudents.length > 0
+      ? selectedStudents.map((student) => student.fullName).join(" / ")
+      : form.parentFullName.trim();
+
     const record: PaymentRecord = {
       id: `demo-${Date.now()}`,
       transactionNumber: txNumber,
       date: dateStr,
       parentFullName: form.parentFullName.trim(),
+      paymentSubjectName,
+      studentNames: selectedStudents.map((student) => student.fullName),
       parentId: form.parentId || undefined,
       reason: form.reason.trim(),
       amount: finalAmount,
@@ -986,11 +1282,12 @@ export function PaymentsPage() {
     };
 
     try {
-      const created = await api<{ payment: { id: string }; notificationStatus?: { email?: string; sms?: string } }>("/api/payments", {
+      const created = await api<{ payment: Partial<PaymentRecord> & { id: string }; notificationStatus?: { email?: string; sms?: string } }>("/api/payments", {
         method: "POST",
         body: JSON.stringify({
           parentFullName: record.parentFullName,
           parentId: record.parentId,
+          studentDisplayName: paymentSubjectName,
           studentIds: form.studentIds,
           studentExternalIds: selectedStudents.map((student) => student.externalStudentId).filter(Boolean),
           reason: record.reason,
@@ -1002,6 +1299,9 @@ export function PaymentsPage() {
         }),
       });
       record.id = created?.payment?.id ?? record.id;
+      record.paymentSubjectName = created?.payment?.paymentSubjectName ?? record.paymentSubjectName;
+      record.studentNames = created?.payment?.studentNames ?? record.studentNames;
+      record.parentFullName = created?.payment?.parentFullName ?? record.parentFullName;
       if (created?.notificationStatus) {
         setNotificationStatus(`${record.parentFullName} - Email: ${created.notificationStatus.email ?? "SKIPPED"} | SMS: ${created.notificationStatus.sms ?? "SKIPPED"}`);
       }
@@ -1119,7 +1419,7 @@ export function PaymentsPage() {
           )}
           {notificationStatus && <p className="mt-2 text-xs font-semibold text-white/85">{notificationStatus}</p>}
           {parents.length > 0 && (
-            <div className="mt-4 grid max-h-64 gap-2 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
+            <div className="edupay-scrollbar mt-4 grid max-h-64 gap-2 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
               {parents.map((parent) => {
                 const active = parentNotificationPreferences[parent.id] !== false;
                 return (
@@ -1190,6 +1490,12 @@ export function PaymentsPage() {
             <PrintIcon className="w-5 h-5" /> {t("printPdf")}
           </button>
           <button
+            onClick={() => exportReceiptExcel(r)}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20 font-bold transition-all active:scale-95"
+          >
+            <ExcelIcon className="w-5 h-5" /> Exporter en Excel
+          </button>
+          <button
             onClick={() => setView("history")}
             className="px-5 py-3 rounded-xl border border-slate-600 text-ink-dim hover:text-white hover:border-slate-400 transition-all font-semibold text-sm"
           >
@@ -1226,11 +1532,30 @@ export function PaymentsPage() {
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-ink-dim block mb-2">Recherche</label>
               <SearchField
-                placeholder="Nom, motif, numéro..."
+                placeholder="Nom, produit, motif, numero..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 inputClassName="text-sm"
               />
+              <div className="mt-3 flex flex-wrap gap-2">
+                {HISTORY_PRODUCT_FILTERS.map((product) => (
+                  <button
+                    key={product}
+                    type="button"
+                    onClick={() => setSearchQuery(product)}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      normalizeSearchText(searchQuery) === normalizeSearchText(product)
+                        ? "border-brand-500 bg-brand-500/20 text-white"
+                        : "border-slate-600 text-ink-dim hover:border-brand-400 hover:text-white"
+                    }`}
+                  >
+                    {product}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-ink-dim">
+                Recherche intelligente par eleve, parent, numero, motif ou produit scolaire: inscription, uniforme, frais scolaires, transport, cantine...
+              </p>
             </div>
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-ink-dim block mb-2">Statut</label>
@@ -1250,14 +1575,14 @@ export function PaymentsPage() {
         </div>
 
         {/* Tableau */}
-        <div className="card overflow-x-auto">
+        <div className="card edupay-scrollbar overflow-x-auto">
           {filteredPayments.length === 0 ? (
             <p className="text-center text-ink-dim py-12">Aucun paiement trouvé.</p>
           ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-700">
-                  {["No Transaction", "Date", "Parent", "Motif", "Mode", "Montant (USD)", "Statut", "Actions"].map((h) => (
+                  {["No Transaction", "Date", "Paiement pour", "Motif", "Mode", "Montant (USD)", "Statut", "Actions"].map((h) => (
                     <th key={h} className="text-left text-xs font-bold uppercase tracking-wide text-ink-dim py-3 px-3 first:pl-0 last:pr-0">
                       {h}
                     </th>
@@ -1271,7 +1596,12 @@ export function PaymentsPage() {
                     <td className="py-3 px-3 text-xs text-ink-dim whitespace-nowrap">
                       {p.date.split(",").slice(0, 2).join(",")}
                     </td>
-                    <td className="py-3 px-3 font-semibold text-white">{p.parentFullName}</td>
+                    <td className="py-3 px-3">
+                      <div className="min-w-[220px]">
+                        <p className="font-semibold text-white">{getPaymentSubjectName(p)}</p>
+                        {getPaymentParentCaption(p) ? <p className="mt-0.5 text-xs text-ink-dim">Parent: {getPaymentParentCaption(p)}</p> : null}
+                      </div>
+                    </td>
                     <td className="py-3 px-3 text-ink-dim max-w-[140px] truncate" title={p.reason}>{p.reason}</td>
                     <td className="py-3 px-3 text-xs text-ink-dim">{p.method.replace(/_/g, " ")}</td>
                     <td className="py-3 px-3 font-mono font-bold text-emerald-300 whitespace-nowrap">
@@ -1286,6 +1616,13 @@ export function PaymentsPage() {
                           className="p-1.5 rounded bg-brand-600/20 text-brand-300 hover:bg-brand-600/40 transition-colors"
                         >
                           <PrintIcon className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          title="Exporter le recu en Excel"
+                          onClick={() => exportReceiptExcel(p)}
+                          className="p-1.5 rounded bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/40 transition-colors"
+                        >
+                          <ExcelIcon className="w-3.5 h-3.5" />
                         </button>
                         <select
                           value={p.status}
@@ -1334,6 +1671,12 @@ export function PaymentsPage() {
             >
               <PrintIcon /> Imprimer la liste filtrée
             </button>
+            <button
+              onClick={() => exportPaymentsExcel(`historique-paiements-${new Date().toISOString().slice(0, 10)}`, filteredPayments)}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-all text-sm font-semibold"
+            >
+              <ExcelIcon /> Exporter la liste filtrée
+            </button>
           </div>
         )}
       </div>
@@ -1345,12 +1688,13 @@ export function PaymentsPage() {
   ------------------------------------------------------------------------ */
   if (view === "report") {
     const reportPayments = reportSearch
-      ? payments.filter((p) => p.parentFullName.toLowerCase().includes(reportSearch.toLowerCase()))
+      ? payments.filter((p) => getPaymentSubjectName(p).toLowerCase().includes(reportSearch.toLowerCase()))
       : payments;
 
-    const byParent = reportPayments.reduce<Record<string, PaymentRecord[]>>((acc, p) => {
-      if (!acc[p.parentFullName]) acc[p.parentFullName] = [];
-      acc[p.parentFullName].push(p);
+    const bySubject = reportPayments.reduce<Record<string, PaymentRecord[]>>((acc, p) => {
+      const key = getPaymentSubjectName(p);
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(p);
       return acc;
     }, {});
 
@@ -1372,11 +1716,11 @@ export function PaymentsPage() {
         <div className="card flex flex-col md:flex-row gap-4 items-end">
           <div className="flex-1">
             <label className="text-xs font-bold uppercase tracking-wide text-ink-dim block mb-2">
-              Filtrer par parent (laisser vide = état général)
+              Filtrer par eleve (laisser vide = état général)
             </label>
             <input
               type="text"
-              placeholder="Nom du parent..."
+              placeholder="Nom de l'eleve..."
               value={reportSearch}
               onChange={(e) => setReportSearch(e.target.value)}
               className="w-full"
@@ -1389,28 +1733,37 @@ export function PaymentsPage() {
             <PrintIcon className="w-5 h-5" />
             {reportSearch ? `Imprimer l'état de ${reportSearch}` : "Imprimer l'état général"}
           </button>
+          <button
+            onClick={() => exportPaymentsExcel(`etat-paiements-${(reportSearch || "general").toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}`, payments, reportSearch || undefined)}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20 font-bold transition-all active:scale-95 whitespace-nowrap"
+          >
+            <ExcelIcon className="w-5 h-5" />
+            {reportSearch ? `Exporter ${reportSearch} en Excel` : "Exporter l'état général en Excel"}
+          </button>
         </div>
 
-        {/* Cartes par parent */}
-        {Object.keys(byParent).length === 0 ? (
+        {/* Cartes par eleve */}
+        {Object.keys(bySubject).length === 0 ? (
           <div className="card text-center py-12 text-ink-dim">Aucun paiement enregistré.</div>
         ) : (
-          Object.entries(byParent).map(([parent, recs]) => {
+          Object.entries(bySubject).map(([subject, recs]) => {
             const parentTotal  = recs.reduce((s, r) => s + r.amount, 0);
             const completedAmt = recs.filter((r) => r.status === "COMPLETED").reduce((s, r) => s + r.amount, 0);
             const pendingAmt   = recs.filter((r) => r.status === "PENDING").reduce((s, r) => s + r.amount, 0);
             const failedAmt    = recs.filter((r) => r.status === "FAILED").reduce((s, r) => s + r.amount, 0);
+            const parentCaptions = Array.from(new Set(recs.map((r) => getPaymentParentCaption(r)).filter(Boolean)));
 
             return (
-              <div key={parent} className="card">
-                {/* En-tete parent */}
+              <div key={subject} className="card">
+                {/* En-tete eleve */}
                 <div className="flex items-center justify-between border-b border-slate-700 pb-4 mb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-brand-600/30 flex items-center justify-center text-brand-300 font-bold text-lg">
-                      {parent[0]?.toUpperCase()}
+                      {subject[0]?.toUpperCase()}
                     </div>
                     <div>
-                      <p className="font-bold text-white text-base">{parent}</p>
+                      <p className="font-bold text-white text-base">{subject}</p>
+                      {parentCaptions.length > 0 ? <p className="mt-1 text-xs text-ink-dim">Parent: {parentCaptions.join(" / ")}</p> : null}
                       <p className="text-xs text-ink-dim">{recs.length} transaction{recs.length > 1 ? "s" : ""}</p>
                     </div>
                   </div>
@@ -1437,7 +1790,7 @@ export function PaymentsPage() {
                 </div>
 
                 {/* Tableau des transactions */}
-                <div className="overflow-x-auto">
+                <div className="edupay-scrollbar overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-700">
@@ -1467,6 +1820,13 @@ export function PaymentsPage() {
                             >
                               <PrintIcon className="w-3.5 h-3.5" />
                             </button>
+                            <button
+                              title="Exporter le recu en Excel"
+                              onClick={() => exportReceiptExcel(r)}
+                              className="ml-1 p-1.5 rounded bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/40 transition-colors"
+                            >
+                              <ExcelIcon className="w-3.5 h-3.5" />
+                            </button>
                           </td>
                         </tr>
                       ))}
@@ -1484,10 +1844,16 @@ export function PaymentsPage() {
                 {/* Bouton impression par parent */}
                 <div className="mt-4 flex justify-end">
                   <button
-                    onClick={() => printHtml(buildReportHtml(payments, parent))}
+                    onClick={() => exportPaymentsExcel(`etat-${subject.toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}`, payments, subject)}
+                    className="mr-3 flex items-center gap-2 px-4 py-2 rounded-lg border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-all text-sm font-semibold"
+                  >
+                    <ExcelIcon /> Exporter l'état de {subject}
+                  </button>
+                  <button
+                    onClick={() => printHtml(buildReportHtml(payments, subject))}
                     className="flex items-center gap-2 px-4 py-2 rounded-lg border border-brand-500/40 text-brand-300 hover:bg-brand-600/20 transition-all text-sm font-semibold"
                   >
-                    <PrintIcon /> Imprimer l'état de {parent}
+                    <PrintIcon /> Imprimer l'état de {subject}
                   </button>
                 </div>
               </div>
@@ -1496,7 +1862,7 @@ export function PaymentsPage() {
         )}
 
         {/* Total general */}
-        {Object.keys(byParent).length > 0 && (
+        {Object.keys(bySubject).length > 0 && (
           <div className="card flex items-center justify-between border-2 border-brand-500/30">
             <p className="text-sm font-bold text-ink-dim uppercase tracking-widest">
               {reportSearch ? `Total - ${reportSearch}` : "TOTAL GENERAL"}
@@ -1541,8 +1907,8 @@ export function PaymentsPage() {
       </div>
 
       {paymentDetailsDialogOpen ? createPortal((
-        <div className="edupay-payment-modal-backdrop fixed inset-0 z-[999] grid place-items-center overflow-y-auto px-4 py-8">
-          <div className="edupay-payment-modal-panel w-full max-w-5xl overflow-y-auto p-5 sm:p-6">
+        <div className="edupay-payment-modal-backdrop edupay-scrollbar fixed inset-0 z-[999] grid place-items-center overflow-y-auto px-4 py-8">
+          <div className="edupay-payment-modal-panel edupay-scrollbar w-full max-w-5xl overflow-y-auto p-5 sm:p-6">
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.2em] text-brand-200">{t("paymentDetails")}</p>
@@ -1628,6 +1994,57 @@ export function PaymentsPage() {
               </div>
             )}
 
+            {selectedParentFinance && (
+              <div className="lg:col-span-2 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">Finance context</p>
+                    <h3 className="mt-1 text-lg font-bold text-white">{selectedParentFinance.profile.activeTuitionPlan}</h3>
+                    <p className="mt-1 text-sm text-cyan-100">
+                      Paid {fmtUsd(selectedParentFinance.profile.totalPaid)} · Debt {fmtUsd(selectedParentFinance.profile.totalDebt)} · Reductions {fmtUsd(selectedParentFinance.profile.totalReduction)}
+                    </p>
+                    <p className="mt-1 text-xs text-cyan-100/85">
+                      Completion {selectedParentFinance.profile.completionRate.toFixed(1)}% · {selectedParentFinance.profile.overdueInstallments} echeance(s) en retard.
+                    </p>
+                  </div>
+                  {financeLoading && <p className="text-xs font-semibold text-cyan-100">Actualisation du profil finance...</p>}
+                </div>
+
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {financeInstallmentSuggestions.length === 0 ? (
+                    <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3 text-sm text-cyan-100">Aucune echeance ouverte pour la selection actuelle.</div>
+                  ) : financeInstallmentSuggestions.map((suggestion) => (
+                    <button
+                      key={`${suggestion.studentId}-${suggestion.label}-${suggestion.dueDate}`}
+                      type="button"
+                      onClick={() => {
+                        setField("amount", suggestion.balance.toFixed(5));
+                        const nextReason = buildReasonForStudents(suggestion.label, suggestion.studentName);
+                        lastAutoReasonRef.current = nextReason;
+                        setField("reason", nextReason);
+                      }}
+                      className={`rounded-xl border p-3 text-left transition-all ${suggestion.isOverdue ? "border-red-500/30 bg-red-500/10" : "border-white/10 bg-slate-950/30 hover:border-cyan-400/40"}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{suggestion.studentName}</p>
+                          <p className="mt-1 text-xs text-cyan-100/85">{suggestion.label}</p>
+                          <p className="mt-1 text-[11px] text-ink-dim">{suggestion.planName} · {suggestion.paymentOptionLabel}</p>
+                        </div>
+                        <span className={`rounded-full px-2 py-1 text-[11px] font-bold uppercase tracking-wide ${suggestion.isOverdue ? "bg-red-500/15 text-red-200" : "bg-cyan-500/15 text-cyan-100"}`}>
+                          {suggestion.isOverdue ? "Retard" : suggestion.status}
+                        </span>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between text-xs text-cyan-100/85">
+                        <span>Due {new Date(suggestion.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}</span>
+                        <span className="font-mono font-bold text-white">{fmtUsd(suggestion.balance)}</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Nom complet du parent */}
             <div className="space-y-1.5">
               <label className="text-sm font-semibold text-ink-dim uppercase tracking-wide">
@@ -1648,6 +2065,31 @@ export function PaymentsPage() {
               {fieldErrors.parentFullName && (
                 <p className="text-xs text-danger">{fieldErrors.parentFullName}</p>
               )}
+            </div>
+
+            <div className="lg:col-span-2 rounded-2xl border border-brand-500/20 bg-gradient-to-r from-brand-500/10 via-slate-950/60 to-transparent p-4">
+              <p className="text-[11px] font-black uppercase tracking-[0.22em] text-brand-200">Identite du paiement</p>
+              <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">Paiement pour</p>
+                  <p className="mt-1 truncate font-display text-2xl font-bold text-white">
+                    {selectedStudentDisplayName || "Selectionnez l'eleve concerne"}
+                  </p>
+                  <p className="mt-2 text-sm text-ink-dim">
+                    {form.parentFullName.trim()
+                      ? `Parent concerne: ${form.parentFullName.trim()}`
+                      : "Le parent lie au paiement apparaitra ici comme information secondaire."}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-white/10 bg-slate-950/50 px-4 py-3 text-sm text-ink-dim">
+                  <p className="font-semibold text-white">Rendu du reçu</p>
+                  <p className="mt-1">{getPaymentAudienceText({
+                    paymentSubjectName: selectedStudentDisplayName,
+                    studentNames: selectedStudents.map((student) => student.fullName),
+                    parentFullName: form.parentFullName
+                  })}</p>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1674,7 +2116,11 @@ export function PaymentsPage() {
                 <button
                   key={reason}
                   type="button"
-                  onClick={() => setField("reason", reason)}
+                  onClick={() => {
+                    const nextReason = buildReasonForStudents(reason, selectedStudentDisplayName);
+                    lastAutoReasonRef.current = nextReason;
+                    setField("reason", nextReason);
+                  }}
                   className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                     form.reason === reason
                       ? "border-brand-500 bg-brand-500/20 text-white"

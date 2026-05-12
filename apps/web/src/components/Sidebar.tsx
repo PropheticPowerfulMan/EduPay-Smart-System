@@ -11,8 +11,11 @@ export function Sidebar() {
     ? [{ to: "/parent", label: t("navParent"), icon: "P" }]
     : [
         { to: "/", label: t("navDashboard"), icon: "D" },
+        { to: "/operations", label: t("navOperations"), icon: "O" },
+        { to: "/reports", label: t("navReports"), icon: "R" },
         { to: "/payments", label: t("navPayments"), icon: "$" },
         { to: "/parent-payments", label: t("navParentPayments"), icon: "S" },
+        { to: "/students", label: t("navStudents"), icon: "E" },
         { to: "/parents", label: t("navParents"), icon: "G" },
         { to: "/ai", label: t("navAI"), icon: "AI" }
       ];
@@ -43,7 +46,7 @@ export function Sidebar() {
     </nav>
 
     <aside className="hidden md:flex md:w-72 md:shrink-0 md:flex-col">
-      <div className="glass sticky top-20 h-[calc(100vh-6.5rem)] space-y-6 overflow-hidden rounded-3xl p-4">
+      <div className="glass sticky top-20 flex h-[calc(100vh-6.5rem)] flex-col gap-6 overflow-hidden rounded-3xl p-4">
         <div className="pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full border border-brand-300/20 bg-brand-500/10 blur-sm" />
         <div className="relative space-y-4">
           <div className="flex items-center gap-3 rounded-2xl border border-brand-300/20 bg-white/[0.06] p-3 transition-all duration-200 hover:border-brand-300/40 hover:bg-brand-500/10">
@@ -60,7 +63,7 @@ export function Sidebar() {
           <div className="h-px bg-gradient-to-r from-transparent via-brand-300/35 to-transparent" />
         </div>
 
-        <nav className="relative flex-1 space-y-3">
+        <nav className="edupay-scrollbar relative flex min-h-0 flex-1 flex-col space-y-3 overflow-y-auto pr-1">
           <p className="px-2 font-display text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">{t("navigation")}</p>
           <div className="space-y-1">
             {links.map((link) => (

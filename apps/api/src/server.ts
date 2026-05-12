@@ -13,6 +13,8 @@ import { analyticsRouter } from "./modules/analytics/router";
 import { aiRouter } from "./modules/ai/router";
 import { classRouter } from "./modules/classes/router";
 import { exportRouter } from "./modules/exports/router";
+import { financeRouter } from "./modules/finance/router";
+import { expenseRouter } from "./modules/expenses/router";
 import { sharedDirectoryRouter } from "./modules/shared-directory/router";
 import { startOrbitOutboxWorker } from "./integrations/orbit";
 
@@ -66,6 +68,8 @@ app.use("/api/analytics", analyticsRouter);
 app.use("/api/ai", aiRouter);
 app.use("/api/classes", classRouter);
 app.use("/api/export", exportRouter);
+app.use("/api/finance", financeRouter);
+app.use("/api/expenses", expenseRouter);
 app.use("/api/shared-directory", sharedDirectoryRouter);
 
 const stopOrbitOutboxWorker = startOrbitOutboxWorker();

@@ -8,12 +8,14 @@ import { env } from "../../config/env";
 import { authGuard, AuthenticatedRequest } from "../../middlewares/auth";
 import { sendEmail } from "../../utils/messaging";
 
-function generateAccessCode(role: "ADMIN" | "ACCOUNTANT" | "PARENT") {
+type StaffRole = "SUPER_ADMIN" | "OWNER" | "ADMIN" | "FINANCIAL_MANAGER" | "ACCOUNTANT" | "CASHIER" | "HR_MANAGER" | "AUDITOR" | "PARENT";
+
+function generateAccessCode(role: StaffRole) {
   const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
   return `ACC-${role.slice(0, 3)}-${suffix}`;
 }
 
-async function generateUniqueAccessCode(role: "ADMIN" | "ACCOUNTANT" | "PARENT") {
+async function generateUniqueAccessCode(role: StaffRole) {
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const accessCode = generateAccessCode(role);
     const existing = await prisma.user.findUnique({ where: { accessCode } });
@@ -27,7 +29,7 @@ const registerSchema = z.object({
   fullName: z.string().min(3),
   email: z.string().email(),
   password: z.string().min(8),
-  role: z.enum(["ADMIN", "ACCOUNTANT", "PARENT"]),
+  role: z.enum(["SUPER_ADMIN", "OWNER", "ADMIN", "FINANCIAL_MANAGER", "ACCOUNTANT", "CASHIER", "HR_MANAGER", "AUDITOR", "PARENT"]),
   schoolId: z.string().min(1)
 });
 
@@ -54,7 +56,7 @@ const demoUsers = [
   }
 ];
 
-function buildToken(user: { id: string; role: "ADMIN" | "ACCOUNTANT" | "PARENT"; schoolId: string }) {
+function buildToken(user: { id: string; role: StaffRole; schoolId: string }) {
   return jwt.sign({ sub: user.id, role: user.role, schoolId: user.schoolId }, env.JWT_SECRET, {
     expiresIn: env.JWT_EXPIRES_IN as any
   });

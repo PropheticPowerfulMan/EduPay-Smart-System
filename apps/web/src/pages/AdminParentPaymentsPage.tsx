@@ -319,7 +319,7 @@ export function AdminParentPaymentsPage() {
             />
           </div>
 
-          <div className="mt-4 max-h-[680px] space-y-2 overflow-y-auto pr-1">
+          <div className="edupay-scrollbar mt-4 max-h-[680px] space-y-2 overflow-y-auto pr-1">
             {filteredParents.map((row) => (
               <button
                 key={row.parent.id}
@@ -489,7 +489,7 @@ export function AdminParentPaymentsPage() {
 
               <div className="card glass min-w-0 overflow-hidden border border-white/10 shadow-lg">
                 <h3 className="font-display text-xl font-bold text-white">{t("detailedHistory")}</h3>
-                <div className="mt-4 overflow-x-auto">
+                <div className="edupay-scrollbar mt-4 overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-slate-700">
