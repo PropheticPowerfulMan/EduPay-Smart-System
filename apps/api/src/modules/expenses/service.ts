@@ -29,85 +29,106 @@ type DefaultCategorySeed = {
 
 const DEFAULT_EXPENSE_CATEGORIES: DefaultCategorySeed[] = [
   {
-    slug: "administrative-expenses",
-    name: "Administrative Expenses",
+    slug: "charges-exploitation-60-achat",
+    name: "60 Achat",
     type: ExpenseCategoryType.ADMINISTRATIVE,
     subcategories: [
-      { slug: "office-supplies", name: "Office supplies" },
-      { slug: "printing", name: "Printing" },
-      { slug: "subscriptions", name: "Subscriptions" },
-      { slug: "internet", name: "Internet" },
-      { slug: "communication", name: "Communication" }
+      { slug: "60100-achats-fournitures-bureau-consommables-informatiques", name: "60100 Achats fournitures de bureau et consommables informatiques" },
+      { slug: "60101-achats-fournitures-entretiens", name: "60101 Achats fournitures d'entretiens" },
+      { slug: "60102-fournitures-non-stockables", name: "60102 Fournitures non stockables (eau, électricité et autres énergies)" },
+      { slug: "60103-achats-petit-materiel-outillage", name: "60103 Achats petit matériel et outillage" },
+      { slug: "60104-achats-carburant-lubrifiant", name: "60104 Achats carburant et lubrifiant véhicule et générateur" }
     ]
   },
   {
-    slug: "academic-expenses",
-    name: "Academic Expenses",
-    type: ExpenseCategoryType.ACADEMIC,
-    subcategories: [
-      { slug: "books", name: "Books" },
-      { slug: "laboratory-equipment", name: "Laboratory equipment" },
-      { slug: "educational-materials", name: "Educational materials" },
-      { slug: "school-activities", name: "School activities" }
-    ]
-  },
-  {
-    slug: "human-resources",
-    name: "Human Resources",
-    type: ExpenseCategoryType.HUMAN_RESOURCES,
-    subcategories: [
-      { slug: "teacher-salaries", name: "Teacher salaries" },
-      { slug: "staff-salaries", name: "Staff salaries" },
-      { slug: "bonuses", name: "Bonuses" },
-      { slug: "incentives", name: "Incentives" },
-      { slug: "payroll-management", name: "Payroll management" }
-    ]
-  },
-  {
-    slug: "infrastructure-maintenance",
-    name: "Infrastructure & Maintenance",
-    type: ExpenseCategoryType.INFRASTRUCTURE,
-    subcategories: [
-      { slug: "repairs", name: "Repairs" },
-      { slug: "electricity", name: "Electricity" },
-      { slug: "water", name: "Water" },
-      { slug: "cleaning", name: "Cleaning" },
-      { slug: "security", name: "Security" },
-      { slug: "construction", name: "Construction" }
-    ]
-  },
-  {
-    slug: "transport-logistics",
-    name: "Transportation & Logistics",
+    slug: "charges-exploitation-61-transports",
+    name: "61 Transports",
     type: ExpenseCategoryType.TRANSPORT,
     subcategories: [
-      { slug: "fuel", name: "Fuel" },
-      { slug: "school-transport", name: "School transport" },
-      { slug: "deliveries", name: "Deliveries" },
-      { slug: "logistics-operations", name: "Logistics operations" }
+      { slug: "60100-voyage-deplacement", name: "60100 Voyage et déplacement" }
     ]
   },
   {
-    slug: "technology-it",
-    name: "Technology & IT",
-    type: ExpenseCategoryType.TECHNOLOGY,
+    slug: "charges-exploitation-62-services-exterieurs",
+    name: "62 Services extérieurs",
+    type: ExpenseCategoryType.ADMINISTRATIVE,
     subcategories: [
-      { slug: "software", name: "Software" },
-      { slug: "servers", name: "Servers" },
-      { slug: "hosting", name: "Hosting" },
-      { slug: "licenses", name: "Licenses" },
-      { slug: "equipment-purchases", name: "Equipment purchases" }
+      { slug: "62100-sous-traitance-generale", name: "62100 Sous traitance générale" },
+      { slug: "62101-location-charge-locative", name: "62101 Location et charge locative" },
+      { slug: "62102-entretien-reparation", name: "62102 Entretien et réparation (véhicules et autres)" },
+      { slug: "62103-primes-assurance", name: "62103 Primes d'assurance (véhicules bâtiment)" },
+      { slug: "62104-divers-services-exterieurs", name: "62104 Divers services extérieurs" }
     ]
   },
   {
-    slug: "special-institutional-expenses",
-    name: "Special Institutional Expenses",
+    slug: "charges-exploitation-63-autres-services-exterieurs",
+    name: "63 Autres services extérieurs",
+    type: ExpenseCategoryType.ADMINISTRATIVE,
+    subcategories: [
+      { slug: "63100-honoraire-avocat-conseil", name: "63100 Honoraire Avocat conseil" },
+      { slug: "63101-honoraire-cabinet-audit-externe", name: "63101 Honoraire Cabinet audit externe" },
+      { slug: "63102-honoraires-autres-consultants", name: "63102 Honoraires Autres consultants" },
+      { slug: "63105-frais-postaux-telecommunications", name: "63105 Frais postaux et de télécommunications (courrier, téléphone, internet)" },
+      { slug: "63106-services-bancaires-autres", name: "63106 Services bancaires et autres" }
+    ]
+  },
+  {
+    slug: "charges-exploitation-64-impots-taxes",
+    name: "64 Impôts et taxes",
+    type: ExpenseCategoryType.ADMINISTRATIVE,
+    subcategories: [
+      { slug: "64100-vignettes-assurances-controle-technique", name: "64100 Vignettes, Assurances, contrôle technique..." },
+      { slug: "64101-autres-impots-taxes", name: "64101 Autres impôts et taxes" }
+    ]
+  },
+  {
+    slug: "charges-exploitation-65-autres-charges-gestion-courante",
+    name: "65 Autres charges de gestion courante",
+    type: ExpenseCategoryType.ADMINISTRATIVE,
+    subcategories: [
+      { slug: "65100-frais-representation-reunions", name: "65100 Frais de représentation et des réunions" },
+      { slug: "65101-jetons-presence-remunerations-administrateurs", name: "65101 Jetons de présence et autres rémunérations d'administrateurs" },
+      { slug: "65102-autres-frais-tenue-ca", name: "65102 Autres frais tenue CA (location salle, rafraîchissement et autres)" }
+    ]
+  },
+  {
+    slug: "charges-exploitation-66-charges-personnel",
+    name: "66 Charges de personnel",
+    type: ExpenseCategoryType.HUMAN_RESOURCES,
+    subcategories: [
+      { slug: "66-remuneration-personnels", name: "66 Rémunération des personnels" },
+      { slug: "66110-charges-sociales", name: "66110 Charges sociales (INSS QPP, INPP, ONEM)" },
+      { slug: "66111-soins-medicaux-personnel", name: "66111 Soins médicaux personnel" },
+      { slug: "66112-autres-charges-personnel", name: "66112 Autres charges de personnel (Coût formation personnel)" }
+    ]
+  },
+  {
+    slug: "charges-financieres-67",
+    name: "67 Charges financières",
+    type: ExpenseCategoryType.ADMINISTRATIVE,
+    subcategories: [
+      { slug: "67100-interets-bancaires-tresorerie", name: "67100 Intérêts bancaires et sur opérations de trésorerie" }
+    ]
+  },
+  {
+    slug: "charges-exceptionnelles-83",
+    name: "83 Charges exceptionnelles",
     type: ExpenseCategoryType.SPECIAL_INSTITUTIONAL,
     ownerApprovalRequired: true,
     subcategories: [
-      { slug: "emergency-expenditures", name: "Emergency expenditures" },
-      { slug: "owner-approved-spending", name: "Owner-approved spending" },
-      { slug: "strategic-investments", name: "Strategic investments" }
+      { slug: "83100-operations-gestion-penalites-amendes", name: "83100 Sur opérations de gestion (pénalités, amandes fiscales et penales)" },
+      { slug: "83100-autres-charges-exceptionnelles", name: "83100 Autres charges exceptionnelles" }
+    ]
+  },
+  {
+    slug: "investissement-2",
+    name: "2 Investissement",
+    type: ExpenseCategoryType.INFRASTRUCTURE,
+    ownerApprovalRequired: true,
+    subcategories: [
+      { slug: "20100-batiment-administratif-propre", name: "20100 Bâtiment administratif propre" },
+      { slug: "20101-mobilier-materiels-informatiques-classe-bureau", name: "20101 Mobilier, matériels informatiques et autres matériels de Classe & bureau" },
+      { slug: "20102-telephone-interne", name: "20102 Téléphone interne" }
     ]
   }
 ];

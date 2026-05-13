@@ -173,7 +173,10 @@ async function generateReceiptQrSvgMarkup(r: PaymentRecord): Promise<string> {
 
   return svg
     .replace(/<\?xml[^>]*\?>\s*/i, "")
-    .replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="QR code de transaction EduPay" ');
+    .replace(
+      "<svg ",
+      '<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="QR code de transaction EduPay" preserveAspectRatio="xMidYMid meet" style="display:block;width:100%;height:100%;max-width:100%;max-height:100%;" '
+    );
 }
 
 function analyzeReceiptRisk(r: Pick<PaymentRecord, "parentFullName" | "paymentSubjectName" | "studentNames" | "reason" | "amount" | "status" | "method">) {
@@ -1099,8 +1102,8 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
                 <p className="text-xs font-bold text-slate-700">Sceau: <span className="font-mono text-slate-950">{security.sealCode}</span></p>
               </div>
               {qrMarkup ? (
-                <div className="w-28 border border-slate-900 bg-white p-1.5">
-                  <div className="h-24 w-24" dangerouslySetInnerHTML={{ __html: qrMarkup }} />
+                <div className="w-28 overflow-hidden border border-slate-900 bg-white p-1.5">
+                  <div className="h-24 w-24 overflow-hidden [&_svg]:block [&_svg]:h-full [&_svg]:w-full" dangerouslySetInnerHTML={{ __html: qrMarkup }} />
                   <p className="mt-1 text-center text-[10px] font-black leading-4 text-slate-700">Vérifier ce reçu<br />{receipt.transactionNumber}</p>
                 </div>
               ) : (

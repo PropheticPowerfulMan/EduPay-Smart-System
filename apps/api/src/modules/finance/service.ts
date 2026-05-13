@@ -1,7 +1,11 @@
 import {
   AgreementStatus,
+  DebtStatus,
+  FinancialAlertType,
   GradeGroup,
   InstallmentStatus,
+  NotificationChannel,
+  NotificationType,
   PaymentOptionType,
   PaymentStatus,
   Prisma,
@@ -10,6 +14,7 @@ import {
 } from "@prisma/client";
 import dayjs from "dayjs";
 import { prisma } from "../../prisma";
+import { sendEmail, sendSms } from "../../utils/messaging";
 
 type DbClient = typeof prisma | Prisma.TransactionClient;
 
@@ -305,6 +310,70 @@ function roundCurrency(value: number) {
   return Math.round((value + Number.EPSILON) * 100000) / 100000;
 }
 
+function formatAlertDueDate(value: string) {
+  return dayjs(value).format("DD/MM/YYYY");
+}
+
+function formatAlertCurrency(value: number) {
+  return `$ ${roundCurrency(value).toFixed(2)} USD`;
+}
+
+function buildOverdueAlertSeries(input: {
+  parentId: string;
+  academicYearName: string;
+  activeTuitionPlan: string;
+  overdueInstallments: SnapshotInstallment[];
+  totalDebt: number;
+}) {
+  if (input.overdueInstallments.length === 0) return [];
+
+  const sortedInstallments = [...input.overdueInstallments].sort(
+    (left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime()
+  );
+  const firstInstallment = sortedInstallments[0];
+  const mostLateInstallment = sortedInstallments.reduce((latest, current) => {
+    const latestDelay = Math.max(dayjs().startOf("day").diff(dayjs(latest.dueDate).startOf("day"), "day"), 0);
+    const currentDelay = Math.max(dayjs().startOf("day").diff(dayjs(current.dueDate).startOf("day"), "day"), 0);
+    return currentDelay > latestDelay ? current : latest;
+  }, firstInstallment);
+
+  const firstDelayDays = Math.max(dayjs().startOf("day").diff(dayjs(firstInstallment.dueDate).startOf("day"), "day"), 0);
+  const maxDelayDays = Math.max(dayjs().startOf("day").diff(dayjs(mostLateInstallment.dueDate).startOf("day"), "day"), 0);
+  const planLabel = input.activeTuitionPlan !== "No active tuition plan"
+    ? input.activeTuitionPlan
+    : PAYMENT_OPTION_LABELS[firstInstallment.paymentOptionType] ?? "plan de tuition";
+
+  return [
+    {
+      id: `derived-overdue-1-${input.parentId}`,
+      type: "OVERDUE_INSTALLMENT_REMINDER_1",
+      title: "Alerte 1 - echeance de tuition depassee",
+      message: `${firstInstallment.studentName} a depasse l'echeance \"${firstInstallment.label}\" du ${formatAlertDueDate(firstInstallment.dueDate)} selon le plan ${planLabel}. Solde en retard: ${formatAlertCurrency(firstInstallment.balance)}.`,
+      severity: "MEDIUM",
+      status: "OPEN",
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: `derived-overdue-2-${input.parentId}`,
+      type: "OVERDUE_INSTALLMENT_REMINDER_2",
+      title: "Alerte 2 - regularisation attendue immediatement",
+      message: `${input.overdueInstallments.length} echeance(s) sont en retard pour ${input.academicYearName}, avec jusqu'a ${maxDelayDays} jour(s) de depassement. Dette totale suivie: ${formatAlertCurrency(input.totalDebt)}.`,
+      severity: input.overdueInstallments.length >= 2 || maxDelayDays >= 14 ? "HIGH" : "MEDIUM",
+      status: "OPEN",
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: `derived-overdue-3-${input.parentId}`,
+      type: "OVERDUE_INSTALLMENT_REMINDER_3",
+      title: "Alerte 3 - dossier remonte au financier",
+      message: `Le parent et le financier doivent traiter ce retard maintenant. Premiere echeance non reglee depuis ${firstDelayDays} jour(s), derniere echeance critique ${mostLateInstallment.label} pour ${mostLateInstallment.studentName}.`,
+      severity: "HIGH",
+      status: "OPEN",
+      createdAt: new Date().toISOString()
+    }
+  ];
+}
+
 function parseAcademicYearStart(name: string) {
   const match = name.match(/(\d{4})/);
   return match ? Number(match[1]) : 2026;
@@ -476,6 +545,70 @@ function deriveInstallmentStatus(amountDue: number, amountPaid: number, dueDate:
   return InstallmentStatus.SCHEDULED;
 }
 
+const OVERDUE_REMINDER_STAGES = [
+  { stage: 1, minDelayDays: 1, minDaysAfterPreviousNotice: 0, severity: "MEDIUM" },
+  { stage: 2, minDelayDays: 7, minDaysAfterPreviousNotice: 6, severity: "HIGH" },
+  { stage: 3, minDelayDays: 14, minDaysAfterPreviousNotice: 7, severity: "CRITICAL" }
+] as const;
+
+function buildOverdueReminderMarker(installmentId: string, stage: number) {
+  return `[OVERDUE_INSTALLMENT:${installmentId}:STAGE:${stage}]`;
+}
+
+function buildOverdueReminderMessages(input: {
+  stage: number;
+  parentName: string;
+  studentName: string;
+  installmentLabel: string;
+  dueDate: Date;
+  planName: string;
+  balance: number;
+  amountDue: number;
+  amountPaid: number;
+  delayDays: number;
+  marker: string;
+}) {
+  const amount = formatAlertCurrency(input.balance);
+  const dueDate = dayjs(input.dueDate).format("DD/MM/YYYY");
+  const subject = input.stage === 3
+    ? "Avertissement 3/3 - retard de tuition critique"
+    : `Rappel ${input.stage}/3 - echeance de tuition depassee`;
+  const emailBody = [
+    `Bonjour ${input.parentName},`,
+    "",
+    `Votre echeance "${input.installmentLabel}" pour ${input.studentName} est en retard depuis ${input.delayDays} jour(s).`,
+    `Plan de tuition: ${input.planName}`,
+    `Date limite: ${dueDate}`,
+    `Montant attendu: ${formatAlertCurrency(input.amountDue)}`,
+    `Montant deja paye: ${formatAlertCurrency(input.amountPaid)}`,
+    `Solde a regulariser: ${amount}`,
+    "",
+    "Merci de regulariser ce paiement ou de contacter le service financier si un arrangement est necessaire.",
+    "",
+    `Reference EduPay: ${input.marker}`
+  ].join("\n");
+  const smsBody = `EduPay ${input.stage}/3: echeance ${input.installmentLabel} en retard pour ${input.studentName}. Solde: ${amount}. Date limite: ${dueDate}. Ref ${input.marker}`;
+  return { subject, emailBody, smsBody };
+}
+
+function canSendOverdueStage(input: {
+  stage: number;
+  delayDays: number;
+  logs: Array<{ content: string; createdAt: Date }>;
+}) {
+  const stageConfig = OVERDUE_REMINDER_STAGES.find((entry) => entry.stage === input.stage);
+  if (!stageConfig || input.delayDays < stageConfig.minDelayDays) return false;
+  if (input.logs.some((log) => log.content.includes(`:STAGE:${input.stage}]`))) return false;
+  if (input.stage === 1) return true;
+
+  const previousLog = input.logs
+    .filter((log) => log.content.includes(`:STAGE:${input.stage - 1}]`))
+    .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0];
+  if (!previousLog) return false;
+  const daysAfterPrevious = dayjs().startOf("day").diff(dayjs(previousLog.createdAt).startOf("day"), "day");
+  return daysAfterPrevious >= stageConfig.minDaysAfterPreviousNotice;
+}
+
 function calculateBehaviorScore(input: { expected: number; paid: number; overdueInstallments: number; delayedPayments: number; carriedOverDebt: number }) {
   const coverage = input.expected > 0 ? (input.paid / input.expected) * 100 : 100;
   return roundCurrency(Math.max(0, Math.min(100,
@@ -521,9 +654,219 @@ function groupCurrencyTotals<T extends string | number>(entries: Array<{ key: T;
   return Array.from(bucket.entries()).map(([key, amount]) => ({ key, amount }));
 }
 
+export async function runOverdueTuitionReminderSweep(input: {
+  schoolId: string;
+  parentId?: string;
+  academicYearName?: string;
+}) {
+  const { academicYear } = await getTargetAcademicYear(input.schoolId, input.academicYearName);
+  const now = new Date();
+  const installments = await prisma.paymentInstallment.findMany({
+    where: {
+      schoolId: input.schoolId,
+      academicYearId: academicYear.id,
+      parentId: input.parentId,
+      dueDate: { lt: now },
+      status: { notIn: [InstallmentStatus.PAID, InstallmentStatus.WAIVED, InstallmentStatus.CANCELLED] }
+    },
+    include: {
+      parent: true,
+      student: true,
+      tuitionPlan: true,
+      financialAgreement: true,
+      financialProfile: true,
+      sourceDebts: true
+    },
+    orderBy: [{ dueDate: "asc" }, { sequence: "asc" }]
+  });
+
+  const result = {
+    scannedInstallments: installments.length,
+    overdueInstallments: 0,
+    debtsUpdated: 0,
+    parentEmails: 0,
+    parentSms: 0,
+    financeAlerts: 0
+  };
+
+  for (const installment of installments) {
+    if (!installment.parentId || !installment.parent) continue;
+
+    const amountDue = roundCurrency(Number(installment.amountDue || 0));
+    const amountPaid = roundCurrency(Number(installment.amountPaid || 0));
+    const balance = roundCurrency(Math.max(amountDue - amountPaid, 0));
+    if (balance <= 0) continue;
+
+    result.overdueInstallments += 1;
+    if (installment.status !== InstallmentStatus.OVERDUE) {
+      await prisma.paymentInstallment.update({
+        where: { id: installment.id },
+        data: { status: InstallmentStatus.OVERDUE }
+      });
+    }
+
+    const existingDebt = installment.sourceDebts.find((debt) => debt.sourceInstallmentId === installment.id);
+    const debtStatus = amountPaid > 0 ? DebtStatus.PARTIALLY_PAID : DebtStatus.OPEN;
+    const debt = existingDebt
+      ? await prisma.debt.update({
+        where: { id: existingDebt.id },
+        data: {
+          amountRemaining: balance,
+          status: debtStatus,
+          settledAt: null,
+          dueDate: installment.dueDate,
+          metadata: {
+            source: "TUITION_PLAN_OVERDUE_SWEEP",
+            lastCheckedAt: now.toISOString(),
+            delayDays: Math.max(dayjs(now).startOf("day").diff(dayjs(installment.dueDate).startOf("day"), "day"), 0)
+          }
+        }
+      })
+      : await prisma.debt.create({
+        data: {
+          schoolId: input.schoolId,
+          parentId: installment.parentId,
+          studentId: installment.studentId,
+          academicYearId: academicYear.id,
+          financialProfileId: installment.financialProfileId,
+          sourceInstallmentId: installment.id,
+          title: `${installment.student?.fullName ?? installment.parent.fullName} tuition overdue balance`,
+          reason: `Overdue tuition installment: ${installment.label}`,
+          originalAmount: amountDue,
+          amountRemaining: balance,
+          status: debtStatus,
+          dueDate: installment.dueDate,
+          metadata: {
+            source: "TUITION_PLAN_OVERDUE_SWEEP",
+            createdFromPlan: installment.tuitionPlan?.code ?? installment.financialAgreement?.title ?? "CUSTOM",
+            delayDays: Math.max(dayjs(now).startOf("day").diff(dayjs(installment.dueDate).startOf("day"), "day"), 0)
+          }
+        }
+      });
+    result.debtsUpdated += 1;
+
+    const delayDays = Math.max(dayjs(now).startOf("day").diff(dayjs(installment.dueDate).startOf("day"), "day"), 0);
+    const logs = await prisma.notificationLog.findMany({
+      where: {
+        schoolId: input.schoolId,
+        parentId: installment.parentId,
+        type: NotificationType.OVERDUE_INSTALLMENT,
+        content: { contains: `[OVERDUE_INSTALLMENT:${installment.id}:STAGE:` }
+      },
+      orderBy: { createdAt: "desc" }
+    });
+
+    for (const stageConfig of OVERDUE_REMINDER_STAGES) {
+      if (!canSendOverdueStage({ stage: stageConfig.stage, delayDays, logs })) continue;
+
+      const marker = buildOverdueReminderMarker(installment.id, stageConfig.stage);
+      const messages = buildOverdueReminderMessages({
+        stage: stageConfig.stage,
+        parentName: installment.parent.fullName,
+        studentName: installment.student?.fullName ?? "Compte parent",
+        installmentLabel: installment.label,
+        dueDate: installment.dueDate,
+        planName: installment.tuitionPlan?.name ?? installment.financialAgreement?.title ?? PAYMENT_OPTION_LABELS[PaymentOptionType.CUSTOM],
+        balance,
+        amountDue,
+        amountPaid,
+        delayDays,
+        marker
+      });
+
+      if (installment.parent.email) {
+        const status = await sendEmail({
+          to: installment.parent.email,
+          subject: messages.subject,
+          text: messages.emailBody
+        });
+        await prisma.notificationLog.create({
+          data: {
+            schoolId: input.schoolId,
+            parentId: installment.parentId,
+            type: NotificationType.OVERDUE_INSTALLMENT,
+            language: installment.parent.preferredLanguage || "fr",
+            channel: NotificationChannel.EMAIL,
+            content: messages.emailBody,
+            status
+          }
+        });
+        result.parentEmails += 1;
+      }
+
+      if (installment.parent.phone) {
+        const status = await sendSms({ to: installment.parent.phone, text: messages.smsBody });
+        await prisma.notificationLog.create({
+          data: {
+            schoolId: input.schoolId,
+            parentId: installment.parentId,
+            type: NotificationType.OVERDUE_INSTALLMENT,
+            language: installment.parent.preferredLanguage || "fr",
+            channel: NotificationChannel.SMS,
+            content: messages.smsBody,
+            status
+          }
+        });
+        result.parentSms += 1;
+      }
+
+      await prisma.notificationLog.create({
+        data: {
+          schoolId: input.schoolId,
+          parentId: installment.parentId,
+          type: NotificationType.OVERDUE_INSTALLMENT,
+          language: installment.parent.preferredLanguage || "fr",
+          channel: NotificationChannel.DASHBOARD,
+          content: `Finance dashboard alert ${marker}: ${messages.subject}`,
+          status: "OPEN"
+        }
+      });
+
+      const existingAlert = await prisma.financialAlert.findFirst({
+        where: {
+          schoolId: input.schoolId,
+          parentId: installment.parentId,
+          installmentId: installment.id,
+          type: FinancialAlertType.OVERDUE_INSTALLMENT,
+          title: { contains: `Avertissement ${stageConfig.stage}/3` }
+        }
+      });
+      if (!existingAlert) {
+        await prisma.financialAlert.create({
+          data: {
+            schoolId: input.schoolId,
+            parentId: installment.parentId,
+            academicYearId: academicYear.id,
+            financialProfileId: installment.financialProfileId,
+            installmentId: installment.id,
+            debtId: debt.id,
+            type: FinancialAlertType.OVERDUE_INSTALLMENT,
+            title: `Avertissement ${stageConfig.stage}/3 - retard tuition`,
+            message: `${installment.parent.fullName} a ${delayDays} jour(s) de retard sur "${installment.label}" (${installment.student?.fullName ?? "compte parent"}). Solde: ${formatAlertCurrency(balance)}. Le parent a ete notifie par email/SMS lorsque les coordonnees existent.`,
+            severity: stageConfig.severity,
+            status: "OPEN",
+            channel: NotificationChannel.DASHBOARD,
+            supportedChannels: [NotificationChannel.DASHBOARD, NotificationChannel.EMAIL, NotificationChannel.SMS]
+          }
+        });
+        result.financeAlerts += 1;
+      }
+
+      break;
+    }
+  }
+
+  return result;
+}
+
 export async function getParentFinancialSnapshot(input: { schoolId: string; parentId: string; academicYearName?: string }) {
   const { academicYear, plans } = await getTargetAcademicYear(input.schoolId, input.academicYearName);
-  const [parent, profile, assignments, discounts, debts, agreements, installments, alerts, payments] = await Promise.all([
+  await runOverdueTuitionReminderSweep({
+    schoolId: input.schoolId,
+    parentId: input.parentId,
+    academicYearName: academicYear.name
+  });
+  const [parent, profile, assignments, discounts, debts, agreements, installments, alerts, payments, notificationLogs] = await Promise.all([
     prisma.parent.findFirst({
       where: { id: input.parentId, schoolId: input.schoolId },
       include: { students: { include: { class: true } } }
@@ -542,6 +885,10 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
     }),
     prisma.debt.findMany({
       where: { parentId: input.parentId },
+      include: {
+        academicYear: { select: { id: true, name: true } },
+        carriedOverFromYear: { select: { id: true, name: true } }
+      },
       orderBy: [{ academicYearId: "desc" }, { createdAt: "desc" }]
     }),
     prisma.financialAgreement.findMany({
@@ -561,6 +908,11 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
       where: { parentId: input.parentId, schoolId: input.schoolId },
       include: { receipt: true, students: true, allocations: true },
       orderBy: { createdAt: "asc" }
+    }),
+    prisma.notificationLog.findMany({
+      where: { parentId: input.parentId, schoolId: input.schoolId },
+      orderBy: { createdAt: "desc" },
+      take: 50
     })
   ]);
 
@@ -796,6 +1148,11 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
       carriedOverDebt
     });
 
+  const activePlanNames = Array.from(new Set(studentRows.map((student) => student.planName))).filter(Boolean);
+  const activeTuitionPlan = activePlanNames.length === 1 ? activePlanNames[0] : activePlanNames.length > 1 ? "Mixed tuition plans" : "No active tuition plan";
+
+  const overdueInstallmentRows = finalizedInstallments.filter((installment) => installment.isOverdue);
+
   const derivedAlerts = [] as Array<{
     id: string;
     type: string;
@@ -806,18 +1163,15 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
     createdAt: string;
   }>;
 
-  if (overdueInstallments > 0) {
-    derivedAlerts.push({
-      id: `derived-overdue-${parent.id}`,
-      type: "OVERDUE_INSTALLMENT",
-      title: "Overdue installments detected",
-      message: `${overdueInstallments} installment(s) are overdue for ${academicYear.name}.`,
-      severity: overdueInstallments >= 3 ? "HIGH" : "MEDIUM",
-      status: "OPEN",
-      createdAt: new Date().toISOString()
-    });
-  }
-  if (totalDebt > Math.max(totalExpected * 0.4, 500)) {
+  if (overdueInstallmentRows.length > 0) {
+    derivedAlerts.push(...buildOverdueAlertSeries({
+      parentId: parent.id,
+      academicYearName: academicYear.name,
+      activeTuitionPlan,
+      overdueInstallments: overdueInstallmentRows,
+      totalDebt
+    }));
+  } else if (totalDebt > Math.max(totalExpected * 0.4, 500)) {
     derivedAlerts.push({
       id: `derived-debt-${parent.id}`,
       type: "ABNORMAL_DEBT_ACCUMULATION",
@@ -839,9 +1193,6 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
       createdAt: new Date().toISOString()
     });
   }
-
-  const activePlanNames = Array.from(new Set(studentRows.map((student) => student.planName))).filter(Boolean);
-  const activeTuitionPlan = activePlanNames.length === 1 ? activePlanNames[0] : activePlanNames.length > 1 ? "Mixed tuition plans" : "No active tuition plan";
 
   return {
     academicYear: {
@@ -886,7 +1237,9 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
       amountRemaining: roundCurrency(Number(debt.amountRemaining || 0)),
       status: debt.status,
       academicYearId: debt.academicYearId,
+      academicYearName: debt.academicYear?.name ?? null,
       carriedOverFromYearId: debt.carriedOverFromYearId,
+      carriedOverFromYearName: debt.carriedOverFromYear?.name ?? null,
       dueDate: debt.dueDate?.toISOString() ?? null,
       settledAt: debt.settledAt?.toISOString() ?? null,
       createdAt: debt.createdAt.toISOString()
@@ -941,6 +1294,14 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
         paymentId: payment.id,
         transactionNumber: payment.transactionNumber,
         createdAt: payment.receipt!.createdAt.toISOString()
+      })),
+    notificationHistory: notificationLogs.map((log) => ({
+      id: log.id,
+      type: log.type,
+      channel: log.channel,
+      content: log.content,
+      status: log.status,
+      createdAt: log.createdAt.toISOString()
       }))
   };
 }

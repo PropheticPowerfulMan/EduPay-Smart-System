@@ -282,6 +282,104 @@ body::-webkit-scrollbar-thumb:hover,
   -webkit-mask-composite: xor;
 }
 
+.edupay-operations,
+.edupay-operations-dialog {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.edupay-operations *,
+.edupay-operations-dialog * {
+  min-width: 0;
+}
+
+.edupay-operations .font-mono,
+.edupay-operations-dialog .font-mono {
+  font-size: clamp(0.76rem, 0.72rem + 0.2vw, 0.92rem);
+  line-height: 1.35;
+}
+
+.edupay-operations p,
+.edupay-operations span,
+.edupay-operations button,
+.edupay-operations-dialog p,
+.edupay-operations-dialog span,
+.edupay-operations-dialog button {
+  max-width: 100%;
+}
+
+.edupay-operations-modal {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 34px 90px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(34, 211, 238, 0.08);
+}
+
+.edupay-parent-tracking-dialog,
+.edupay-parent-tracking-modal {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.edupay-parent-tracking-dialog *,
+.edupay-parent-tracking-modal * {
+  min-width: 0;
+}
+
+.edupay-parent-tracking-modal .font-mono {
+  font-size: clamp(0.76rem, 0.72rem + 0.2vw, 0.92rem);
+  line-height: 1.35;
+}
+
+.edupay-finance-erp,
+.edupay-finance-erp-dialog,
+.edupay-finance-erp-modal {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.edupay-finance-erp *,
+.edupay-finance-erp-dialog *,
+.edupay-finance-erp-modal * {
+  min-width: 0;
+}
+
+.edupay-finance-erp .font-mono,
+.edupay-finance-erp-dialog .font-mono {
+  font-size: clamp(0.76rem, 0.72rem + 0.2vw, 0.92rem);
+  line-height: 1.35;
+}
+
+.edupay-finance-erp-modal {
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 34px 90px rgba(0, 0, 0, 0.72),
+    0 0 0 1px rgba(34, 211, 238, 0.08);
+}
+
+@media (max-width: 640px) {
+  .edupay-operations .card {
+    padding: 0.875rem;
+  }
+
+  .edupay-operations h1,
+  .edupay-operations h2,
+  .edupay-operations-dialog h2,
+  .edupay-parent-tracking-dialog h2,
+  .edupay-finance-erp h1,
+  .edupay-finance-erp h2,
+  .edupay-finance-erp-dialog h2 {
+    line-height: 1.12;
+  }
+
+  .edupay-finance-erp .glass,
+  .edupay-finance-erp .card {
+    padding: 0.875rem;
+  }
+}
+
 /* Animation fade-in */
 @keyframes fadeInUp {
   from {

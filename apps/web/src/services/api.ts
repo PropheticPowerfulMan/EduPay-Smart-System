@@ -36,7 +36,7 @@ type DemoStudent = { id: string; fullName: string; classId: string; className: s
 type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
 type DemoPayment = { id: string; transactionNumber: string; parentId?: string; parentFullName: string; paymentSubjectName?: string; studentNames?: string[]; reason: string; method: string; amount: number; status: string; createdAt: string; date: string };
 type DemoParentCredential = { parentId: string; email: string; password: string };
-type DemoPaymentOptionType = "FULL_PRESEPTEMBER" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS" | "STANDARD_MONTHLY";
+type DemoPaymentOptionType = "FULL_PRESEPTEMBER" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS" | "STANDARD_MONTHLY" | "SPECIAL_OWNER_AGREEMENT";
 type DemoFinanceOverride =
   | { mode: "OFFICIAL"; paymentOptionType: DemoPaymentOptionType }
   | {
@@ -330,6 +330,25 @@ function financeOverview() {
   return buildDemoFinanceOverview(getDemoParents(), getDemoPayments());
 }
 
+function buildAcademicDueDate(month: number, day: number) {
+  const now = new Date();
+  const startYear = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+  const year = month >= 8 ? startYear : startYear + 1;
+  return new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999)).toISOString();
+}
+
+function buildOwnerAgreementInstallments(customTotal: number) {
+  const safeTotal = Math.max(Number(customTotal || 0), 0);
+  const first = Math.round((safeTotal * 0.4) * 100) / 100;
+  const second = Math.round((safeTotal * 0.3) * 100) / 100;
+  const third = Math.round((safeTotal - first - second) * 100) / 100;
+  return [
+    { label: "Engagement initial", dueDate: buildAcademicDueDate(8, 31), amountDue: first, notes: "Created during parent onboarding" },
+    { label: "Regularisation mi-annee", dueDate: buildAcademicDueDate(1, 31), amountDue: second, notes: "Created during parent onboarding" },
+    { label: "Solde final", dueDate: buildAcademicDueDate(5, 31), amountDue: third, notes: "Created during parent onboarding" }
+  ];
+}
+
 function roundAmount(value: number) {
   return Math.round(value * 100) / 100;
 }
@@ -465,88 +484,116 @@ function getDemoCurrentPeriod() {
 function buildDefaultExpenseCategories(): DemoExpenseCategory[] {
   const groups = [
     {
-      id: "cat-admin",
-      name: "Administrative Expenses",
-      slug: "administrative-expenses",
+      id: "cat-charges-60",
+      name: "60 Achat",
+      slug: "charges-exploitation-60-achat",
       type: "ADMINISTRATIVE",
       children: [
-        ["cat-admin-office", "Office supplies"],
-        ["cat-admin-print", "Printing"],
-        ["cat-admin-subs", "Subscriptions"],
-        ["cat-admin-internet", "Internet"],
-        ["cat-admin-comm", "Communication"]
+        ["cat-charges-60-60100-bureau-it", "60100 Achats fournitures de bureau et consommables informatiques"],
+        ["cat-charges-60-60101-entretiens", "60101 Achats fournitures d'entretiens"],
+        ["cat-charges-60-60102-non-stockables", "60102 Fournitures non stockables (eau, électricité et autres énergies)"],
+        ["cat-charges-60-60103-petit-materiel", "60103 Achats petit matériel et outillage"],
+        ["cat-charges-60-60104-carburant", "60104 Achats carburant et lubrifiant véhicule et générateur"]
       ]
     },
     {
-      id: "cat-academic",
-      name: "Academic Expenses",
-      slug: "academic-expenses",
-      type: "ACADEMIC",
-      children: [
-        ["cat-academic-books", "Books"],
-        ["cat-academic-lab", "Laboratory equipment"],
-        ["cat-academic-mat", "Educational materials"],
-        ["cat-academic-activity", "School activities"]
-      ]
-    },
-    {
-      id: "cat-hr",
-      name: "Human Resources",
-      slug: "human-resources",
-      type: "HUMAN_RESOURCES",
-      children: [
-        ["cat-hr-teacher", "Teacher salaries"],
-        ["cat-hr-staff", "Staff salaries"],
-        ["cat-hr-bonus", "Bonuses"],
-        ["cat-hr-incentives", "Incentives"]
-      ]
-    },
-    {
-      id: "cat-infra",
-      name: "Infrastructure & Maintenance",
-      slug: "infrastructure-maintenance",
-      type: "INFRASTRUCTURE",
-      children: [
-        ["cat-infra-repairs", "Repairs"],
-        ["cat-infra-electricity", "Electricity"],
-        ["cat-infra-water", "Water"],
-        ["cat-infra-cleaning", "Cleaning"],
-        ["cat-infra-security", "Security"]
-      ]
-    },
-    {
-      id: "cat-transport",
-      name: "Transportation & Logistics",
-      slug: "transport-logistics",
+      id: "cat-charges-61",
+      name: "61 Transports",
+      slug: "charges-exploitation-61-transports",
       type: "TRANSPORT",
       children: [
-        ["cat-transport-fuel", "Fuel"],
-        ["cat-transport-bus", "School transport"],
-        ["cat-transport-delivery", "Deliveries"]
+        ["cat-charges-61-60100-voyage", "60100 Voyage et déplacement"]
       ]
     },
     {
-      id: "cat-tech",
-      name: "Technology & IT",
-      slug: "technology-it",
-      type: "TECHNOLOGY",
+      id: "cat-charges-62",
+      name: "62 Services extérieurs",
+      slug: "charges-exploitation-62-services-exterieurs",
+      type: "ADMINISTRATIVE",
       children: [
-        ["cat-tech-software", "Software"],
-        ["cat-tech-hosting", "Hosting"],
-        ["cat-tech-licenses", "Licenses"],
-        ["cat-tech-equipment", "Equipment purchases"]
+        ["cat-charges-62-62100-sous-traitance", "62100 Sous traitance générale"],
+        ["cat-charges-62-62101-location", "62101 Location et charge locative"],
+        ["cat-charges-62-62102-entretien", "62102 Entretien et réparation (véhicules et autres)"],
+        ["cat-charges-62-62103-assurance", "62103 Primes d'assurance (véhicules bâtiment)"],
+        ["cat-charges-62-62104-divers", "62104 Divers services extérieurs"]
       ]
     },
     {
-      id: "cat-special",
-      name: "Special Institutional Expenses",
-      slug: "special-institutional-expenses",
+      id: "cat-charges-63",
+      name: "63 Autres services extérieurs",
+      slug: "charges-exploitation-63-autres-services-exterieurs",
+      type: "ADMINISTRATIVE",
+      children: [
+        ["cat-charges-63-63100-avocat", "63100 Honoraire Avocat conseil"],
+        ["cat-charges-63-63101-audit", "63101 Honoraire Cabinet audit externe"],
+        ["cat-charges-63-63102-consultants", "63102 Honoraires Autres consultants"],
+        ["cat-charges-63-63105-telecom", "63105 Frais postaux et de télécommunications (courrier, téléphone, internet)"],
+        ["cat-charges-63-63106-bancaires", "63106 Services bancaires et autres"]
+      ]
+    },
+    {
+      id: "cat-charges-64",
+      name: "64 Impôts et taxes",
+      slug: "charges-exploitation-64-impots-taxes",
+      type: "ADMINISTRATIVE",
+      children: [
+        ["cat-charges-64-64100-vignettes", "64100 Vignettes, Assurances, contrôle technique..."],
+        ["cat-charges-64-64101-autres", "64101 Autres impôts et taxes"]
+      ]
+    },
+    {
+      id: "cat-charges-65",
+      name: "65 Autres charges de gestion courante",
+      slug: "charges-exploitation-65-autres-charges-gestion-courante",
+      type: "ADMINISTRATIVE",
+      children: [
+        ["cat-charges-65-65100-representation", "65100 Frais de représentation et des réunions"],
+        ["cat-charges-65-65101-jetons", "65101 Jetons de présence et autres rémunérations d'administrateurs"],
+        ["cat-charges-65-65102-tenue-ca", "65102 Autres frais tenue CA (location salle, rafraîchissement et autres)"]
+      ]
+    },
+    {
+      id: "cat-charges-66",
+      name: "66 Charges de personnel",
+      slug: "charges-exploitation-66-charges-personnel",
+      type: "HUMAN_RESOURCES",
+      children: [
+        ["cat-charges-66-remuneration", "66 Rémunération des personnels"],
+        ["cat-charges-66-66110-sociales", "66110 Charges sociales (INSS QPP, INPP, ONEM)"],
+        ["cat-charges-66-66111-soins", "66111 Soins médicaux personnel"],
+        ["cat-charges-66-66112-autres", "66112 Autres charges de personnel (Coût formation personnel)"]
+      ]
+    },
+    {
+      id: "cat-charges-67",
+      name: "67 Charges financières",
+      slug: "charges-financieres-67",
+      type: "ADMINISTRATIVE",
+      children: [
+        ["cat-charges-67-67100-interets", "67100 Intérêts bancaires et sur opérations de trésorerie"]
+      ]
+    },
+    {
+      id: "cat-charges-83",
+      name: "83 Charges exceptionnelles",
+      slug: "charges-exceptionnelles-83",
       type: "SPECIAL_INSTITUTIONAL",
       ownerApprovalRequired: true,
       children: [
-        ["cat-special-emergency", "Emergency expenditures"],
-        ["cat-special-owner", "Owner-approved spending"],
-        ["cat-special-invest", "Strategic investments"]
+        ["cat-charges-83-83100-operations", "83100 Sur opérations de gestion (pénalités, amandes fiscales et penales)"],
+        ["cat-charges-83-83100-autres", "83100 Autres charges exceptionnelles"]
+      ]
+    },
+    {
+      id: "cat-investissement-2",
+      name: "2 Investissement",
+      slug: "investissement-2",
+      type: "INFRASTRUCTURE",
+      ownerApprovalRequired: true,
+      children: [
+        ["cat-investissement-2-20100-batiment", "20100 Bâtiment administratif propre"],
+        ["cat-investissement-2-20101-mobilier", "20101 Mobilier, matériels informatiques et autres matériels de Classe & bureau"],
+        ["cat-investissement-2-20102-telephone", "20102 Téléphone interne"]
       ]
     }
   ];
@@ -573,7 +620,10 @@ function buildDefaultExpenseCategories(): DemoExpenseCategory[] {
 }
 
 function getDemoExpenseCategories() {
-  const categories = readJson<DemoExpenseCategory[]>(DEMO_EXPENSE_CATEGORIES_KEY, buildDefaultExpenseCategories());
+  const defaults = buildDefaultExpenseCategories();
+  const stored = readJson<DemoExpenseCategory[]>(DEMO_EXPENSE_CATEGORIES_KEY, defaults);
+  const storedIds = new Set(stored.map((category) => category.id));
+  const categories = [...stored, ...defaults.filter((category) => !storedIds.has(category.id))];
   writeJson(DEMO_EXPENSE_CATEGORIES_KEY, categories);
   return categories;
 }
@@ -1341,6 +1391,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
   if (normalizedPath === "/api/parents" && method === "GET") return getDemoParents() as T;
   if (normalizedPath === "/api/parents" && method === "POST") {
     const existingParents = getDemoParents();
+    const overrides = getDemoFinanceOverrides();
     const parentFullName = String(body.fullName ?? `${body.nom ?? ""} ${body.prenom ?? ""}`).trim() || "Nouveau parent";
     const id = buildUniqueDemoEntityId("PAR", parentFullName, existingParents.map((parent) => parent.id));
     const existingStudentIds = existingParents.flatMap((parent) => parent.students.map((student) => student.id));
@@ -1355,9 +1406,10 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       photoUrl: String(body.photoUrl ?? ""),
       createdAt: new Date().toISOString(),
       students: Array.isArray(body.students)
-        ? (body.students as DemoStudent[]).map((student) => ({
+        ? (body.students as Array<DemoStudent & { paymentOptionType?: DemoPaymentOptionType }>).map((student) => ({
             ...student,
             id: buildUniqueDemoEntityId("STU", student.fullName || "Student", existingStudentIds),
+            paymentOptionType: student.paymentOptionType ?? "STANDARD_MONTHLY"
           }))
         : []
     };
@@ -1367,6 +1419,28 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     if (parent.email) {
       saveDemoParentCredential({ parentId: parent.id, email: parent.email, password: temporaryPassword });
     }
+    for (const student of parent.students as Array<DemoStudent & { paymentOptionType?: DemoPaymentOptionType }>) {
+      if (student.paymentOptionType === "SPECIAL_OWNER_AGREEMENT") {
+        overrides[student.id] = {
+          mode: "AGREEMENT",
+          agreement: {
+            title: `Accord special proprietaire - ${student.fullName}`,
+            customTotal: Number(student.annualFee ?? 0),
+            reductionAmount: 0,
+            status: "APPROVED",
+            privateNotes: "",
+            notes: "Created during parent onboarding",
+            installments: buildOwnerAgreementInstallments(Number(student.annualFee ?? 0))
+          }
+        };
+      } else {
+        overrides[student.id] = {
+          mode: "OFFICIAL",
+          paymentOptionType: student.paymentOptionType ?? "STANDARD_MONTHLY"
+        };
+      }
+    }
+    saveDemoFinanceOverrides(overrides);
     writeJson(DEMO_PARENTS_KEY, [parent, ...existingParents]);
     return {
       ...parent,

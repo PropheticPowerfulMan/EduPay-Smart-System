@@ -42,6 +42,53 @@ type ParentCredentials = {
   };
 };
 
+type ParentFinanceDebt = {
+  id: string;
+  title: string;
+  reason?: string | null;
+  originalAmount: number;
+  amountRemaining: number;
+  status: string;
+  academicYearId: string;
+  academicYearName?: string | null;
+  carriedOverFromYearId?: string | null;
+  carriedOverFromYearName?: string | null;
+  dueDate?: string | null;
+  settledAt?: string | null;
+  createdAt: string;
+};
+
+type ParentFinanceStudent = {
+  id: string;
+  fullName: string;
+  className?: string | null;
+  paid: number;
+  balance: number;
+  expectedTotal: number;
+  overdueInstallments: number;
+  completionRate: number;
+};
+
+type ParentFinanceSnapshot = {
+  academicYear: { id: string; name: string; startDate: string; endDate: string };
+  profile: {
+    totalPaid: number;
+    totalDebt: number;
+    totalReduction: number;
+    carriedOverDebt: number;
+    overdueInstallments: number;
+    pendingPaymentsTotal: number;
+    failedPaymentsTotal: number;
+    paymentBehaviorScore: number;
+    lastPaymentAt: string | null;
+    childrenLinkedToAccount: number;
+    expectedNetRevenue: number;
+    completionRate: number;
+  };
+  students: ParentFinanceStudent[];
+  debts: ParentFinanceDebt[];
+};
+
 type SchoolClass = { id: string; name: string };
 
 type TuitionPlan = {
@@ -82,16 +129,26 @@ type FormState = {
   phone: string;
   email: string;
   photoUrl: string;
+  defaultPaymentOptionType: string;
   notifyEmail: boolean;
   notifySms: boolean;
   students: StudentFormState[];
 };
 
+const TUITION_OPTION_ORDER = [
+  "FULL_PRESEPTEMBER",
+  "TWO_INSTALLMENTS",
+  "THREE_INSTALLMENTS",
+  "STANDARD_MONTHLY",
+  "SPECIAL_OWNER_AGREEMENT"
+];
+
 const PAYMENT_OPTION_LABELS: Record<string, string> = {
   FULL_PRESEPTEMBER: "Paiement complet avant septembre",
   TWO_INSTALLMENTS: "Paiement en 2 tranches",
   THREE_INSTALLMENTS: "Paiement en 3 tranches",
-  STANDARD_MONTHLY: "Paiement mensuel standard"
+  STANDARD_MONTHLY: "Paiement mensuel standard",
+  SPECIAL_OWNER_AGREEMENT: "Accord special proprietaire"
 };
 
 const GRADE_GROUP_LABELS: Record<string, string> = {
@@ -109,6 +166,7 @@ const EMPTY_FORM: FormState = {
   phone: "",
   email: "",
   photoUrl: "",
+  defaultPaymentOptionType: "STANDARD_MONTHLY",
   notifyEmail: true,
   notifySms: true,
   students: []
@@ -210,6 +268,52 @@ function formatMoney(amount: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(amount);
 }
 
+function formatDateLabel(value?: string | null) {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString();
+}
+
+function getDebtStatusLabel(status: string) {
+  switch (status) {
+    case "OPEN":
+      return "Ouverte";
+    case "PARTIALLY_PAID":
+      return "Partiellement payee";
+    case "OVERDUE":
+      return "En retard";
+    case "CLEARED":
+      return "Reglee";
+    case "WRITTEN_OFF":
+      return "Radiee";
+    default:
+      return status;
+  }
+}
+
+function getDebtStatusTone(status: string) {
+  switch (status) {
+    case "CLEARED":
+      return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
+    case "PARTIALLY_PAID":
+      return "border-amber-500/30 bg-amber-500/10 text-amber-200";
+    case "OVERDUE":
+    case "OPEN":
+      return "border-red-500/30 bg-red-500/10 text-red-200";
+    default:
+      return "border-slate-600/60 bg-slate-900/40 text-ink-dim";
+  }
+}
+
+function getDebtReferenceYear(debt: ParentFinanceDebt) {
+  return debt.carriedOverFromYearName
+    || debt.carriedOverFromYearId
+    || debt.academicYearName
+    || debt.academicYearId
+    || "Annee non renseignee";
+}
+
 function resolveGradeGroup(className?: string) {
   const normalized = (className || "").trim().toLowerCase();
   if (!normalized) return "CUSTOM";
@@ -231,6 +335,49 @@ function getPaymentOptionLabel(option: string) {
 function formatAmountInput(amount?: number) {
   if (typeof amount !== "number" || Number.isNaN(amount)) return "";
   return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+}
+
+function buildAcademicDueDate(month: number, day: number) {
+  const now = new Date();
+  const startYear = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+  const year = month >= 8 ? startYear : startYear + 1;
+  return new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999)).toISOString();
+}
+
+function splitOwnerAgreementTotal(total: number) {
+  const safeTotal = Number.isFinite(total) ? Math.max(total, 0) : 0;
+  const first = Math.round((safeTotal * 0.4) * 100) / 100;
+  const second = Math.round((safeTotal * 0.3) * 100) / 100;
+  const third = Math.round((safeTotal - first - second) * 100) / 100;
+  return [first, second, third];
+}
+
+function buildSpecialOwnerAgreementPlan(student: StudentFormState, className: string, officialPlans: TuitionPlan[]): TuitionPlan | null {
+  const gradeGroup = resolveGradeGroup(className);
+  const parsedAmount = Number.parseFloat(student.annualFee);
+  const fallbackAmount = officialPlans.find((plan) => plan.paymentOptionType === "STANDARD_MONTHLY")?.finalAmount
+    ?? officialPlans[0]?.finalAmount
+    ?? 0;
+  const customTotal = Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : fallbackAmount;
+  if (customTotal <= 0) return null;
+
+  const [initialAmount, midYearAmount, finalAmount] = splitOwnerAgreementTotal(customTotal);
+
+  return {
+    id: `special-owner-${gradeGroup}`,
+    name: "Accord special proprietaire",
+    paymentOptionType: "SPECIAL_OWNER_AGREEMENT",
+    gradeGroup,
+    discountRate: 0,
+    originalAmount: customTotal,
+    finalAmount: customTotal,
+    reductionAmount: 0,
+    scheduleJson: [
+      { label: "Engagement initial", amount: initialAmount, dueDate: buildAcademicDueDate(8, 31), windowLabel: "Avant septembre" },
+      { label: "Regularisation mi-annee", amount: midYearAmount, dueDate: buildAcademicDueDate(1, 31), windowLabel: "Avant fin janvier" },
+      { label: "Solde final", amount: finalAmount, dueDate: buildAcademicDueDate(5, 31), windowLabel: "Avant fin mai" }
+    ]
+  };
 }
 
 function parsePlanSchedule(plan: TuitionPlan): PlanScheduleItem[] {
@@ -395,74 +542,272 @@ function AccessNotificationModal({
   );
 }
 
-function DetailModal({ parent, onClose, t }: { parent: Parent; onClose: () => void; t: (k: string) => string }) {
+function DetailModal({
+  parent,
+  financeSnapshot,
+  financeLoading,
+  financeError,
+  onClose,
+  t
+}: {
+  parent: Parent;
+  financeSnapshot: ParentFinanceSnapshot | null;
+  financeLoading: boolean;
+  financeError: string | null;
+  onClose: () => void;
+  t: (k: string) => string;
+}) {
+  const debtHistory = useMemo(() => {
+    if (!financeSnapshot) return [] as Array<{ year: string; amountRemaining: number; originalAmount: number; count: number }>;
+
+    const grouped = new Map<string, { year: string; amountRemaining: number; originalAmount: number; count: number }>();
+    for (const debt of financeSnapshot.debts) {
+      const year = getDebtReferenceYear(debt);
+      const current = grouped.get(year) || { year, amountRemaining: 0, originalAmount: 0, count: 0 };
+      current.amountRemaining += debt.amountRemaining;
+      current.originalAmount += debt.originalAmount;
+      current.count += 1;
+      grouped.set(year, current);
+    }
+
+    return Array.from(grouped.values()).sort((left, right) => right.year.localeCompare(left.year));
+  }, [financeSnapshot]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div className="relative w-full max-w-lg glass rounded-2xl p-8 space-y-6 animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
+      <div className="relative w-full max-w-5xl glass rounded-2xl p-8 space-y-6 animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} className="absolute top-4 right-4 text-ink-dim hover:text-white transition-colors">
           <XIcon />
         </button>
-        <div>
-          <p className="text-xs font-bold uppercase tracking-[0.15em] text-brand-300 mb-1">{t("pmParentId")}: {parent.displayId || parent.id}</p>
-          <div className="flex items-center gap-4">
-            <div className="h-16 w-16 overflow-hidden rounded-2xl border border-slate-700/60 bg-gradient-to-br from-brand-500 to-accent shrink-0">
-              {parent.photoUrl ? (
-                <img src={parent.photoUrl} alt={parent.fullName} className="h-full w-full object-cover" />
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.25fr)]">
+          <div className="space-y-6">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.15em] text-brand-300 mb-1">{t("pmParentId")}: {parent.displayId || parent.id}</p>
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 overflow-hidden rounded-2xl border border-slate-700/60 bg-gradient-to-br from-brand-500 to-accent shrink-0">
+                  {parent.photoUrl ? (
+                    <img src={parent.photoUrl} alt={parent.fullName} className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-xl font-black text-white">
+                      {parent.fullName.charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <h2 className="font-display text-2xl font-bold text-white">{parent.fullName}</h2>
+                  <p className="text-xs text-ink-dim mt-1">{t("pmRegisteredOn")} {new Date(parent.createdAt).toLocaleDateString()}</p>
+                </div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="rounded-xl bg-slate-900/40 border border-slate-700/50 p-3">
+                <p className="text-xs text-ink-dim">{t("pmPhone")}</p>
+                <p className="text-sm font-semibold text-white mt-1">{parent.phone || "—"}</p>
+              </div>
+              <div className="rounded-xl bg-slate-900/40 border border-slate-700/50 p-3">
+                <p className="text-xs text-ink-dim">{t("email")}</p>
+                <p className="text-sm font-semibold text-white mt-1 truncate">{parent.email || "—"}</p>
+              </div>
+              <div className="rounded-xl bg-slate-900/40 border border-slate-700/50 p-3">
+                <p className="text-xs text-ink-dim">{t("pmNom")}</p>
+                <p className="text-sm font-semibold text-white mt-1">{parent.nom}</p>
+              </div>
+              <div className="rounded-xl bg-slate-900/40 border border-slate-700/50 p-3">
+                <p className="text-xs text-ink-dim">{t("pmPostnom")}</p>
+                <p className="text-sm font-semibold text-white mt-1">{parent.postnom}</p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-sm font-bold text-ink-dim uppercase tracking-[0.1em] mb-3">
+                {t("pmChildren")} ({parent.students.length})
+              </p>
+              {parent.students.length === 0 ? (
+                <p className="text-sm text-ink-dim italic">{t("pmNoChildren")}</p>
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-xl font-black text-white">
-                  {parent.fullName.charAt(0).toUpperCase()}
+                <div className="space-y-2">
+                  {parent.students.map((st) => (
+                    <div key={st.id} className="flex items-center justify-between rounded-lg bg-slate-900/40 border border-slate-700/50 px-4 py-3">
+                      <div>
+                        <p className="text-sm font-semibold text-white">{st.fullName}</p>
+                        <p className="text-xs text-ink-dim">{st.className || st.classId}</p>
+                        {(st.tuitionPlanName || st.paymentOptionLabel) && (
+                          <p className="mt-1 text-xs text-cyan-300">{st.tuitionPlanName || st.paymentOptionLabel}</p>
+                        )}
+                      </div>
+                      <span className="text-sm font-bold text-emerald-300">
+                        {formatMoney(st.annualFee)}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
-            <div>
-              <h2 className="font-display text-2xl font-bold text-white">{parent.fullName}</h2>
-              <p className="text-xs text-ink-dim mt-1">{t("pmRegisteredOn")} {new Date(parent.createdAt).toLocaleDateString()}</p>
-            </div>
           </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div className="rounded-xl bg-slate-900/40 border border-slate-700/50 p-3">
-            <p className="text-xs text-ink-dim">{t("pmPhone")}</p>
-            <p className="text-sm font-semibold text-white mt-1">{parent.phone || "—"}</p>
-          </div>
-          <div className="rounded-xl bg-slate-900/40 border border-slate-700/50 p-3">
-            <p className="text-xs text-ink-dim">{t("email")}</p>
-            <p className="text-sm font-semibold text-white mt-1 truncate">{parent.email || "—"}</p>
-          </div>
-          <div className="rounded-xl bg-slate-900/40 border border-slate-700/50 p-3">
-            <p className="text-xs text-ink-dim">{t("pmNom")}</p>
-            <p className="text-sm font-semibold text-white mt-1">{parent.nom}</p>
-          </div>
-          <div className="rounded-xl bg-slate-900/40 border border-slate-700/50 p-3">
-            <p className="text-xs text-ink-dim">{t("pmPostnom")}</p>
-            <p className="text-sm font-semibold text-white mt-1">{parent.postnom}</p>
-          </div>
-        </div>
-        <div>
-          <p className="text-sm font-bold text-ink-dim uppercase tracking-[0.1em] mb-3">
-            {t("pmChildren")} ({parent.students.length})
-          </p>
-          {parent.students.length === 0 ? (
-            <p className="text-sm text-ink-dim italic">{t("pmNoChildren")}</p>
-          ) : (
-            <div className="space-y-2">
-              {parent.students.map((st) => (
-                <div key={st.id} className="flex items-center justify-between rounded-lg bg-slate-900/40 border border-slate-700/50 px-4 py-3">
-                  <div>
-                    <p className="text-sm font-semibold text-white">{st.fullName}</p>
-                    <p className="text-xs text-ink-dim">{st.className || st.classId}</p>
-                    {(st.tuitionPlanName || st.paymentOptionLabel) && (
-                      <p className="mt-1 text-xs text-cyan-300">{st.tuitionPlanName || st.paymentOptionLabel}</p>
-                    )}
-                  </div>
-                  <span className="text-sm font-bold text-emerald-300">
-                    {formatMoney(st.annualFee)}
-                  </span>
+
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/8 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-200">Historique precis des dettes</p>
+                  <h3 className="mt-2 font-display text-2xl font-bold text-white">Vision parent multi-annees</h3>
+                  <p className="mt-2 text-sm text-red-100/80">
+                    Cette rubrique retrace les soldes ouverts, partiellement payes ou reportes, y compris les annees anterieures.
+                  </p>
                 </div>
-              ))}
+                <span className="rounded-full border border-red-400/25 bg-red-500/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] text-red-200">
+                  {financeSnapshot?.debts.length ?? 0} ligne(s)
+                </span>
+              </div>
+
+              {financeLoading ? (
+                <div className="mt-5 rounded-xl border border-slate-700/60 bg-slate-950/45 px-4 py-5 text-sm text-ink-dim">
+                  Chargement du dossier financier parent...
+                </div>
+              ) : financeError ? (
+                <div className="mt-5 rounded-xl border border-danger/40 bg-danger/10 px-4 py-5 text-sm text-danger">
+                  {financeError}
+                </div>
+              ) : financeSnapshot ? (
+                <div className="mt-5 space-y-4">
+                  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                    <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-ink-dim">Dette totale</p>
+                      <p className="mt-2 text-xl font-black text-red-200">{formatMoney(financeSnapshot.profile.totalDebt)}</p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-ink-dim">Dette reportee</p>
+                      <p className="mt-2 text-xl font-black text-amber-200">{formatMoney(financeSnapshot.profile.carriedOverDebt)}</p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-ink-dim">Paiements cumules</p>
+                      <p className="mt-2 text-xl font-black text-emerald-200">{formatMoney(financeSnapshot.profile.totalPaid)}</p>
+                    </div>
+                    <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
+                      <p className="text-[11px] uppercase tracking-[0.14em] text-ink-dim">Echeances en retard</p>
+                      <p className="mt-2 text-xl font-black text-white">{financeSnapshot.profile.overdueInstallments}</p>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-white">Synthese par annee concernee</p>
+                        <p className="mt-1 text-xs text-ink-dim">Les dettes reportees sont rattachees a leur annee d'origine pour eviter toute confusion.</p>
+                      </div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-300">{financeSnapshot.academicYear.name}</p>
+                    </div>
+                    <div className="mt-4 grid gap-3 md:grid-cols-2">
+                      {debtHistory.length === 0 ? (
+                        <p className="text-sm text-ink-dim">Aucune dette retracee pour ce parent, y compris sur les annees precedentes.</p>
+                      ) : debtHistory.map((row) => (
+                        <div key={row.year} className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-bold text-white">{row.year}</p>
+                              <p className="mt-1 text-[11px] text-ink-dim">{row.count} dette(s) referencee(s)</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="text-sm font-black text-red-200">{formatMoney(row.amountRemaining)}</p>
+                              <p className="mt-1 text-[11px] text-ink-dim">Origine {formatMoney(row.originalAmount)}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
+                    <p className="text-sm font-bold text-white">Detail ligne par ligne</p>
+                    <div className="mt-4 space-y-3">
+                      {financeSnapshot.debts.length === 0 ? (
+                        <p className="text-sm text-ink-dim">Aucune ligne de dette enregistree.</p>
+                      ) : financeSnapshot.debts.map((debt) => (
+                        <div key={debt.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-sm font-bold text-white">{debt.title}</p>
+                                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.14em] ${getDebtStatusTone(debt.status)}`}>
+                                  {getDebtStatusLabel(debt.status)}
+                                </span>
+                              </div>
+                              <p className="mt-2 text-xs text-ink-dim">Annee concernee: {getDebtReferenceYear(debt)}</p>
+                              <p className="mt-1 text-xs text-ink-dim">Imputee sur: {debt.academicYearName || debt.academicYearId}</p>
+                              {debt.carriedOverFromYearName || debt.carriedOverFromYearId ? (
+                                <p className="mt-1 text-xs text-amber-200">Reportee depuis: {debt.carriedOverFromYearName || debt.carriedOverFromYearId}</p>
+                              ) : null}
+                              {debt.reason ? <p className="mt-2 text-sm text-ink-dim">{debt.reason}</p> : null}
+                            </div>
+                            <div className="grid min-w-[220px] grid-cols-2 gap-3 text-sm">
+                              <div className="rounded-lg border border-white/10 bg-slate-950/55 px-3 py-2">
+                                <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Montant initial</p>
+                                <p className="mt-1 font-bold text-white">{formatMoney(debt.originalAmount)}</p>
+                              </div>
+                              <div className="rounded-lg border border-white/10 bg-slate-950/55 px-3 py-2">
+                                <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Reste a payer</p>
+                                <p className="mt-1 font-bold text-red-200">{formatMoney(debt.amountRemaining)}</p>
+                              </div>
+                              <div className="rounded-lg border border-white/10 bg-slate-950/55 px-3 py-2">
+                                <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Echeance</p>
+                                <p className="mt-1 font-bold text-white">{formatDateLabel(debt.dueDate)}</p>
+                              </div>
+                              <div className="rounded-lg border border-white/10 bg-slate-950/55 px-3 py-2">
+                                <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Creee le</p>
+                                <p className="mt-1 font-bold text-white">{formatDateLabel(debt.createdAt)}</p>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
+                    <p className="text-sm font-bold text-white">Etat financier par enfant</p>
+                    <div className="mt-4 space-y-3">
+                      {financeSnapshot.students.length === 0 ? (
+                        <p className="text-sm text-ink-dim">Aucun eleve lie a ce parent.</p>
+                      ) : financeSnapshot.students.map((student) => (
+                        <div key={student.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div>
+                              <p className="text-sm font-bold text-white">{student.fullName}</p>
+                              <p className="mt-1 text-xs text-ink-dim">{student.className || "Classe non renseignee"}</p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 text-sm md:min-w-[320px]">
+                              <div>
+                                <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Paye</p>
+                                <p className="mt-1 font-bold text-emerald-200">{formatMoney(student.paid)}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Solde</p>
+                                <p className="mt-1 font-bold text-red-200">{formatMoney(student.balance)}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Attendu</p>
+                                <p className="mt-1 font-bold text-white">{formatMoney(student.expectedTotal)}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Completion</p>
+                                <p className="mt-1 font-bold text-white">{student.completionRate.toFixed(1)}%</p>
+                              </div>
+                            </div>
+                          </div>
+                          <p className="mt-3 text-xs text-ink-dim">{student.overdueInstallments} echeance(s) en retard pour cet eleve.</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-5 rounded-xl border border-slate-700/60 bg-slate-950/45 px-4 py-5 text-sm text-ink-dim">
+                  Aucun dossier financier detaille n'a pu etre charge pour ce parent.
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>
@@ -515,6 +860,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
       phone: initial.phone,
       email: initial.email,
       photoUrl: initial.photoUrl || "",
+      defaultPaymentOptionType: initial.students[0]?.paymentOptionType || "STANDARD_MONTHLY",
       notifyEmail: true,
       notifySms: true,
       students: initial.students.map((s) => ({
@@ -530,14 +876,17 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
 
   const getClassName = (classId: string) => classes.find((entry) => entry.id === classId)?.name || "";
 
-  const getMatchingPlans = (classId: string) => {
+  const getMatchingPlans = (classId: string, student?: StudentFormState) => {
     if (!catalog?.plans?.length) return [];
     const gradeGroup = resolveGradeGroup(getClassName(classId));
-    return catalog.plans.filter((plan) => plan.gradeGroup === gradeGroup && PAYMENT_OPTION_LABELS[plan.paymentOptionType]);
+    const officialPlans = catalog.plans.filter((plan) => plan.gradeGroup === gradeGroup && PAYMENT_OPTION_LABELS[plan.paymentOptionType]);
+    if (!student || !classId) return officialPlans;
+    const specialPlan = buildSpecialOwnerAgreementPlan(student, getClassName(classId), officialPlans);
+    return specialPlan ? [...officialPlans, specialPlan] : officialPlans;
   };
 
-  const getPreferredOption = (classId: string, currentOptionType?: string) => {
-    const matchingPlans = getMatchingPlans(classId);
+  const getPreferredOption = (classId: string, currentOptionType?: string, student?: StudentFormState) => {
+    const matchingPlans = getMatchingPlans(classId, student);
     if (currentOptionType && matchingPlans.some((plan) => plan.paymentOptionType === currentOptionType)) {
       return currentOptionType;
     }
@@ -548,7 +897,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
   };
 
   const getSelectedPlan = (student: StudentFormState) => {
-    const matchingPlans = getMatchingPlans(student.classId);
+    const matchingPlans = getMatchingPlans(student.classId, student);
     return matchingPlans.find((plan) => plan.paymentOptionType === student.paymentOptionType) || null;
   };
 
@@ -573,8 +922,9 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
     setForm((current) => {
       const students = [...current.students];
       const student = students[idx] || { ...EMPTY_STUDENT };
-      const paymentOptionType = getPreferredOption(classId, student.paymentOptionType);
-      const matchingPlan = getMatchingPlans(classId).find((plan) => plan.paymentOptionType === paymentOptionType);
+      const nextStudent = { ...student, classId };
+      const paymentOptionType = getPreferredOption(classId, student.paymentOptionType, nextStudent);
+      const matchingPlan = getMatchingPlans(classId, nextStudent).find((plan) => plan.paymentOptionType === paymentOptionType);
       students[idx] = {
         ...student,
         classId,
@@ -589,7 +939,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
     setForm((current) => {
       const students = [...current.students];
       const student = students[idx] || { ...EMPTY_STUDENT };
-      const matchingPlan = getMatchingPlans(student.classId).find((plan) => plan.paymentOptionType === paymentOptionType);
+      const matchingPlan = getMatchingPlans(student.classId, student).find((plan) => plan.paymentOptionType === paymentOptionType);
       students[idx] = {
         ...student,
         paymentOptionType,
@@ -599,7 +949,29 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
     });
   };
 
-  const addStudent = () => setForm((f) => ({ ...f, students: [...f.students, { ...EMPTY_STUDENT }] }));
+  const updateFamilyTuitionPlan = (paymentOptionType: string) => {
+    setForm((current) => {
+      const students = current.students.map((student) => {
+        if (!student.classId) {
+          return { ...student, paymentOptionType };
+        }
+
+        const matchingPlan = getMatchingPlans(student.classId, { ...student, paymentOptionType }).find((plan) => plan.paymentOptionType === paymentOptionType);
+        return {
+          ...student,
+          paymentOptionType,
+          annualFee: matchingPlan ? formatAmountInput(matchingPlan.finalAmount) : student.annualFee
+        };
+      });
+
+      return { ...current, defaultPaymentOptionType: paymentOptionType, students };
+    });
+  };
+
+  const addStudent = () => setForm((f) => ({
+    ...f,
+    students: [...f.students, { ...EMPTY_STUDENT, paymentOptionType: f.defaultPaymentOptionType }]
+  }));
   const removeStudent = (idx: number) => setForm((f) => ({ ...f, students: f.students.filter((_, i) => i !== idx) }));
 
   const handlePhoto = (file?: File) => {
@@ -735,6 +1107,48 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
           </div>
         )}
 
+        <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+          <div className="flex flex-col gap-1">
+            <p className="text-sm font-bold uppercase tracking-[0.08em] text-white">Plan de tuition du parent</p>
+            <p className="text-xs text-cyan-100/80">
+              Choisissez l'un des 5 plans deja definis. Ce choix sera applique automatiquement aux enfants ajoutes, avec le montant officiel ajuste selon leur classe.
+            </p>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {TUITION_OPTION_ORDER.map((optionType) => {
+              const selected = form.defaultPaymentOptionType === optionType;
+              return (
+                <button
+                  key={optionType}
+                  type="button"
+                  onClick={() => updateFamilyTuitionPlan(optionType)}
+                  className={`rounded-2xl border p-3 text-left transition-all ${
+                    selected
+                      ? "border-cyan-300 bg-cyan-400/15 shadow-[0_0_0_1px_rgba(125,232,255,0.2)]"
+                      : "border-white/10 bg-slate-950/40 hover:border-cyan-300/40 hover:bg-slate-900/70"
+                  }`}
+                >
+                  <span className="flex items-start justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="block text-sm font-black text-white">{getPaymentOptionLabel(optionType)}</span>
+                      <span className="mt-1 block text-[11px] text-ink-dim">
+                        {optionType === "FULL_PRESEPTEMBER" && "Remise maximale pour paiement complet avant septembre."}
+                        {optionType === "TWO_INSTALLMENTS" && "Deux grandes tranches avec reduction partielle."}
+                        {optionType === "THREE_INSTALLMENTS" && "Trois tranches et remise legere."}
+                        {optionType === "STANDARD_MONTHLY" && "Plan mensuel standard sans reduction."}
+                        {optionType === "SPECIAL_OWNER_AGREEMENT" && "Accord special valide par la direction financiere."}
+                      </span>
+                    </span>
+                    <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${selected ? "bg-cyan-200 text-slate-950" : "bg-white/10 text-ink-dim"}`}>
+                      {selected ? "Choisi" : "Choisir"}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Children section */}
         <div className="space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -790,7 +1204,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                 <div className="space-y-1">
                   <label className="text-xs text-ink-dim">Tuition plan officiel</label>
                   <select value={st.paymentOptionType} onChange={(e) => updateStudentPlan(idx, e.target.value)} className="w-full">
-                    {getMatchingPlans(st.classId).length > 0 ? getMatchingPlans(st.classId).map((plan) => (
+                    {getMatchingPlans(st.classId, st).length > 0 ? getMatchingPlans(st.classId, st).map((plan) => (
                       <option key={`${plan.gradeGroup}-${plan.paymentOptionType}`} value={plan.paymentOptionType}>
                         {getPaymentOptionLabel(plan.paymentOptionType)} - {formatMoney(plan.finalAmount)}
                       </option>
@@ -812,7 +1226,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
               </div>
 
               {(() => {
-                const matchingPlans = getMatchingPlans(st.classId);
+                const matchingPlans = getMatchingPlans(st.classId, st);
                 if (!st.classId || matchingPlans.length === 0) return null;
 
                 return (
@@ -843,7 +1257,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                               <div>
                                 <p className="text-sm font-black text-white">{getPaymentOptionLabel(plan.paymentOptionType)}</p>
-                                <p className="mt-1 text-[11px] text-ink-dim">{plan.name}</p>
+                                <p className="mt-1 text-[11px] text-ink-dim">{plan.paymentOptionType === "SPECIAL_OWNER_AGREEMENT" ? "Plan personnalise valide par la direction financiere, base sur le montant annuel saisi." : plan.name}</p>
                               </div>
                               <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${isActive ? "bg-brand-300 text-slate-950" : "bg-white/10 text-ink-dim"}`}>
                                 {isActive ? "Choisi" : "Choisir"}
@@ -966,6 +1380,9 @@ export function ParentsManagementPage() {
   const [notificationTarget, setNotificationTarget] = useState<Parent | null>(null);
   const [credentials, setCredentials] = useState<ParentCredentials | null>(null);
   const [sendingAccess, setSendingAccess] = useState(false);
+  const [financeSnapshot, setFinanceSnapshot] = useState<ParentFinanceSnapshot | null>(null);
+  const [financeLoading, setFinanceLoading] = useState(false);
+  const [financeError, setFinanceError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -1005,6 +1422,37 @@ export function ParentsManagementPage() {
   };
 
   useEffect(() => { void load(); }, []);
+
+  useEffect(() => {
+    if (!viewTarget) {
+      setFinanceSnapshot(null);
+      setFinanceLoading(false);
+      setFinanceError(null);
+      return;
+    }
+
+    let active = true;
+    setFinanceLoading(true);
+    setFinanceError(null);
+
+    api<ParentFinanceSnapshot>(`/api/finance/parents/${viewTarget.id}/profile`)
+      .then((snapshot) => {
+        if (!active) return;
+        setFinanceSnapshot(snapshot);
+      })
+      .catch((error) => {
+        if (!active) return;
+        setFinanceSnapshot(null);
+        setFinanceError(error instanceof Error ? error.message : "Impossible de charger le dossier financier du parent.");
+      })
+      .finally(() => {
+        if (active) setFinanceLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [viewTarget]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -1109,7 +1557,16 @@ export function ParentsManagementPage() {
   return (
     <div className="space-y-6 pb-8">
       {/* Modals */}
-      {viewTarget && <DetailModal parent={viewTarget} onClose={() => setViewTarget(null)} t={t} />}
+      {viewTarget && (
+        <DetailModal
+          parent={viewTarget}
+          financeSnapshot={financeSnapshot}
+          financeLoading={financeLoading}
+          financeError={financeError}
+          onClose={() => setViewTarget(null)}
+          t={t}
+        />
+      )}
       {credentials && <CredentialsModal credentials={credentials} onClose={() => setCredentials(null)} />}
       {deleteTarget && <DeleteModal parent={deleteTarget} onConfirm={handleDelete} onClose={() => setDeleteTarget(null)} t={t} />}
       {notificationTarget && (

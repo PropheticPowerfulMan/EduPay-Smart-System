@@ -9,7 +9,7 @@ import { amountToWords } from "../../utils/amount-words";
 import { orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
 import { sendEmail, sendSms } from "../../utils/messaging";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
-import { applyPaymentToFinanceLedger } from "../finance/service";
+import { applyPaymentToFinanceLedger, runOverdueTuitionReminderSweep } from "../finance/service";
 
 const createPaymentSchema = z.object({
   parentFullName: z.string().optional().default(""),
@@ -409,6 +409,10 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
       parentId,
       studentIds: payment.students.map((student) => student.id)
     }).catch((error) => console.error("Finance ledger sync failed", error));
+    await runOverdueTuitionReminderSweep({
+      schoolId: req.user!.schoolId,
+      parentId
+    }).catch((error) => console.error("Overdue tuition reminder sweep failed", error));
 
     try {
       const syncedStudentExternalIds = payload.studentExternalIds.length > 0

@@ -127,7 +127,9 @@ type DemoDebt = {
   amountRemaining: number;
   status: string;
   academicYearId: string;
+  academicYearName: string;
   carriedOverFromYearId: string | null;
+  carriedOverFromYearName: string | null;
   dueDate: string | null;
   settledAt: string | null;
   createdAt: string;
@@ -440,6 +442,74 @@ export function setDemoFinanceOverrides(overrides: Record<string, StudentConfigu
 
 function roundCurrency(value: number) {
   return Math.round((value + Number.EPSILON) * 100000) / 100000;
+}
+
+function formatAlertDueDate(value: string) {
+  const date = new Date(value);
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const year = date.getUTCFullYear();
+  return `${day}/${month}/${year}`;
+}
+
+function formatAlertCurrency(value: number) {
+  return `$ ${roundCurrency(value).toFixed(2)} USD`;
+}
+
+function buildOverdueAlertSeries(input: {
+  parentId: string;
+  academicYearName: string;
+  activeTuitionPlan: string;
+  overdueInstallments: DemoInstallment[];
+  totalDebt: number;
+}) {
+  if (input.overdueInstallments.length === 0) return [];
+
+  const now = Date.now();
+  const sortedInstallments = [...input.overdueInstallments].sort(
+    (left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime()
+  );
+  const firstInstallment = sortedInstallments[0];
+  const mostLateInstallment = sortedInstallments.reduce((latest, current) => {
+    const latestDelay = Math.max(Math.floor((now - new Date(latest.dueDate).getTime()) / 86400000), 0);
+    const currentDelay = Math.max(Math.floor((now - new Date(current.dueDate).getTime()) / 86400000), 0);
+    return currentDelay > latestDelay ? current : latest;
+  }, firstInstallment);
+  const firstDelayDays = Math.max(Math.floor((now - new Date(firstInstallment.dueDate).getTime()) / 86400000), 0);
+  const maxDelayDays = Math.max(Math.floor((now - new Date(mostLateInstallment.dueDate).getTime()) / 86400000), 0);
+  const planLabel = input.activeTuitionPlan !== "No active tuition plan"
+    ? input.activeTuitionPlan
+    : PAYMENT_OPTION_LABELS[firstInstallment.paymentOptionType] ?? "plan de tuition";
+
+  return [
+    {
+      id: `demo-alert-overdue-1-${input.parentId}`,
+      type: "OVERDUE_INSTALLMENT_REMINDER_1",
+      title: "Alerte 1 - echeance de tuition depassee",
+      message: `${firstInstallment.studentName} a depasse l'echeance \"${firstInstallment.label}\" du ${formatAlertDueDate(firstInstallment.dueDate)} selon le plan ${planLabel}. Solde en retard: ${formatAlertCurrency(firstInstallment.balance)}.`,
+      severity: "MEDIUM",
+      status: "OPEN",
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: `demo-alert-overdue-2-${input.parentId}`,
+      type: "OVERDUE_INSTALLMENT_REMINDER_2",
+      title: "Alerte 2 - regularisation attendue immediatement",
+      message: `${input.overdueInstallments.length} echeance(s) sont en retard pour ${input.academicYearName}, avec jusqu'a ${maxDelayDays} jour(s) de depassement. Dette totale suivie: ${formatAlertCurrency(input.totalDebt)}.`,
+      severity: input.overdueInstallments.length >= 2 || maxDelayDays >= 14 ? "HIGH" : "MEDIUM",
+      status: "OPEN",
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: `demo-alert-overdue-3-${input.parentId}`,
+      type: "OVERDUE_INSTALLMENT_REMINDER_3",
+      title: "Alerte 3 - dossier remonte au financier",
+      message: `Le parent et le financier doivent traiter ce retard maintenant. Premiere echeance non reglee depuis ${firstDelayDays} jour(s), derniere echeance critique ${mostLateInstallment.label} pour ${mostLateInstallment.studentName}.`,
+      severity: "HIGH",
+      status: "OPEN",
+      createdAt: new Date().toISOString()
+    }
+  ];
 }
 
 function resolveGradeGroup(className?: string | null) {
@@ -761,7 +831,6 @@ export function buildDemoParentFinanceProfile(parentId: string, parents: DemoPar
   const totalReduction = roundCurrency(reductions.reduce((sum, reduction) => sum + Number(reduction.amount || 0), 0));
   const totalExpected = roundCurrency(studentRows.reduce((sum, student) => sum + student.expectedTotal, 0));
   const totalDebt = roundCurrency(tuitionDebt + carriedOverDebt);
-  const activePlanNames = Array.from(new Set(studentRows.map((student) => student.planName))).filter(Boolean);
   const paymentBehaviorScore = computeBehaviorScore(totalExpected || 1, totalPaid, overdueInstallments, delayedPayments, carriedOverDebt);
 
   const debts: DemoDebt[] = [
@@ -775,7 +844,9 @@ export function buildDemoParentFinanceProfile(parentId: string, parents: DemoPar
         amountRemaining: roundCurrency(student.balance),
         status: student.balance > 0 && student.paid > 0 ? "PARTIALLY_PAID" : "OPEN",
         academicYearId: ACADEMIC_YEAR.id,
+        academicYearName: ACADEMIC_YEAR.name,
         carriedOverFromYearId: null,
+        carriedOverFromYearName: null,
         dueDate: installments.find((installment) => installment.studentId === student.id && installment.balance > 0)?.dueDate ?? null,
         settledAt: null,
         createdAt: ACADEMIC_YEAR.startDate
@@ -789,7 +860,9 @@ export function buildDemoParentFinanceProfile(parentId: string, parents: DemoPar
           amountRemaining: carriedOverDebt,
           status: "OPEN",
           academicYearId: ACADEMIC_YEAR.id,
+          academicYearName: ACADEMIC_YEAR.name,
           carriedOverFromYearId: "2025-2026",
+          carriedOverFromYearName: "2025-2026",
           dueDate: null,
           settledAt: null,
           createdAt: ACADEMIC_YEAR.startDate
@@ -797,19 +870,19 @@ export function buildDemoParentFinanceProfile(parentId: string, parents: DemoPar
       : [])
   ];
 
+  const activePlanNames = Array.from(new Set(studentRows.map((student) => student.planName))).filter(Boolean);
+  const activeTuitionPlan = activePlanNames.length === 1 ? activePlanNames[0] : activePlanNames.length > 1 ? "Mixed tuition plans" : "No active tuition plan";
+  const overdueInstallmentRows = installments.filter((installment) => installment.isOverdue);
+
   const alerts: Array<{ id: string; type: string; title: string; message: string; severity: string; status: string; createdAt: string }> = [
-    ...(overdueInstallments > 0
-      ? [{
-          id: `demo-alert-overdue-${parent.id}`,
-          type: "OVERDUE_INSTALLMENT",
-          title: "Overdue installments detected",
-          message: `${overdueInstallments} installment(s) are overdue for ${ACADEMIC_YEAR.name}.`,
-          severity: overdueInstallments >= 3 ? "HIGH" : "MEDIUM",
-          status: "OPEN",
-          createdAt: new Date().toISOString()
-        }]
-      : []),
-    ...(totalDebt > Math.max(totalExpected * 0.35, 500)
+    ...buildOverdueAlertSeries({
+      parentId: parent.id,
+      academicYearName: ACADEMIC_YEAR.name,
+      activeTuitionPlan,
+      overdueInstallments: overdueInstallmentRows,
+      totalDebt
+    }),
+    ...(overdueInstallmentRows.length === 0 && totalDebt > Math.max(totalExpected * 0.35, 500)
       ? [{
           id: `demo-alert-debt-${parent.id}`,
           type: "ABNORMAL_DEBT_ACCUMULATION",

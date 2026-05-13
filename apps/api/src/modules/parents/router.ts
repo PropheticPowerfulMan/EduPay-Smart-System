@@ -1,12 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
 import bcrypt from "bcrypt";
-import { PaymentOptionType } from "@prisma/client";
+import { AgreementStatus, PaymentOptionType } from "@prisma/client";
 import { deleteOrbitParent, matchesSharedParentIdentifier, orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
 import { prisma } from "../../prisma";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
 import { sendEmail, sendSms } from "../../utils/messaging";
-import { getPaymentOptionLabel, upsertParentPlanAssignment } from "../finance/service";
+import { createSpecialFinancialAgreement, getPaymentOptionLabel, upsertParentPlanAssignment } from "../finance/service";
 
 function generateAccessCode() {
   const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -68,6 +68,26 @@ function buildReadableEntityId(prefix: "PAR" | "STU", fullName: string) {
 
   const safeTokens = tokens.length ? tokens : [prefix === "PAR" ? "PARENT" : "STUDENT"];
   return `${prefix}-KCS-${safeTokens.join("-")}`;
+}
+
+function buildAcademicDueDate(month: number, day: number) {
+  const now = new Date();
+  const startYear = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+  const year = month >= 8 ? startYear : startYear + 1;
+  return new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999)).toISOString();
+}
+
+function buildOwnerAgreementInstallments(customTotal: number) {
+  const safeTotal = Math.max(Number(customTotal || 0), 0);
+  const first = Math.round((safeTotal * 0.4) * 100) / 100;
+  const second = Math.round((safeTotal * 0.3) * 100) / 100;
+  const third = Math.round((safeTotal - first - second) * 100) / 100;
+
+  return [
+    { label: "Engagement initial", dueDate: buildAcademicDueDate(8, 31), amountDue: first, notes: "Created during parent onboarding" },
+    { label: "Regularisation mi-annee", dueDate: buildAcademicDueDate(1, 31), amountDue: second, notes: "Created during parent onboarding" },
+    { label: "Solde final", dueDate: buildAcademicDueDate(5, 31), amountDue: third, notes: "Created during parent onboarding" }
+  ];
 }
 
 async function generateUniqueParentId(tx: typeof prisma, schoolId: string, fullName: string) {
@@ -381,7 +401,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
           userId: user.id
         }
       });
-      const createdStudents: Array<{ id: string; paymentOptionType: PaymentOptionType }> = [];
+      const createdStudents: Array<{ id: string; fullName: string; annualFee: number; paymentOptionType: PaymentOptionType }> = [];
       for (const st of payload.students) {
         const studentId = await generateUniqueStudentId(tx as typeof prisma, req.user!.schoolId, st.fullName);
         await tx.student.create({
@@ -394,18 +414,35 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
             schoolId: req.user!.schoolId
           }
         });
-        createdStudents.push({ id: studentId, paymentOptionType: st.paymentOptionType });
+        createdStudents.push({ id: studentId, fullName: st.fullName, annualFee: st.annualFee, paymentOptionType: st.paymentOptionType });
       }
       return { parentId: p.id, createdStudents };
     });
     for (const student of parent.createdStudents) {
-      await upsertParentPlanAssignment({
-        schoolId: req.user!.schoolId,
-        parentId: parent.parentId,
-        studentId: student.id,
-        paymentOptionType: student.paymentOptionType,
-        notes: "Assigned during parent onboarding"
-      });
+      if (student.paymentOptionType === PaymentOptionType.SPECIAL_OWNER_AGREEMENT) {
+        if (student.annualFee <= 0) {
+          throw new Error("Le total de l'accord special doit etre positif.");
+        }
+        await createSpecialFinancialAgreement({
+          schoolId: req.user!.schoolId,
+          parentId: parent.parentId,
+          studentId: student.id,
+          title: `Accord special proprietaire - ${student.fullName}`,
+          customTotal: student.annualFee,
+          reductionAmount: 0,
+          status: AgreementStatus.APPROVED,
+          notes: "Created during parent onboarding",
+          installments: buildOwnerAgreementInstallments(student.annualFee)
+        });
+      } else {
+        await upsertParentPlanAssignment({
+          schoolId: req.user!.schoolId,
+          parentId: parent.parentId,
+          studentId: student.id,
+          paymentOptionType: student.paymentOptionType,
+          notes: "Assigned during parent onboarding"
+        });
+      }
     }
     const createdParent = await prisma.parent.findUnique({
       where: { id: parent.parentId },

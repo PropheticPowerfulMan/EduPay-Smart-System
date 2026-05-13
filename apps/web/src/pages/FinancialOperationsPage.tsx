@@ -9,10 +9,12 @@ import {
   Landmark,
   Printer,
   ReceiptText,
-  Users
+  Users,
+  X
 } from "lucide-react";
 import { SearchField } from "../components/SearchField";
 import { api } from "../services/api";
+import { useI18n } from "../i18n";
 import { useAuthStore } from "../store/auth";
 import { exportWorkbook } from "../utils/financeExcel";
 
@@ -241,6 +243,7 @@ type PayrollFormState = {
 
 const PAYMENT_METHODS = ["CASH", "BANK_TRANSFER", "MPESA", "AIRTEL_MONEY", "ORANGE_MONEY", "CHEQUE", "INTERNAL_TRANSFER"];
 const PAYROLL_FREQUENCIES = ["MONTHLY", "BI_MONTHLY", "QUARTERLY", "ANNUAL"];
+type OperationTab = "expenses" | "budgets" | "payroll" | "accounting" | "cashflow" | "documents";
 
 const EMPTY_EXPENSE_FORM: ExpenseFormState = {
   title: "",
@@ -297,12 +300,12 @@ const EMPTY_PAYROLL_FORM: PayrollFormState = {
 
 function SectionCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
-    <section className="card glass border border-white/10 shadow-lg">
-      <div>
-        <h2 className="font-display text-2xl font-bold text-white">{title}</h2>
+    <section className="card glass min-w-0 border border-white/10 shadow-lg">
+      <div className="min-w-0">
+        <h2 className="font-display text-xl font-bold text-white sm:text-2xl">{title}</h2>
         <p className="mt-1 text-sm text-ink-dim">{subtitle}</p>
       </div>
-      <div className="mt-5">{children}</div>
+      <div className="mt-5 min-w-0">{children}</div>
     </section>
   );
 }
@@ -315,7 +318,45 @@ function StatusBadge({ value }: { value: string }) {
       : value === "PENDING" || value === "DRAFT"
         ? "border-amber-500/25 bg-amber-500/10 text-amber-200"
         : "border-brand-500/25 bg-brand-500/10 text-brand-100";
-  return <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}>{value}</span>;
+  return <span className={`inline-flex max-w-full items-center rounded-full border px-3 py-1 text-xs font-semibold ${tone}`}>{value}</span>;
+}
+
+function OperationsDialog({
+  title,
+  subtitle,
+  children,
+  onClose
+}: {
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className="edupay-operations-dialog fixed inset-0 z-50 flex items-end justify-center px-3 py-4 sm:items-center sm:px-5">
+      <button aria-label="Fermer" className="absolute inset-0 bg-slate-950/78 backdrop-blur-md" onClick={onClose} />
+      <section className="edupay-operations-modal relative flex max-h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-slate-950/95 shadow-2xl">
+        <header className="flex flex-col gap-4 border-b border-white/10 bg-white/[0.04] px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Operations</p>
+            <h2 className="mt-1 font-display text-2xl font-bold text-white">{title}</h2>
+            <p className="mt-1 text-sm text-ink-dim">{subtitle}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-ink-dim hover:border-brand-300/30 hover:text-white"
+            aria-label="Fermer la boite de dialogue"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+        <div className="edupay-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+          {children}
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function labelizeFrequency(value: string) {
@@ -329,11 +370,14 @@ function labelizeFrequency(value: string) {
 }
 
 export function FinancialOperationsPage() {
+  const { lang } = useI18n();
   const role = useAuthStore((state) => state.role);
   const canWrite = role !== "AUDITOR" && role !== "PARENT";
-  const currency = useMemo(() => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "USD" }), []);
+  const currency = useMemo(() => new Intl.NumberFormat(lang === "fr" ? "fr-FR" : "en-US", { style: "currency", currency: "USD" }), [lang]);
+  const L = (fr: string, en: string) => lang === "fr" ? fr : en;
 
-  const [activeTab, setActiveTab] = useState<"expenses" | "budgets" | "payroll" | "accounting" | "cashflow" | "documents">("expenses");
+  const [activeTab, setActiveTab] = useState<OperationTab>("expenses");
+  const [activeDialog, setActiveDialog] = useState<OperationTab | null>(null);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -1046,37 +1090,105 @@ export function FinancialOperationsPage() {
     return (
       <div className="flex min-h-[65vh] items-center justify-center px-4">
         <div className="glass max-w-xl rounded-2xl border border-red-500/20 p-8 text-center shadow-xl">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-300">Operations unavailable</p>
-          <h1 className="mt-3 font-display text-3xl font-bold text-white">Les operations financieres ne sont pas disponibles</h1>
-          <p className="mt-3 text-sm text-ink-dim">{error ?? "Aucune donnee n'a ete renvoyee."}</p>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-300">{L("Operations indisponibles", "Operations unavailable")}</p>
+          <h1 className="mt-3 font-display text-3xl font-bold text-white">{L("Les operations financieres ne sont pas disponibles", "Financial operations are unavailable")}</h1>
+          <p className="mt-3 text-sm text-ink-dim">{error ?? L("Aucune donnee n'a ete renvoyee.", "No data was returned.")}</p>
         </div>
       </div>
     );
   }
 
+  const operationModules: Array<{
+    value: OperationTab;
+    title: string;
+    description: string;
+    count: number;
+    metric: string;
+    icon: React.ComponentType<{ className?: string }>;
+    tone: string;
+  }> = [
+    {
+      value: "expenses",
+      title: L("Dépenses", "Expenses"),
+      description: L("Demandes, justificatifs, fournisseurs et validations.", "Requests, supporting documents, vendors and approvals."),
+      count: expenses.length,
+      metric: L(`${expenseStats.pending} en attente`, `${expenseStats.pending} pending`),
+      icon: ReceiptText,
+      tone: "border-red-400/20 bg-red-500/10 text-red-200"
+    },
+    {
+      value: "budgets",
+      title: L("Budgets", "Budgets"),
+      description: L("Enveloppes par departement, seuils et consommation.", "Department envelopes, thresholds and usage."),
+      count: budgets.length,
+      metric: L(`${budgets.filter((budget) => budget.status === "EXCEEDED").length} dépassement(s)`, `${budgets.filter((budget) => budget.status === "EXCEEDED").length} overrun(s)`),
+      icon: Landmark,
+      tone: "border-cyan-400/20 bg-cyan-500/10 text-cyan-200"
+    },
+    {
+      value: "payroll",
+      title: L("Paie", "Payroll"),
+      description: L("Profils salariaux, runs, bulletins et export.", "Salary profiles, runs, payslips and exports."),
+      count: payrollRuns.length,
+      metric: currency.format(overview.payroll.totalPayroll),
+      icon: Users,
+      tone: "border-brand-300/20 bg-brand-500/10 text-brand-100"
+    },
+    {
+      value: "accounting",
+      title: L("Comptabilité", "Accounting"),
+      description: L("Journal général des charges et pièces sources.", "General expense ledger and source documents."),
+      count: accountingEntries.length,
+      metric: L("Écritures générées", "Generated entries"),
+      icon: Landmark,
+      tone: "border-violet-300/20 bg-violet-500/10 text-violet-100"
+    },
+    {
+      value: "cashflow",
+      title: L("Trésorerie", "Cash flow"),
+      description: L("Mouvements de trésorerie, méthodes et solde disponible.", "Cash movements, methods and available balance."),
+      count: cashflowEntries.length,
+      metric: currency.format(overview.cashflow.availableCash),
+      icon: CircleDollarSign,
+      tone: "border-emerald-300/20 bg-emerald-500/10 text-emerald-100"
+    },
+    {
+      value: "documents",
+      title: L("Documents", "Documents"),
+      description: L("Pièces justificatives, ouverture et téléchargement.", "Supporting documents, opening and downloads."),
+      count: documentEntries.length,
+      metric: L(`${expenses.filter((expense) => (expense.attachments?.length ?? 0) > 0).length} dossier(s)`, `${expenses.filter((expense) => (expense.attachments?.length ?? 0) > 0).length} file(s)`),
+      icon: BriefcaseBusiness,
+      tone: "border-amber-300/20 bg-amber-500/10 text-amber-100"
+    }
+  ];
+  const activeModule = operationModules.find((module) => module.value === activeDialog);
+
   return (
-    <div className="space-y-6 pb-10 animate-fadeInUp">
-      <section className="glass border border-brand-300/15 px-6 py-6 shadow-xl">
+    <div className="edupay-operations space-y-6 pb-10 animate-fadeInUp">
+      <section className="glass min-w-0 border border-brand-300/15 px-4 py-5 shadow-xl sm:px-6 sm:py-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div className="max-w-4xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-200">EduPay Financial Operations</p>
-            <h1 className="mt-2 font-display text-3xl font-bold text-white">Centre operationnel des depenses, budgets et paie</h1>
+          <div className="min-w-0 max-w-4xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-200">{L("Opérations financières EduPay", "EduPay Financial Operations")}</p>
+            <h1 className="mt-2 font-display text-2xl font-bold text-white sm:text-3xl">{L("Centre opérationnel des dépenses, des budgets et de la paie", "Operational center for expenses, budgets and payroll")}</h1>
             <p className="mt-3 text-sm text-ink-dim">
-              Cet espace complete le cockpit ERP avec les operations executables: creation de depenses,
-              fournisseurs, budgets, profils salariaux, runs de paie et validation des sorties de cash.
+              {L(
+                "Cet espace complète le tableau financier avec les opérations exécutables : création de dépenses, fournisseurs, budgets, profils salariaux, cycles de paie et validation des sorties de trésorerie.",
+                "This area complements the ERP cockpit with executable operations: expense creation, vendors, budgets, salary profiles, payroll runs and cash-out validation."
+              )}
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-2xl border border-brand-500/25 bg-brand-500/10 px-4 py-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Cash disponible</p>
-              <p className="mt-1 font-display text-2xl font-bold text-white">{currency.format(overview.cashflow.availableCash)}</p>
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:w-[380px]">
+            <div className="min-w-0 rounded-2xl border border-brand-500/25 bg-brand-500/10 px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">{L("Cash disponible", "Available cash")}</p>
+              <p className="mt-1 font-display text-xl font-bold text-white sm:text-2xl">{currency.format(overview.cashflow.availableCash)}</p>
             </div>
-            <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
-              <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Etapes en attente</p>
-              <p className="mt-1 font-display text-2xl font-bold text-white">{overview.expenses.pendingApprovalSteps}</p>
+            <div className="min-w-0 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">{L("Étapes en attente", "Pending steps")}</p>
+              <p className="mt-1 font-display text-xl font-bold text-white sm:text-2xl">{overview.expenses.pendingApprovalSteps}</p>
             </div>
             <button onClick={exportOperationsWorkbook} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/25 bg-cyan-400/10 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-400/20 sm:col-span-2">
-              <Download className="h-4 w-4" /> Exporter le pack Excel
+              <Download className="h-4 w-4" /> {L("Exporter le pack Excel", "Export Excel pack")}
             </button>
           </div>
         </div>
@@ -1086,9 +1198,9 @@ export function FinancialOperationsPage() {
         <div className="card glass border border-white/10 shadow-lg">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">Depenses</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">{L("Dépenses", "Expenses")}</p>
               <p className="mt-3 font-display text-2xl font-bold text-white">{currency.format(overview.expenses.totalExpenses)}</p>
-              <p className="mt-2 text-xs text-ink-dim">{expenseStats.approved} approuvees, {expenseStats.pending} en attente</p>
+              <p className="mt-2 text-xs text-ink-dim">{L(`${expenseStats.approved} approuvée(s), ${expenseStats.pending} en attente`, `${expenseStats.approved} approved, ${expenseStats.pending} pending`)}</p>
             </div>
             <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3 text-red-300"><ReceiptText className="h-5 w-5" /></div>
           </div>
@@ -1096,9 +1208,9 @@ export function FinancialOperationsPage() {
         <div className="card glass border border-white/10 shadow-lg">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">Budgets</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">{L("Budgets", "Budgets")}</p>
               <p className="mt-3 font-display text-2xl font-bold text-white">{budgets.length}</p>
-              <p className="mt-2 text-xs text-ink-dim">{budgets.filter((budget) => budget.status === "EXCEEDED").length} en depassement</p>
+              <p className="mt-2 text-xs text-ink-dim">{L(`${budgets.filter((budget) => budget.status === "EXCEEDED").length} en dépassement`, `${budgets.filter((budget) => budget.status === "EXCEEDED").length} over budget`)}</p>
             </div>
             <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 p-3 text-cyan-300"><Landmark className="h-5 w-5" /></div>
           </div>
@@ -1106,9 +1218,9 @@ export function FinancialOperationsPage() {
         <div className="card glass border border-white/10 shadow-lg">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">Profils salariaux</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">{L("Profils salariaux", "Salary profiles")}</p>
               <p className="mt-3 font-display text-2xl font-bold text-white">{salaryProfiles.length}</p>
-              <p className="mt-2 text-xs text-ink-dim">{currency.format(overview.payroll.totalPayroll)} de masse salariale</p>
+              <p className="mt-2 text-xs text-ink-dim">{L(`${currency.format(overview.payroll.totalPayroll)} de masse salariale`, `${currency.format(overview.payroll.totalPayroll)} payroll mass`)}</p>
             </div>
             <div className="rounded-2xl border border-brand-500/30 bg-brand-500/10 p-3 text-brand-100"><Users className="h-5 w-5" /></div>
           </div>
@@ -1116,32 +1228,47 @@ export function FinancialOperationsPage() {
         <div className="card glass border border-white/10 shadow-lg">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">Passifs</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">{L("Passifs", "Liabilities")}</p>
               <p className="mt-3 font-display text-2xl font-bold text-white">{currency.format(overview.liabilities.supplierDebt + overview.liabilities.payrollLiability)}</p>
-              <p className="mt-2 text-xs text-ink-dim">Obligations salariales et fournisseurs</p>
+              <p className="mt-2 text-xs text-ink-dim">{L("Obligations salariales et fournisseurs", "Payroll and supplier obligations")}</p>
             </div>
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-amber-300"><AlertTriangle className="h-5 w-5" /></div>
           </div>
         </div>
       </section>
 
-      <section className="flex flex-wrap gap-3">
-        {[
-          ["expenses", "Depenses", expenses.length],
-          ["budgets", "Budgets", budgets.length],
-          ["payroll", "Paie", payrollRuns.length],
-          ["accounting", "Comptabilite", accountingEntries.length],
-          ["cashflow", "Tresorerie", cashflowEntries.length],
-          ["documents", "Documents", documentEntries.length]
-        ].map(([value, label, count]) => (
-          <button
-            key={value}
-            onClick={() => setActiveTab(value as "expenses" | "budgets" | "payroll" | "accounting" | "cashflow" | "documents")}
-            className={`rounded-2xl border px-4 py-3 text-sm font-semibold transition-all ${activeTab === value ? "border-brand-300/40 bg-brand-500/15 text-white" : "border-white/10 bg-white/[0.04] text-ink-dim hover:text-white"}`}
-          >
-            {label} <span className="ml-2 rounded-full bg-white/10 px-2 py-0.5 text-xs">{count}</span>
-          </button>
-        ))}
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {operationModules.map((module) => {
+          const Icon = module.icon;
+          return (
+            <button
+              key={module.value}
+              type="button"
+              onClick={() => {
+                setActiveTab(module.value);
+                setActiveDialog(module.value);
+              }}
+              className="group min-w-0 rounded-2xl border border-white/10 bg-white/[0.045] p-4 text-left shadow-lg transition hover:border-brand-300/30 hover:bg-white/[0.075]"
+            >
+              <div className="flex min-w-0 items-start gap-3">
+                <span className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${module.tone}`}>
+                  <Icon className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 items-center justify-between gap-3">
+                    <span className="font-display text-xl font-bold text-white">{module.title}</span>
+                    <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold text-ink-dim">{module.count}</span>
+                  </span>
+                  <span className="mt-2 block text-sm text-ink-dim">{module.description}</span>
+                  <span className="mt-4 flex min-w-0 items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.12em] text-brand-100">
+                    <span>{module.metric}</span>
+                    <span className="rounded-full border border-white/10 px-3 py-1 normal-case tracking-normal text-white group-hover:border-brand-300/30">{L("Ouvrir", "Open")}</span>
+                  </span>
+                </span>
+              </div>
+            </button>
+          );
+        })}
       </section>
 
       {!canWrite && (
@@ -1153,6 +1280,8 @@ export function FinancialOperationsPage() {
       {actionError && <div className="rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm text-red-100">{actionError}</div>}
       {success && <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{success}</div>}
 
+      {activeDialog && activeModule && (
+        <OperationsDialog title={activeModule.title} subtitle={activeModule.description} onClose={() => setActiveDialog(null)}>
       {activeTab === "expenses" && (
         <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <div className="space-y-6">
@@ -1668,6 +1797,8 @@ export function FinancialOperationsPage() {
             </div>
           </SectionCard>
         </div>
+      )}
+        </OperationsDialog>
       )}
     </div>
   );

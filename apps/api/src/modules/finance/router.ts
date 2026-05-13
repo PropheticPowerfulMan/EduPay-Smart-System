@@ -2,12 +2,14 @@ import { AgreementStatus, GradeGroup, PaymentOptionType, ReportType } from "@pri
 import { Router } from "express";
 import { z } from "zod";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
+import { prisma } from "../../prisma";
 import {
   createSpecialFinancialAgreement,
   ensureOfficialKcsCatalog,
   getParentFinancialSnapshot,
   getReductionAnalytics,
   getSchoolFinanceOverview,
+  runOverdueTuitionReminderSweep,
   upsertParentPlanAssignment
 } from "./service";
 
@@ -41,6 +43,11 @@ const agreementSchema = z.object({
   installments: z.array(agreementInstallmentSchema).min(1)
 });
 
+const overdueReminderSweepSchema = z.object({
+  parentId: z.string().min(1).optional(),
+  academicYearName: z.string().optional()
+});
+
 export const financeRouter = Router();
 financeRouter.use(authGuard);
 
@@ -69,6 +76,11 @@ financeRouter.get("/overview", authorize("ADMIN", "ACCOUNTANT"), async (req: Aut
 
 financeRouter.get("/parents/:parentId/profile", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
   try {
+    await runOverdueTuitionReminderSweep({
+      schoolId: req.user!.schoolId,
+      parentId: req.params.parentId,
+      academicYearName: typeof req.query.academicYear === "string" ? req.query.academicYear : undefined
+    });
     const snapshot = await getParentFinancialSnapshot({
       schoolId: req.user!.schoolId,
       parentId: req.params.parentId,
@@ -83,7 +95,16 @@ financeRouter.get("/parents/:parentId/profile", authorize("ADMIN", "ACCOUNTANT")
 
 financeRouter.get("/me/profile", authorize("PARENT"), async (req: AuthenticatedRequest, res) => {
   try {
-    const parent = (req.user && req.user.role === "PARENT") ? req.user.sub : "";
+    const parentRecord = await prisma.parent.findFirst({
+      where: { schoolId: req.user!.schoolId, userId: req.user!.sub },
+      select: { id: true }
+    });
+    const parent = parentRecord?.id ?? ((req.user && req.user.role === "PARENT") ? req.user.sub : "");
+    await runOverdueTuitionReminderSweep({
+      schoolId: req.user!.schoolId,
+      parentId: parent,
+      academicYearName: typeof req.query.academicYear === "string" ? req.query.academicYear : undefined
+    });
     const snapshot = await getParentFinancialSnapshot({
       schoolId: req.user!.schoolId,
       parentId: parent,
@@ -93,6 +114,21 @@ financeRouter.get("/me/profile", authorize("PARENT"), async (req: AuthenticatedR
   } catch (error) {
     console.error("Current parent finance profile error", error);
     return res.status(404).json({ message: "Parent finance profile not found." });
+  }
+});
+
+financeRouter.post("/overdue-reminders/run", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
+  try {
+    const payload = overdueReminderSweepSchema.parse(req.body ?? {});
+    const result = await runOverdueTuitionReminderSweep({
+      schoolId: req.user!.schoolId,
+      parentId: payload.parentId,
+      academicYearName: payload.academicYearName
+    });
+    return res.json(result);
+  } catch (error) {
+    console.error("Overdue reminder sweep error", error);
+    return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to run overdue reminder sweep." });
   }
 });
 
