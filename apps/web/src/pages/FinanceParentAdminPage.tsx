@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  CalendarClock,
   FileClock,
   HandCoins,
   Plus,
+  ReceiptText,
   Save,
   Search,
   ShieldAlert,
   UserRound,
-  WalletCards
+  WalletCards,
+  X
 } from "lucide-react";
 import { useI18n } from "../i18n";
 import { api } from "../services/api";
@@ -54,10 +57,37 @@ type FinanceSnapshot = {
     overdueInstallments: number;
   }>;
   reductions: Array<{ id: string; title: string; amount: number; studentName?: string | null }>;
-  debts: Array<{ id: string; title: string; amountRemaining: number; status: string; carriedOverFromYearId?: string | null }>;
+  debts: Array<{
+    id: string;
+    title: string;
+    reason?: string | null;
+    originalAmount: number;
+    amountRemaining: number;
+    status: string;
+    academicYearId?: string | null;
+    academicYearName?: string | null;
+    carriedOverFromYearId?: string | null;
+    carriedOverFromYearName?: string | null;
+    dueDate?: string | null;
+    settledAt?: string | null;
+    createdAt: string;
+  }>;
   agreements: Array<{ id: string; title: string; status: string; balanceDue: number }>;
   alerts: Array<{ id: string; title: string; message: string; severity: string }>;
+  paymentHistory?: Array<{
+    id: string;
+    transactionNumber: string;
+    amount: number;
+    reason: string;
+    method: string;
+    status: string;
+    createdAt: string;
+    receiptNumber?: string | null;
+    students: Array<{ id: string; fullName: string }>;
+  }>;
 };
+
+type AdminParentModule = "students" | "debts" | "alerts" | "reductions" | "agreements" | "payments";
 
 type AgreementInstallmentForm = {
   label: string;
@@ -94,6 +124,44 @@ function emptyInstallment(): AgreementInstallmentForm {
   return { label: "", dueDate: "", amountDue: "", notes: "" };
 }
 
+function AdminParentDialog({
+  title,
+  subtitle,
+  children,
+  onClose
+}: {
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className="edupay-parent-tracking-dialog fixed inset-0 z-50 flex items-end justify-center px-3 py-4 sm:items-center sm:px-5">
+      <button aria-label="Fermer" className="absolute inset-0 bg-slate-950/78 backdrop-blur-md" onClick={onClose} />
+      <section className="edupay-parent-tracking-modal relative flex max-h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-slate-950/95 shadow-2xl">
+        <header className="flex flex-col gap-4 border-b border-white/10 bg-white/[0.04] px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Suivi financier des parents</p>
+            <h2 className="mt-1 font-display text-2xl font-bold text-white">{title}</h2>
+            <p className="mt-1 text-sm text-ink-dim">{subtitle}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-ink-dim hover:border-brand-300/30 hover:text-white"
+            aria-label="Fermer la boîte de dialogue"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+        <div className="edupay-scrollbar min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+          {children}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export function FinanceParentAdminPage() {
   const { lang } = useI18n();
   const [parents, setParents] = useState<Parent[]>([]);
@@ -105,6 +173,7 @@ export function FinanceParentAdminPage() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [activeModule, setActiveModule] = useState<AdminParentModule | null>(null);
   const [assignmentSubmitting, setAssignmentSubmitting] = useState(false);
   const [agreementSubmitting, setAgreementSubmitting] = useState(false);
   const [assignmentForm, setAssignmentForm] = useState({ studentId: "", paymentOptionType: "STANDARD_MONTHLY", notes: "" });
@@ -200,6 +269,31 @@ export function FinanceParentAdminPage() {
     { label: "Carry-over", value: money.format(snapshot.profile.carriedOverDebt), color: "text-amber-300", Icon: FileClock },
     { label: "Overdue", value: String(snapshot.profile.overdueInstallments), color: "text-orange-300", Icon: ShieldAlert }
   ] : [];
+
+  const historicalDebts = snapshot?.debts.filter((debt) =>
+    Boolean(debt.carriedOverFromYearId || debt.carriedOverFromYearName) ||
+    Boolean(debt.academicYearId && debt.academicYearName && debt.academicYearName !== "2026-2027")
+  ) ?? [];
+  const historicalDebtTotal = historicalDebts.reduce((sum, debt) => sum + Number(debt.amountRemaining || 0), 0);
+  const currentDebtTotal = snapshot?.debts.reduce((sum, debt) => sum + Number(debt.amountRemaining || 0), 0) ?? 0;
+  const paymentCount = snapshot?.paymentHistory?.length ?? 0;
+  const moduleCards: Array<{
+    id: AdminParentModule;
+    title: string;
+    subtitle: string;
+    count: number;
+    metric: string;
+    Icon: typeof WalletCards;
+    toneClass: string;
+  }> = snapshot ? [
+    { id: "students", title: "Enfants et plans", subtitle: "Plans actifs, progression, soldes et retards par enfant.", count: snapshot.students.length, metric: `${snapshot.profile.completionRate.toFixed(1)} % couvert`, Icon: CalendarClock, toneClass: "border-brand-300/20 bg-brand-500/10 text-brand-100" },
+    { id: "debts", title: "Dettes historiques", subtitle: "Années antérieures, reports, origine, échéance, règlement et solde.", count: snapshot.debts.length, metric: money.format(historicalDebtTotal), Icon: FileClock, toneClass: "border-red-300/20 bg-red-500/10 text-red-100" },
+    { id: "alerts", title: "Alertes", subtitle: "Alertes de retard, anomalies et pression de recouvrement.", count: snapshot.alerts.length, metric: `${snapshot.profile.overdueInstallments} retard(s)`, Icon: ShieldAlert, toneClass: "border-amber-300/20 bg-amber-500/10 text-amber-100" },
+    { id: "reductions", title: "Réductions", subtitle: "Remises officielles et avantages appliqués au dossier.", count: snapshot.reductions.length, metric: money.format(snapshot.profile.totalReduction), Icon: HandCoins, toneClass: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100" },
+    { id: "agreements", title: "Accords spéciaux", subtitle: "Accords propriétaire/direction, statuts et soldes restants.", count: snapshot.agreements.length, metric: snapshot.agreements[0] ? money.format(snapshot.agreements[0].balanceDue) : "Aucun", Icon: Save, toneClass: "border-emerald-300/20 bg-emerald-500/10 text-emerald-100" },
+    { id: "payments", title: "Paiements", subtitle: "Historique des paiements et reçus liés au parent.", count: paymentCount, metric: money.format(snapshot.profile.totalPaid), Icon: ReceiptText, toneClass: "border-violet-300/20 bg-violet-500/10 text-violet-100" }
+  ] : [];
+  const selectedModule = moduleCards.find((module) => module.id === activeModule) ?? null;
 
   const matchingPlanCount = useMemo(() => {
     if (!catalog) return 0;
@@ -300,10 +394,10 @@ export function FinanceParentAdminPage() {
   return (
     <div className="min-w-0 space-y-6 overflow-hidden pb-10 animate-fadeInUp">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.22em] text-brand-300">Administration financiere</p>
-        <h1 className="mt-2 font-display text-3xl font-bold text-white">Inspection detaillee des comptes parents</h1>
+        <p className="text-xs font-bold uppercase tracking-[0.22em] text-brand-300">Administration financière</p>
+        <h1 className="mt-2 font-display text-3xl font-bold text-white">Suivi financier détaillé des parents</h1>
         <p className="mt-2 max-w-3xl text-sm text-ink-dim">
-          Lecture parent par parent du plan actif, des reductions, des dettes historiques, des alertes et des accords speciaux du proprietaire.
+          Vue organisée par modules : plans actifs, réductions, dettes historiques, alertes, accords spéciaux et paiements.
         </p>
       </div>
 
@@ -390,6 +484,37 @@ export function FinanceParentAdminPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {moduleCards.map((module) => {
+                  const Icon = module.Icon;
+                  return (
+                    <button
+                      key={module.id}
+                      type="button"
+                      onClick={() => setActiveModule(module.id)}
+                      className="group min-w-0 rounded-2xl border border-white/10 bg-white/[0.045] p-4 text-left shadow-lg transition hover:border-brand-300/30 hover:bg-white/[0.075]"
+                    >
+                      <div className="flex min-w-0 items-start gap-3">
+                        <span className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${module.toneClass}`}>
+                          <Icon className="h-5 w-5" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex min-w-0 items-center justify-between gap-3">
+                            <span className="font-display text-xl font-bold text-white">{module.title}</span>
+                            <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold text-ink-dim">{module.count}</span>
+                          </span>
+                          <span className="mt-2 block text-sm text-ink-dim">{module.subtitle}</span>
+                          <span className="mt-4 flex min-w-0 items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.12em] text-brand-100">
+                            <span>{module.metric}</span>
+                            <span className="rounded-full border border-white/10 px-3 py-1 normal-case tracking-normal text-white group-hover:border-brand-300/30">Ouvrir</span>
+                          </span>
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
 
               <div className="grid gap-6 xl:grid-cols-2">
@@ -623,6 +748,148 @@ export function FinanceParentAdminPage() {
                   </button>
                 </div>
               </div>
+
+              {selectedModule && (
+                <AdminParentDialog title={selectedModule.title} subtitle={selectedModule.subtitle} onClose={() => setActiveModule(null)}>
+                  {activeModule === "students" && (
+                    <div className="space-y-3">
+                      {snapshot.students.map((student) => (
+                        <article key={student.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <p className="font-display text-xl font-bold text-white">{student.fullName}</p>
+                              <p className="mt-1 text-sm text-ink-dim">{student.className || "Classe non renseignée"} · {student.planName}</p>
+                              <p className="mt-2 text-xs text-cyan-200">{student.paymentOptionLabel}</p>
+                            </div>
+                            <div className="grid gap-2 text-sm sm:grid-cols-3">
+                              <span className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-emerald-300">Payé : {money.format(student.paid)}</span>
+                              <span className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-red-300">Solde : {money.format(student.balance)}</span>
+                              <span className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-amber-300">Retards : {student.overdueInstallments}</span>
+                            </div>
+                          </div>
+                          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-800">
+                            <div className="h-full rounded-full bg-gradient-to-r from-brand-600 to-cyan-400" style={{ width: `${Math.max(0, Math.min(100, student.completionRate))}%` }} />
+                          </div>
+                          <p className="mt-2 text-xs text-ink-dim">Couverture : {student.completionRate.toFixed(1)} %</p>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+
+                  {activeModule === "debts" && (
+                    <div className="space-y-5">
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
+                          <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Dette totale suivie</p>
+                          <p className="mt-2 font-mono text-xl font-bold text-red-200">{money.format(currentDebtTotal)}</p>
+                        </div>
+                        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
+                          <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Années antérieures</p>
+                          <p className="mt-2 font-mono text-xl font-bold text-amber-200">{money.format(historicalDebtTotal)}</p>
+                        </div>
+                        <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+                          <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Lignes de dette</p>
+                          <p className="mt-2 font-mono text-xl font-bold text-cyan-200">{snapshot.debts.length}</p>
+                        </div>
+                      </div>
+
+                      {snapshot.debts.length === 0 && <p className="text-sm text-ink-dim">Aucune dette enregistrée pour ce parent.</p>}
+                      {snapshot.debts.map((debt) => {
+                        const isHistorical = historicalDebts.some((entry) => entry.id === debt.id);
+                        return (
+                          <article key={debt.id} className={`rounded-2xl border p-4 ${isHistorical ? "border-amber-500/25 bg-amber-500/10" : "border-white/10 bg-slate-950/40"}`}>
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                              <div className="min-w-0">
+                                <p className="font-semibold text-white">{debt.title}</p>
+                                <p className="mt-1 text-sm text-ink-dim">{debt.reason || "Dette générée par le moteur financier EduPay."}</p>
+                                {isHistorical && <p className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-200">Dette d'année antérieure / report historique</p>}
+                              </div>
+                              <span className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${tone(debt.status)}`}>{debt.status}</span>
+                            </div>
+                            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                              <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Montant initial</p><p className="mt-1 font-mono font-bold text-white">{money.format(debt.originalAmount || 0)}</p></div>
+                              <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Solde restant</p><p className="mt-1 font-mono font-bold text-red-300">{money.format(debt.amountRemaining)}</p></div>
+                              <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Année de la dette</p><p className="mt-1 font-semibold text-white">{debt.academicYearName || debt.academicYearId || "Non renseignée"}</p></div>
+                              <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Origine du report</p><p className="mt-1 font-semibold text-white">{debt.carriedOverFromYearName || debt.carriedOverFromYearId || "Non reportée"}</p></div>
+                              <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Échéance</p><p className="mt-1 font-semibold text-white">{debt.dueDate ? new Date(debt.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US") : "Non définie"}</p></div>
+                              <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Créée le</p><p className="mt-1 font-semibold text-white">{debt.createdAt ? new Date(debt.createdAt).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US") : "Non renseigné"}</p></div>
+                              <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Réglée le</p><p className="mt-1 font-semibold text-white">{debt.settledAt ? new Date(debt.settledAt).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US") : "Non réglée"}</p></div>
+                              <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Identifiant</p><p className="mt-1 break-all font-mono text-xs font-semibold text-cyan-200">{debt.id}</p></div>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {activeModule === "alerts" && (
+                    <div className="space-y-3">
+                      {snapshot.alerts.length === 0 && <p className="text-sm text-ink-dim">Aucune alerte active.</p>}
+                      {snapshot.alerts.map((alert) => (
+                        <article key={alert.id} className={`rounded-2xl border p-4 ${tone(alert.severity)}`}>
+                          <p className="font-semibold text-white">{alert.title}</p>
+                          <p className="mt-1 text-sm opacity-90">{alert.message}</p>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+
+                  {activeModule === "reductions" && (
+                    <div className="space-y-3">
+                      {snapshot.reductions.length === 0 && <p className="text-sm text-ink-dim">Aucune réduction appliquée.</p>}
+                      {snapshot.reductions.map((reduction) => (
+                        <article key={reduction.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-white">{reduction.title}</p>
+                              <p className="mt-1 text-sm text-ink-dim">{reduction.studentName || "Compte parent"}</p>
+                            </div>
+                            <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-200">{money.format(reduction.amount)}</span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+
+                  {activeModule === "agreements" && (
+                    <div className="space-y-3">
+                      {snapshot.agreements.length === 0 && <p className="text-sm text-ink-dim">Aucun accord spécial.</p>}
+                      {snapshot.agreements.map((agreement) => (
+                        <article key={agreement.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-white">{agreement.title}</p>
+                              <p className="mt-1 text-sm text-ink-dim">Solde restant : {money.format(agreement.balanceDue)}</p>
+                            </div>
+                            <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${tone(agreement.status)}`}>{agreement.status}</span>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+
+                  {activeModule === "payments" && (
+                    <div className="space-y-3">
+                      {(!snapshot.paymentHistory || snapshot.paymentHistory.length === 0) && <p className="text-sm text-ink-dim">Aucun paiement historique disponible.</p>}
+                      {(snapshot.paymentHistory ?? []).map((payment) => (
+                        <article key={payment.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-white">{payment.reason}</p>
+                              <p className="mt-1 text-xs text-ink-dim">{payment.transactionNumber} · {new Date(payment.createdAt).toLocaleString(lang === "fr" ? "fr-FR" : "en-US")}</p>
+                              <p className="mt-2 text-xs text-cyan-200">{payment.students.map((student) => student.fullName).join(", ") || "Aucun élève lié"}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-mono text-lg font-bold text-emerald-300">{money.format(payment.amount)}</p>
+                              <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${tone(payment.status)}`}>{payment.status}</span>
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </AdminParentDialog>
+              )}
 
               <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
                 <div className="space-y-6">

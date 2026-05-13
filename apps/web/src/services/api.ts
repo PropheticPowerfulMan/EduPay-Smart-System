@@ -1490,18 +1490,38 @@ function shouldUseDemoApi(path: string) {
   return (!API_BASE_URL || PLACEHOLDER_API_URL) && path.startsWith("/api/");
 }
 
+function isLocalSessionToken(token: string | null) {
+  return Boolean(token && (token.startsWith("local-") || token.startsWith("demo-")));
+}
+
 function canFallbackToDemo(path: string, init?: RequestInit) {
   const method = (init?.method ?? "GET").toUpperCase();
   if (!path.startsWith("/api/")) return false;
-  return method === "GET" || path === "/api/auth/login" || path === "/api/ai/assistant" || path.startsWith("/api/expenses");
+  return method === "GET" ||
+    path === "/api/auth/login" ||
+    path === "/api/ai/assistant" ||
+    path.startsWith("/api/expenses") ||
+    path.startsWith("/api/parents/me");
+}
+
+function canUseParentSessionFallback(path: string, init?: RequestInit) {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const hasParentSession = Boolean(localStorage.getItem(PARENT_ID_STORAGE_KEY));
+  return hasParentSession && method === "GET" && (
+    path === "/api/parents/me" ||
+    path === "/api/finance/me/profile"
+  );
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (shouldUseDemoApi(path)) return demoApi<T>(path, init);
 
   const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
-  const token = storedToken && !storedToken.startsWith("local-") && !storedToken.startsWith("demo-") ? storedToken : "";
-  if (storedToken && !token) clearLocalSession();
+  if (isLocalSessionToken(storedToken) && canFallbackToDemo(path, init)) {
+    return demoApi<T>(path, init);
+  }
+
+  const token = storedToken ?? "";
   const url = resolveApiUrl(path);
 
   let response: Response;
@@ -1521,12 +1541,15 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     if (response.status === 401) {
+      if ((LOCAL_API_FALLBACK_ENABLED && canFallbackToDemo(path, init)) || canUseParentSessionFallback(path, init)) {
+        return demoApi<T>(path, init);
+      }
       clearLocalSession();
       window.location.replace(`${import.meta.env.BASE_URL}#/login`);
       throw new Error("Session expiree. Veuillez vous reconnecter.");
     }
 
-    if (LOCAL_API_FALLBACK_ENABLED && response.status >= 500 && canFallbackToDemo(path, init)) {
+    if (((LOCAL_API_FALLBACK_ENABLED && canFallbackToDemo(path, init)) || canUseParentSessionFallback(path, init)) && (response.status >= 500 || response.status === 404)) {
       return demoApi<T>(path, init);
     }
 
