@@ -1,9 +1,11 @@
 import { useMemo, useState, useEffect, useRef, type FormEvent } from "react";
 import { createPortal } from "react-dom";
+import QRCode from "qrcode";
 import { SearchField } from "../components/SearchField";
 import { schoolBranding } from "../config/branding";
 import { useI18n } from "../i18n";
 import { api } from "../services/api";
+import { buildReceiptVerificationUrl } from "../utils/receiptVerification";
 import { exportWorkbook } from "../utils/financeExcel";
 
 /* --- Transaction number generator ---------------------------------------- */
@@ -152,9 +154,26 @@ function buildReceiptSecurity(r: Pick<PaymentRecord, "transactionNumber" | "date
   };
 }
 
-function buildSecurityMatrix(hash: string) {
-  const bits = hash.split("").map((c) => parseInt(c, 16).toString(2).padStart(4, "0")).join("");
-  return Array.from({ length: 64 }, (_v, i) => bits[i % bits.length] === "1");
+function buildReceiptQrPayload(r: PaymentRecord): string {
+  return buildReceiptVerificationUrl(r);
+}
+
+async function generateReceiptQrSvgMarkup(r: PaymentRecord): Promise<string> {
+  const payload = buildReceiptQrPayload(r);
+  const svg = await QRCode.toString(payload, {
+    type: "svg",
+    errorCorrectionLevel: "M",
+    margin: 1,
+    width: 220,
+    color: {
+      dark: "#0f172a",
+      light: "#ffffff"
+    }
+  });
+
+  return svg
+    .replace(/<\?xml[^>]*\?>\s*/i, "")
+    .replace("<svg ", '<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="QR code de transaction EduPay" ');
 }
 
 function analyzeReceiptRisk(r: Pick<PaymentRecord, "parentFullName" | "paymentSubjectName" | "studentNames" | "reason" | "amount" | "status" | "method">) {
@@ -196,8 +215,50 @@ function buildReceiptMicroText(r: PaymentRecord) {
   return `EDUPAY-OFFICIAL ${r.transactionNumber} ${sec.verificationCode} ${r.amount.toFixed(5)}USD ${r.status}`;
 }
 
+type ReceiptPrintFonts = {
+  body: string;
+  serif: string;
+  mono: string;
+  bodyLetterSpacing: string;
+  serifLetterSpacing: string;
+  bodyWeight: string;
+  serifWeight: string;
+};
+
+function getReceiptPrintFonts(): ReceiptPrintFonts {
+  if (typeof window === "undefined") {
+    return {
+      body: '"Manrope", ui-sans-serif, system-ui, sans-serif',
+      serif: 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
+      mono: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+      bodyLetterSpacing: "normal",
+      serifLetterSpacing: "0.02em",
+      bodyWeight: "500",
+      serifWeight: "900"
+    };
+  }
+
+  const root = document.querySelector<HTMLElement>("[data-receipt-preview-root]");
+  const school = document.querySelector<HTMLElement>("[data-receipt-preview-school]");
+  const mono = document.querySelector<HTMLElement>("[data-receipt-preview-mono]");
+  const bodyStyles = window.getComputedStyle(root ?? document.body);
+  const schoolStyles = window.getComputedStyle(school ?? root ?? document.body);
+  const monoStyles = window.getComputedStyle(mono ?? root ?? document.body);
+
+  return {
+    body: bodyStyles.fontFamily || '"Manrope", ui-sans-serif, system-ui, sans-serif',
+    serif: schoolStyles.fontFamily || 'ui-serif, Georgia, Cambria, "Times New Roman", Times, serif',
+    mono: monoStyles.fontFamily || 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    bodyLetterSpacing: bodyStyles.letterSpacing || "normal",
+    serifLetterSpacing: schoolStyles.letterSpacing || "0.02em",
+    bodyWeight: bodyStyles.fontWeight || "500",
+    serifWeight: schoolStyles.fontWeight || "900"
+  };
+}
+
 /* --- Reçu individuel HTML (A5 paysage) ------------------------------------ */
-function buildReceiptHtml(r: PaymentRecord, lang: string): string {
+async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string> {
+  const fonts = getReceiptPrintFonts();
   const parentCaption = getPaymentParentCaption(r);
   const safe = {
     tx: escapeHtml(r.transactionNumber),
@@ -217,7 +278,7 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
   };
   const security = buildReceiptSecurity(r);
   const risk = analyzeReceiptRisk(r);
-  const matrixCells = buildSecurityMatrix(security.hash).map((on) => `<span class="${on ? "on" : ""}"></span>`).join("");
+  const qrMarkup = await generateReceiptQrSvgMarkup(r).catch(() => "");
   const microText = escapeHtml(buildReceiptMicroText(r));
   const parentSecondaryLine = safe.parentCaption
     ? `<div class="value-sub"><span class="value-sub-badge">Parent concerne</span><span>${safe.parentCaption}</span></div>`
@@ -228,9 +289,10 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
   <meta charset="UTF-8"/>
   <title>Reçu ${safe.tx}</title>
   <style>
+    @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,500;1,700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,500&family=IBM+Plex+Mono:wght@400;500;600;700&family=Manrope:wght@300;400;500;600;700;800&family=Sora:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap");
     @page { size: A5 landscape; margin: 4mm; }
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family: Arial, Helvetica, sans-serif; color:#101827; background:#fff; font-size:9.5px; }
+    body { font-family: ${fonts.body}; font-weight:${fonts.bodyWeight}; letter-spacing:${fonts.bodyLetterSpacing}; color:#101827; background:#fff; font-size:9.5px; }
     .receipt { position:relative; width:202mm; height:140mm; margin:0 auto; border:0.9mm double #123047; padding:4.5mm; overflow:hidden; }
     .receipt:before { content:""; position:absolute; inset:0; background:linear-gradient(135deg, rgba(18,48,71,.05), transparent 32%, rgba(180,83,9,.05)); pointer-events:none; }
     .watermark { position:absolute; inset:17mm 12mm auto; text-align:center; font-size:27mm; font-weight:900; letter-spacing:4mm; color:rgba(18,48,71,.032); transform:rotate(-10deg); pointer-events:none; }
@@ -240,12 +302,12 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
     .top { position:relative; display:grid; grid-template-columns:1.16fr .84fr; gap:6mm; border-bottom:1.5px solid #123047; padding-bottom:2.6mm; }
     .brand { display:flex; gap:3mm; align-items:center; }
     .logo { width:15mm; height:15mm; border:1px solid #123047; border-radius:2mm; padding:1.1mm; object-fit:contain; background:#fff; }
-    .school { font-family:Georgia, 'Times New Roman', serif; font-size:15px; font-weight:800; color:#123047; letter-spacing:.5px; }
+    .school { font-family:${fonts.serif}; font-size:15px; font-weight:${fonts.serifWeight}; color:#123047; letter-spacing:${fonts.serifLetterSpacing}; }
     .sub { margin-top:.7mm; color:#64748b; font-size:7.8px; text-transform:uppercase; letter-spacing:1px; }
     .official { margin-top:2mm; display:inline-block; border:1px solid #123047; padding:1mm 3mm; font-size:8.2px; font-weight:900; letter-spacing:1.8px; text-transform:uppercase; }
     .tx { text-align:right; }
     .tx-label { color:#64748b; font-size:7px; text-transform:uppercase; letter-spacing:1.3px; }
-    .tx-value { margin-top:.7mm; font-family:'Courier New', monospace; font-size:11.5px; font-weight:900; color:#123047; }
+    .tx-value { margin-top:.7mm; font-family:${fonts.mono}; font-size:11.5px; font-weight:900; color:#123047; }
     .grid { display:grid; grid-template-columns:1.28fr .72fr; gap:4.5mm; margin-top:3.8mm; }
     .field { display:grid; grid-template-columns:30mm 1fr; gap:2mm; padding:1.55mm 0; border-bottom:1px dotted #cbd5e1; }
     .label { color:#475569; font-size:7.2px; font-weight:800; text-transform:uppercase; letter-spacing:.7px; }
@@ -256,12 +318,14 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
     .parent { font-size:11.8px; color:#123047; }
     .amount { margin-top:2.8mm; border:1.3px solid #123047; background:#f8fafc; padding:2.7mm; }
     .amount-label { color:#64748b; font-size:7.2px; font-weight:800; text-transform:uppercase; letter-spacing:1.2px; }
-    .amount-value { margin-top:.7mm; font-family:'Courier New', monospace; font-size:20px; font-weight:900; color:#123047; }
+    .amount-value { margin-top:.7mm; font-family:${fonts.mono}; font-size:20px; font-weight:900; color:#123047; }
     .words { margin-top:1.4mm; border-top:1px solid #dbe4ef; padding-top:1.4mm; font-size:7.8px; font-style:italic; color:#334155; }
     .security { border:1px solid #123047; padding:2.2mm; }
-    .matrix { display:grid; grid-template-columns:repeat(8, 1fr); width:20mm; height:20mm; border:1px solid #123047; padding:.8mm; gap:.45mm; margin-left:auto; }
-    .matrix span { background:#e2e8f0; }
-    .matrix span.on { background:#123047; }
+    .security-head { display:flex; align-items:flex-start; justify-content:space-between; gap:3mm; }
+    .qr { width:27mm; min-width:27mm; border:1px solid #123047; background:#fff; padding:1.2mm; }
+    .qr svg { display:block; width:100%; height:auto; }
+    .qr-copy { margin-top:1mm; text-align:center; font-size:6px; font-weight:800; line-height:1.35; color:#334155; }
+    .qr-fallback { width:27mm; min-width:27mm; min-height:27mm; border:1px dashed #94a3b8; display:flex; align-items:center; justify-content:center; text-align:center; padding:2mm; font-size:6px; font-weight:800; color:#64748b; background:#f8fafc; }
     .seal-row { display:grid; grid-template-columns:1fr 1fr; gap:3mm; margin-top:3.4mm; }
     .box { min-height:17mm; border:1px dashed #475569; padding:1.5mm; display:flex; flex-direction:column; justify-content:space-between; }
     .box-title { font-size:7px; font-weight:900; color:#475569; text-transform:uppercase; letter-spacing:.8px; }
@@ -310,8 +374,15 @@ function buildReceiptHtml(r: PaymentRecord, lang: string): string {
 
     <div>
       <div class="security">
-        <div class="tx-label">Bloc sécurité</div>
-        <div class="matrix">${matrixCells}</div>
+        <div class="security-head">
+          <div>
+            <div class="tx-label">Bloc sécurité</div>
+            <div style="margin-top:1.2mm; font-size:6.6px; color:#64748b; line-height:1.4; max-width:38mm;">Scanner le QR pour ouvrir la page de vérification EduPay de cette transaction.</div>
+          </div>
+          ${qrMarkup
+            ? `<div class="qr">${qrMarkup}<div class="qr-copy">Vérifier ce reçu<br/>${safe.tx}</div></div>`
+            : `<div class="qr-fallback">QR indisponible<br/>Ref ${safe.tx}</div>`}
+        </div>
         <div class="field" style="grid-template-columns:23mm 1fr"><div class="label">Hash</div><div class="value">${security.hash}</div></div>
         <div class="field" style="grid-template-columns:23mm 1fr"><div class="label">Sceau</div><div class="value">${security.sealCode}</div></div>
         <div class="field" style="grid-template-columns:23mm 1fr"><div class="label">Contrôle</div><div class="value">${risk.level}</div></div>
@@ -590,8 +661,29 @@ function printHtml(html: string) {
   if (!popup) return;
   popup.document.write(html);
   popup.document.close();
-  popup.focus();
-  setTimeout(() => { popup.print(); }, 600);
+
+  const triggerPrint = () => {
+    popup.focus();
+    popup.print();
+  };
+
+  popup.addEventListener("load", () => {
+    const fontsReady = popup.document.fonts?.ready;
+    if (fontsReady) {
+      fontsReady
+        .catch(() => undefined)
+        .finally(() => {
+          window.setTimeout(triggerPrint, 150);
+        });
+      return;
+    }
+
+    window.setTimeout(triggerPrint, 300);
+  }, { once: true });
+}
+
+async function printReceiptDocument(payment: PaymentRecord, lang: string) {
+  printHtml(await buildReceiptHtml(payment, lang));
 }
 
 function exportReceiptExcel(payment: PaymentRecord) {
@@ -907,16 +999,32 @@ function ExcelIcon({ className = "w-4 h-4" }: { className?: string }) {
 function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord; compact?: boolean }) {
   const security = buildReceiptSecurity(receipt);
   const risk = analyzeReceiptRisk(receipt);
-  const matrix = buildSecurityMatrix(security.hash);
   const parentCaption = getPaymentParentCaption(receipt);
+  const [qrMarkup, setQrMarkup] = useState("");
   const riskTone = risk.score >= 60
     ? "border-red-500/40 bg-red-500/10 text-red-200"
     : risk.score >= 25
       ? "border-amber-500/40 bg-amber-500/10 text-amber-200"
       : "border-emerald-500/40 bg-emerald-500/10 text-emerald-200";
 
+  useEffect(() => {
+    let active = true;
+
+    generateReceiptQrSvgMarkup(receipt)
+      .then((svg) => {
+        if (active) setQrMarkup(svg);
+      })
+      .catch(() => {
+        if (active) setQrMarkup("");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [receipt]);
+
   return (
-    <div className={`relative mx-auto w-full max-w-4xl overflow-hidden rounded-xl border-[3px] border-double border-slate-300 bg-white p-4 text-slate-950 shadow-2xl ${compact ? "scale-[0.98]" : ""}`}>
+    <div data-receipt-preview-root className={`relative mx-auto w-full max-w-4xl overflow-hidden rounded-xl border-[3px] border-double border-slate-300 bg-white p-4 text-slate-950 shadow-2xl ${compact ? "scale-[0.98]" : ""}`}>
       <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(135deg,rgba(18,48,71,0.05),transparent_35%,rgba(180,83,9,0.06))]" />
       <div className="pointer-events-none absolute inset-x-8 top-20 -rotate-6 text-center text-7xl font-black tracking-[0.28em] text-slate-900/[0.035]">
         {schoolBranding.shortName}
@@ -932,7 +1040,7 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
             className="h-16 w-16 rounded-lg border border-slate-900 bg-white object-contain p-1.5"
           />
           <div>
-            <p className="font-serif text-lg font-black tracking-wide text-slate-900">{schoolBranding.schoolName}</p>
+            <p data-receipt-preview-school className="font-serif text-lg font-black tracking-wide text-slate-900">{schoolBranding.schoolName}</p>
           <p className="mt-1 text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">
               {schoolBranding.tagline} - {schoolBranding.appName}
             </p>
@@ -941,7 +1049,7 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
         </div>
         <div className="text-left sm:text-right">
           <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Transaction</p>
-          <p className="mt-1 font-mono text-sm font-black text-slate-900">{receipt.transactionNumber}</p>
+          <p data-receipt-preview-mono className="mt-1 font-mono text-sm font-black text-slate-900">{receipt.transactionNumber}</p>
           <p className="mt-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Vérification</p>
           <p className="mt-1 font-mono text-sm font-black text-slate-900">{security.verificationCode}</p>
         </div>
@@ -984,14 +1092,22 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Bloc sécurité</p>
+                <p className="mt-1 max-w-[210px] text-[11px] font-semibold leading-5 text-slate-500">
+                  Scanner le QR pour ouvrir la page de vérification EduPay de cette transaction.
+                </p>
                 <p className="mt-2 text-xs font-bold text-slate-700">Hash: <span className="font-mono text-slate-950">{security.hash}</span></p>
                 <p className="text-xs font-bold text-slate-700">Sceau: <span className="font-mono text-slate-950">{security.sealCode}</span></p>
               </div>
-              <div className="grid h-20 w-20 grid-cols-8 gap-0.5 border border-slate-900 bg-white p-1">
-                {matrix.map((on, idx) => (
-                  <span key={idx} className={on ? "bg-slate-900" : "bg-slate-200"} />
-                ))}
-              </div>
+              {qrMarkup ? (
+                <div className="w-28 border border-slate-900 bg-white p-1.5">
+                  <div className="h-24 w-24" dangerouslySetInnerHTML={{ __html: qrMarkup }} />
+                  <p className="mt-1 text-center text-[10px] font-black leading-4 text-slate-700">Vérifier ce reçu<br />{receipt.transactionNumber}</p>
+                </div>
+              ) : (
+                <div className="flex h-28 w-28 items-center justify-center border border-dashed border-slate-400 bg-slate-50 p-3 text-center text-[10px] font-bold text-slate-500">
+                  Génération du QR...
+                </div>
+              )}
             </div>
             <div className={`mt-3 rounded-md border px-3 py-2 text-xs font-bold ${riskTone}`}>
               {risk.level} - score {risk.score}/100
@@ -1484,7 +1600,7 @@ export function PaymentsPage() {
         {/* Actions */}
         <div className="flex flex-wrap gap-3">
           <button
-            onClick={() => printHtml(buildReceiptHtml(r, lang))}
+            onClick={() => void printReceiptDocument(r, lang)}
             className="flex items-center gap-2 px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold transition-all active:scale-95 shadow-lg shadow-brand-500/20"
           >
             <PrintIcon className="w-5 h-5" /> {t("printPdf")}
@@ -1612,7 +1728,7 @@ export function PaymentsPage() {
                       <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           title="Imprimer le reçu"
-                          onClick={() => printHtml(buildReceiptHtml(p, lang))}
+                          onClick={() => void printReceiptDocument(p, lang)}
                           className="p-1.5 rounded bg-brand-600/20 text-brand-300 hover:bg-brand-600/40 transition-colors"
                         >
                           <PrintIcon className="w-3.5 h-3.5" />
@@ -1815,7 +1931,7 @@ export function PaymentsPage() {
                           <td className="py-2.5 px-2 last:pr-0">
                             <button
                               title="Imprimer le reçu"
-                              onClick={() => printHtml(buildReceiptHtml(r, lang))}
+                              onClick={() => void printReceiptDocument(r, lang)}
                               className="p-1.5 rounded bg-brand-600/20 text-brand-300 hover:bg-brand-600/40 transition-colors"
                             >
                               <PrintIcon className="w-3.5 h-3.5" />

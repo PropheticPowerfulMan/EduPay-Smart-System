@@ -11,6 +11,9 @@ type Student = {
   classId: string;
   className: string;
   annualFee: number;
+  paymentOptionType?: string;
+  paymentOptionLabel?: string;
+  tuitionPlanName?: string;
 };
 
 type Parent = {
@@ -41,6 +44,37 @@ type ParentCredentials = {
 
 type SchoolClass = { id: string; name: string };
 
+type TuitionPlan = {
+  id: string;
+  name: string;
+  paymentOptionType: string;
+  gradeGroup: string;
+  discountRate?: number;
+  originalAmount?: number;
+  finalAmount: number;
+  reductionAmount?: number;
+  scheduleJson?: string | PlanScheduleItem[];
+};
+
+type PlanScheduleItem = {
+  label: string;
+  amount: number;
+  dueDate?: string;
+  windowLabel?: string;
+};
+
+type FinanceCatalog = {
+  academicYear?: { name?: string };
+  plans: TuitionPlan[];
+};
+
+type StudentFormState = {
+  fullName: string;
+  classId: string;
+  annualFee: string;
+  paymentOptionType: string;
+};
+
 type FormState = {
   nom: string;
   postnom: string;
@@ -50,7 +84,22 @@ type FormState = {
   photoUrl: string;
   notifyEmail: boolean;
   notifySms: boolean;
-  students: { fullName: string; classId: string; annualFee: string }[];
+  students: StudentFormState[];
+};
+
+const PAYMENT_OPTION_LABELS: Record<string, string> = {
+  FULL_PRESEPTEMBER: "Paiement complet avant septembre",
+  TWO_INSTALLMENTS: "Paiement en 2 tranches",
+  THREE_INSTALLMENTS: "Paiement en 3 tranches",
+  STANDARD_MONTHLY: "Paiement mensuel standard"
+};
+
+const GRADE_GROUP_LABELS: Record<string, string> = {
+  K: "Kindergarten",
+  GRADE_1_5: "Grades 1 a 5",
+  GRADE_6_8: "Grades 6 a 8",
+  GRADE_9_12: "Grades 9 a 12",
+  CUSTOM: "Plan personnalise"
 };
 
 const EMPTY_FORM: FormState = {
@@ -65,7 +114,7 @@ const EMPTY_FORM: FormState = {
   students: []
 };
 
-const EMPTY_STUDENT = { fullName: "", classId: "", annualFee: "" };
+const EMPTY_STUDENT: StudentFormState = { fullName: "", classId: "", annualFee: "", paymentOptionType: "STANDARD_MONTHLY" };
 
 const SCHOOL_SECTIONS: SchoolClass[] = [
   ...Array.from({ length: 5 }, (_v, index) => {
@@ -155,6 +204,51 @@ function Badge({ text, color }: { text: string; color: string }) {
       {text}
     </span>
   );
+}
+
+function formatMoney(amount: number) {
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(amount);
+}
+
+function resolveGradeGroup(className?: string) {
+  const normalized = (className || "").trim().toLowerCase();
+  if (!normalized) return "CUSTOM";
+  if (/^k\d?/.test(normalized) || normalized.includes("kindergarten")) return "K";
+  const gradeMatch = normalized.match(/grade\s*(\d{1,2})/i);
+  const grade = gradeMatch ? Number(gradeMatch[1]) : Number.NaN;
+  if (!Number.isNaN(grade)) {
+    if (grade <= 5) return "GRADE_1_5";
+    if (grade <= 8) return "GRADE_6_8";
+    return "GRADE_9_12";
+  }
+  return "CUSTOM";
+}
+
+function getPaymentOptionLabel(option: string) {
+  return PAYMENT_OPTION_LABELS[option] || option;
+}
+
+function formatAmountInput(amount?: number) {
+  if (typeof amount !== "number" || Number.isNaN(amount)) return "";
+  return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+}
+
+function parsePlanSchedule(plan: TuitionPlan): PlanScheduleItem[] {
+  if (!plan.scheduleJson) return [];
+  if (Array.isArray(plan.scheduleJson)) return plan.scheduleJson;
+
+  try {
+    const parsed = JSON.parse(plan.scheduleJson) as PlanScheduleItem[];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function getScheduleCaption(row: PlanScheduleItem) {
+  if (row.windowLabel?.trim()) return row.windowLabel;
+  if (row.dueDate?.trim()) return row.dueDate;
+  return row.label;
 }
 
 function CredentialsModal({ credentials, onClose }: { credentials: ParentCredentials; onClose: () => void }) {
@@ -358,9 +452,12 @@ function DetailModal({ parent, onClose, t }: { parent: Parent; onClose: () => vo
                   <div>
                     <p className="text-sm font-semibold text-white">{st.fullName}</p>
                     <p className="text-xs text-ink-dim">{st.className || st.classId}</p>
+                    {(st.tuitionPlanName || st.paymentOptionLabel) && (
+                      <p className="mt-1 text-xs text-cyan-300">{st.tuitionPlanName || st.paymentOptionLabel}</p>
+                    )}
                   </div>
                   <span className="text-sm font-bold text-emerald-300">
-                    {new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(st.annualFee)}
+                    {formatMoney(st.annualFee)}
                   </span>
                 </div>
               ))}
@@ -401,9 +498,10 @@ function DeleteModal({ parent, onConfirm, onClose, t }: {
 }
 
 /* ─── Form Modal ─────────────────────────────────────────────────── */
-function FormModal({ initial, classes, onSave, onClose, t }: {
+function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
   initial: Parent | null;
   classes: SchoolClass[];
+  catalog: FinanceCatalog | null;
   onSave: (form: FormState, id?: string) => Promise<void>;
   onClose: () => void;
   t: (k: string) => string;
@@ -422,12 +520,37 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
       students: initial.students.map((s) => ({
         fullName: s.fullName,
         classId: s.classId,
-        annualFee: String(s.annualFee)
+        annualFee: String(s.annualFee),
+        paymentOptionType: s.paymentOptionType || "STANDARD_MONTHLY"
       }))
     };
   });
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const getClassName = (classId: string) => classes.find((entry) => entry.id === classId)?.name || "";
+
+  const getMatchingPlans = (classId: string) => {
+    if (!catalog?.plans?.length) return [];
+    const gradeGroup = resolveGradeGroup(getClassName(classId));
+    return catalog.plans.filter((plan) => plan.gradeGroup === gradeGroup && PAYMENT_OPTION_LABELS[plan.paymentOptionType]);
+  };
+
+  const getPreferredOption = (classId: string, currentOptionType?: string) => {
+    const matchingPlans = getMatchingPlans(classId);
+    if (currentOptionType && matchingPlans.some((plan) => plan.paymentOptionType === currentOptionType)) {
+      return currentOptionType;
+    }
+    return matchingPlans.find((plan) => plan.paymentOptionType === "STANDARD_MONTHLY")?.paymentOptionType
+      || matchingPlans[0]?.paymentOptionType
+      || currentOptionType
+      || "STANDARD_MONTHLY";
+  };
+
+  const getSelectedPlan = (student: StudentFormState) => {
+    const matchingPlans = getMatchingPlans(student.classId);
+    return matchingPlans.find((plan) => plan.paymentOptionType === student.paymentOptionType) || null;
+  };
 
   const set = (key: keyof FormState, value: string) => {
     setForm((f) => ({ ...f, [key]: value }));
@@ -443,6 +566,36 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
       const students = [...f.students];
       students[idx] = { ...students[idx], [key]: value };
       return { ...f, students };
+    });
+  };
+
+  const updateStudentClass = (idx: number, classId: string) => {
+    setForm((current) => {
+      const students = [...current.students];
+      const student = students[idx] || { ...EMPTY_STUDENT };
+      const paymentOptionType = getPreferredOption(classId, student.paymentOptionType);
+      const matchingPlan = getMatchingPlans(classId).find((plan) => plan.paymentOptionType === paymentOptionType);
+      students[idx] = {
+        ...student,
+        classId,
+        paymentOptionType,
+        annualFee: matchingPlan ? formatAmountInput(matchingPlan.finalAmount) : student.annualFee
+      };
+      return { ...current, students };
+    });
+  };
+
+  const updateStudentPlan = (idx: number, paymentOptionType: string) => {
+    setForm((current) => {
+      const students = [...current.students];
+      const student = students[idx] || { ...EMPTY_STUDENT };
+      const matchingPlan = getMatchingPlans(student.classId).find((plan) => plan.paymentOptionType === paymentOptionType);
+      students[idx] = {
+        ...student,
+        paymentOptionType,
+        annualFee: matchingPlan ? formatAmountInput(matchingPlan.finalAmount) : student.annualFee
+      };
+      return { ...current, students };
     });
   };
 
@@ -595,40 +748,183 @@ function FormModal({ initial, classes, onSave, onClose, t }: {
             <p className="text-sm text-ink-dim italic">{t("pmNoChildrenForm")}</p>
           )}
           {form.students.map((st, idx) => (
-            <div key={idx} className="grid grid-cols-1 gap-3 rounded-xl border border-slate-700/50 bg-slate-900/30 p-3 sm:grid-cols-[1.2fr_0.9fr_0.9fr] sm:p-4">
-              <div className="space-y-1">
-                <label className="text-xs text-ink-dim">{t("pmChildName")}</label>
-                <input value={st.fullName} onChange={(e) => setStudent(idx, "fullName", e.target.value)} className="w-full" placeholder={t("pmChildNamePlaceholder")} />
+            <div key={idx} className="space-y-4 rounded-2xl border border-slate-700/50 bg-slate-900/30 p-3 sm:p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-white">Eleve {idx + 1}</p>
+                  <p className="text-xs text-ink-dim">Choisissez une classe puis un plan officiel adapte. Le montant annuel est propose automatiquement.</p>
+                </div>
+                <button type="button" onClick={() => removeStudent(idx)}
+                  className="p-2 rounded-lg bg-danger/20 border border-danger/40 text-danger hover:bg-danger/30 transition-all active:scale-95">
+                  <TrashIcon />
+                </button>
               </div>
-              <div className="space-y-1">
-                <label className="text-xs text-ink-dim">{t("pmChildClass")}</label>
-                <select value={st.classId} onChange={(e) => setStudent(idx, "classId", e.target.value)} className="w-full">
-                  <option value="">{t("pmSelectClass")}</option>
-                  <optgroup label="Kindergarten">
-                    {classes.filter((c) => c.name.toLowerCase().startsWith("k")).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </optgroup>
-                  <optgroup label="Grade 1 - Grade 12">
-                    {classes.filter((c) => c.name.toLowerCase().startsWith("grade")).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                  </optgroup>
-                  {classes.some((c) => !c.name.toLowerCase().startsWith("k") && !c.name.toLowerCase().startsWith("grade")) && (
-                    <optgroup label="Autres">
-                      {classes
-                        .filter((c) => !c.name.toLowerCase().startsWith("k") && !c.name.toLowerCase().startsWith("grade"))
-                        .map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.1fr_0.9fr]">
+                <div className="space-y-1">
+                  <label className="text-xs text-ink-dim">{t("pmChildName")}</label>
+                  <input value={st.fullName} onChange={(e) => setStudent(idx, "fullName", e.target.value)} className="w-full" placeholder={t("pmChildNamePlaceholder")} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-ink-dim">{t("pmChildClass")}</label>
+                  <select value={st.classId} onChange={(e) => updateStudentClass(idx, e.target.value)} className="w-full">
+                    <option value="">{t("pmSelectClass")}</option>
+                    <optgroup label="Kindergarten">
+                      {classes.filter((c) => c.name.toLowerCase().startsWith("k")).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </optgroup>
-                  )}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs text-ink-dim">{t("pmAnnualFee")} (USD)</label>
-                <div className="flex gap-2">
-                  <input type="number" value={st.annualFee} onChange={(e) => setStudent(idx, "annualFee", e.target.value)} className="flex-1" placeholder="500" />
-                  <button type="button" onClick={() => removeStudent(idx)}
-                    className="p-2 rounded-lg bg-danger/20 border border-danger/40 text-danger hover:bg-danger/30 transition-all active:scale-95">
-                    <TrashIcon />
-                  </button>
+                    <optgroup label="Grade 1 - Grade 12">
+                      {classes.filter((c) => c.name.toLowerCase().startsWith("grade")).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    </optgroup>
+                    {classes.some((c) => !c.name.toLowerCase().startsWith("k") && !c.name.toLowerCase().startsWith("grade")) && (
+                      <optgroup label="Autres">
+                        {classes
+                          .filter((c) => !c.name.toLowerCase().startsWith("k") && !c.name.toLowerCase().startsWith("grade"))
+                          .map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      </optgroup>
+                    )}
+                  </select>
                 </div>
               </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.15fr_0.85fr]">
+                <div className="space-y-1">
+                  <label className="text-xs text-ink-dim">Tuition plan officiel</label>
+                  <select value={st.paymentOptionType} onChange={(e) => updateStudentPlan(idx, e.target.value)} className="w-full">
+                    {getMatchingPlans(st.classId).length > 0 ? getMatchingPlans(st.classId).map((plan) => (
+                      <option key={`${plan.gradeGroup}-${plan.paymentOptionType}`} value={plan.paymentOptionType}>
+                        {getPaymentOptionLabel(plan.paymentOptionType)} - {formatMoney(plan.finalAmount)}
+                      </option>
+                    )) : Object.entries(PAYMENT_OPTION_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-ink-dim">
+                    {st.classId
+                      ? `Segment: ${GRADE_GROUP_LABELS[resolveGradeGroup(getClassName(st.classId))] || "A definir"}`
+                      : "Selectionnez d'abord la classe de l'enfant pour filtrer les plans compatibles."}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-ink-dim">{t("pmAnnualFee")} (USD)</label>
+                  <input type="number" value={st.annualFee} onChange={(e) => setStudent(idx, "annualFee", e.target.value)} className="w-full" placeholder="500" />
+                  <p className="text-[11px] text-ink-dim">Montant pre-rempli depuis le plan choisi, modifiable si necessaire.</p>
+                </div>
+              </div>
+
+              {(() => {
+                const matchingPlans = getMatchingPlans(st.classId);
+                if (!st.classId || matchingPlans.length === 0) return null;
+
+                return (
+                  <div className="space-y-3 rounded-2xl border border-white/10 bg-slate-950/40 p-3">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-white">Choix détaillé du mode de paiement</p>
+                        <p className="text-xs text-ink-dim">
+                          {catalog?.academicYear?.name ? `Barème officiel ${catalog.academicYear.name}` : "Barème officiel EduPay"} pour {GRADE_GROUP_LABELS[resolveGradeGroup(getClassName(st.classId))] || "ce segment"}.
+                        </p>
+                      </div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand-300">
+                        {matchingPlans.length} plan(s) disponible(s)
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3 lg:grid-cols-2">
+                      {matchingPlans.map((plan) => {
+                        const isActive = plan.paymentOptionType === st.paymentOptionType;
+                        const schedule = parsePlanSchedule(plan);
+                        return (
+                          <button
+                            key={`${idx}-${plan.paymentOptionType}`}
+                            type="button"
+                            onClick={() => updateStudentPlan(idx, plan.paymentOptionType)}
+                            className={`rounded-2xl border p-4 text-left transition-all ${isActive ? "border-brand-300 bg-brand-500/12 shadow-[0_0_0_1px_rgba(125,232,255,0.2)]" : "border-slate-700/60 bg-slate-900/50 hover:border-brand-400/50 hover:bg-slate-900/70"}`}
+                          >
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <div>
+                                <p className="text-sm font-black text-white">{getPaymentOptionLabel(plan.paymentOptionType)}</p>
+                                <p className="mt-1 text-[11px] text-ink-dim">{plan.name}</p>
+                              </div>
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${isActive ? "bg-brand-300 text-slate-950" : "bg-white/10 text-ink-dim"}`}>
+                                {isActive ? "Choisi" : "Choisir"}
+                              </span>
+                            </div>
+
+                            <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+                              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                                <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Montant initial</p>
+                                <p className="mt-1 font-bold text-white">{formatMoney(Number(plan.originalAmount || plan.finalAmount))}</p>
+                              </div>
+                              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                                <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Réduction</p>
+                                <p className="mt-1 font-bold text-emerald-300">{formatMoney(Number(plan.reductionAmount || 0))}</p>
+                              </div>
+                              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                                <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Remise</p>
+                                <p className="mt-1 font-bold text-white">{Number(plan.discountRate || 0).toFixed(0)}%</p>
+                              </div>
+                              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                                <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Net à payer</p>
+                                <p className="mt-1 font-black text-brand-200">{formatMoney(plan.finalAmount)}</p>
+                              </div>
+                            </div>
+
+                            {schedule.length > 0 ? (
+                              <div className="mt-4 space-y-2">
+                                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-ink-dim">Échéancier exact</p>
+                                <div className="space-y-2">
+                                  {schedule.map((row, scheduleIdx) => (
+                                    <div key={`${plan.paymentOptionType}-${scheduleIdx}`} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2">
+                                      <div>
+                                        <p className="text-sm font-semibold text-white">{row.label}</p>
+                                        <p className="text-[11px] text-ink-dim">{getScheduleCaption(row)}</p>
+                                      </div>
+                                      <p className="text-sm font-black text-cyan-200">{formatMoney(row.amount)}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {(() => {
+                const selectedPlan = getSelectedPlan(st);
+                if (!selectedPlan) return null;
+                const schedule = parsePlanSchedule(selectedPlan);
+                return (
+                  <div className="rounded-xl border border-cyan-500/20 bg-cyan-500/10 p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-bold text-white">{selectedPlan.name}</p>
+                        <p className="text-xs text-cyan-100/80">{getPaymentOptionLabel(selectedPlan.paymentOptionType)} pour {GRADE_GROUP_LABELS[selectedPlan.gradeGroup] || selectedPlan.gradeGroup}</p>
+                      </div>
+                      <div className="text-left sm:text-right">
+                        <p className="text-lg font-black text-cyan-200">{formatMoney(selectedPlan.finalAmount)}</p>
+                        {Number(selectedPlan.reductionAmount || 0) > 0 && (
+                          <p className="text-xs text-emerald-300">Reduction incluse: {formatMoney(Number(selectedPlan.reductionAmount || 0))}</p>
+                        )}
+                      </div>
+                    </div>
+                    {schedule.length > 0 ? (
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                        {schedule.map((row, scheduleIdx) => (
+                          <div key={`${selectedPlan.paymentOptionType}-summary-${scheduleIdx}`} className="rounded-xl border border-cyan-400/20 bg-slate-950/35 px-3 py-2">
+                            <p className="text-xs font-semibold text-white">{row.label}</p>
+                            <p className="mt-1 text-[11px] text-cyan-100/80">{getScheduleCaption(row)}</p>
+                            <p className="mt-1 text-sm font-black text-cyan-200">{formatMoney(row.amount)}</p>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })()}
             </div>
           ))}
         </div>
@@ -657,6 +953,7 @@ export function ParentsManagementPage() {
   const { t } = useI18n();
   const [parents, setParents] = useState<Parent[]>([]);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
+  const [catalog, setCatalog] = useState<FinanceCatalog | null>(null);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -674,9 +971,10 @@ export function ParentsManagementPage() {
     setLoading(true);
     setApiError(null);
     let nextApiError: string | null = null;
-    const [parentsResult, classesResult] = await Promise.allSettled([
+    const [parentsResult, classesResult, catalogResult] = await Promise.allSettled([
       api<Parent[]>("/api/parents"),
-      api<SchoolClass[]>("/api/classes")
+      api<SchoolClass[]>("/api/classes"),
+      api<FinanceCatalog>("/api/finance/catalog")
     ]);
 
     if (parentsResult.status === "fulfilled") {
@@ -693,6 +991,12 @@ export function ParentsManagementPage() {
       if (!nextApiError) {
         nextApiError = classesResult.reason instanceof Error ? classesResult.reason.message : "Erreur API";
       }
+    }
+
+    if (catalogResult.status === "fulfilled") {
+      setCatalog(catalogResult.value);
+    } else {
+      setCatalog(null);
     }
 
     setApiError(nextApiError);
@@ -820,6 +1124,7 @@ export function ParentsManagementPage() {
         <FormModal
           initial={editTarget}
           classes={classes}
+          catalog={catalog}
           onSave={handleSave}
           onClose={() => { setShowForm(false); setEditTarget(null); }}
           t={t}

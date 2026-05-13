@@ -66,6 +66,52 @@ function serializePayment(
   };
 }
 
+function serializePublicVerificationPayment(
+  payment: {
+    id: string;
+    transactionNumber: string;
+    reason: string;
+    amount: number;
+    amountInWords: string;
+    method: string;
+    status: string;
+    createdAt: Date;
+    parent: { fullName: string } | null;
+    students: Array<{ fullName: string }>;
+    receipt: { receiptNumber: string } | null;
+    school: { name: string };
+  },
+  req: { protocol: string; get(name: string): string | undefined }
+) {
+  const baseUrl = `${req.protocol}://${req.get("host")}`;
+  const serialized = serializePayment(payment, {
+    fallbackParentName: payment.parent?.fullName ?? ""
+  });
+
+  return {
+    id: payment.id,
+    transactionNumber: payment.transactionNumber,
+    parentFullName: serialized.parentFullName,
+    paymentSubjectName: serialized.paymentSubjectName,
+    studentNames: serialized.studentNames,
+    reason: payment.reason,
+    amount: payment.amount,
+    amountInWords: payment.amountInWords,
+    method: payment.method,
+    status: payment.status,
+    date: payment.createdAt.toLocaleString("fr-FR"),
+    createdAt: payment.createdAt.toISOString(),
+    schoolName: payment.school.name,
+    receiptNumber: payment.receipt?.receiptNumber ?? null,
+    downloads: payment.receipt ? {
+      pdfPath: `/api/payments/verify/${encodeURIComponent(payment.transactionNumber)}/receipt/pdf`,
+      pngPath: `/api/payments/verify/${encodeURIComponent(payment.transactionNumber)}/receipt/png`,
+      pdfUrl: `${baseUrl}/api/payments/verify/${encodeURIComponent(payment.transactionNumber)}/receipt/pdf`,
+      pngUrl: `${baseUrl}/api/payments/verify/${encodeURIComponent(payment.transactionNumber)}/receipt/png`
+    } : null
+  };
+}
+
 async function generateReceiptPdf(data: {
   receiptId: string;
   schoolName: string;
@@ -223,6 +269,65 @@ async function sendPaymentNotifications(input: {
 }
 
 export const paymentRouter = Router();
+
+paymentRouter.get("/verify/:transactionNumber", async (req, res) => {
+  try {
+    const payment = await prisma.payment.findUnique({
+      where: { transactionNumber: req.params.transactionNumber },
+      include: {
+        parent: true,
+        students: true,
+        receipt: true,
+        school: { select: { name: true } }
+      }
+    });
+
+    if (!payment) {
+      return res.status(404).json({ message: "Paiement introuvable" });
+    }
+
+    return res.json({
+      source: "database",
+      payment: serializePublicVerificationPayment(payment, req)
+    });
+  } catch (error) {
+    console.error("Public payment verification failed", error);
+    return res.status(503).json({ message: "Verification indisponible" });
+  }
+});
+
+paymentRouter.get("/verify/:transactionNumber/receipt/pdf", async (req, res) => {
+  try {
+    const receipt = await prisma.receipt.findFirst({
+      where: { payment: { transactionNumber: req.params.transactionNumber } }
+    });
+    if (!receipt) return res.status(404).json({ message: "Recu introuvable" });
+    const buffer = Buffer.from(receipt.pdfBase64, "base64");
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename=${receipt.receiptNumber}.pdf`);
+    return res.send(buffer);
+  } catch (error) {
+    console.error("Public receipt PDF download failed", error);
+    return res.status(503).json({ message: "Recu indisponible" });
+  }
+});
+
+paymentRouter.get("/verify/:transactionNumber/receipt/png", async (req, res) => {
+  try {
+    const receipt = await prisma.receipt.findFirst({
+      where: { payment: { transactionNumber: req.params.transactionNumber } }
+    });
+    if (!receipt) return res.status(404).json({ message: "Recu introuvable" });
+    const buffer = Buffer.from(receipt.pngBase64, "base64");
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Content-Disposition", `attachment; filename=${receipt.receiptNumber}.png`);
+    return res.send(buffer);
+  } catch (error) {
+    console.error("Public receipt PNG download failed", error);
+    return res.status(503).json({ message: "Recu indisponible" });
+  }
+});
+
 paymentRouter.use(authGuard);
 
 paymentRouter.get("/settings/notifications", authorize("ADMIN", "ACCOUNTANT"), (_req, res) => {

@@ -1,10 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
 import bcrypt from "bcrypt";
+import { PaymentOptionType } from "@prisma/client";
 import { deleteOrbitParent, matchesSharedParentIdentifier, orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
 import { prisma } from "../../prisma";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
 import { sendEmail, sendSms } from "../../utils/messaging";
+import { getPaymentOptionLabel, upsertParentPlanAssignment } from "../finance/service";
 
 function generateAccessCode() {
   const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -24,7 +26,8 @@ async function generateUniqueParentAccessCode(tx: typeof prisma) {
 const studentInputSchema = z.object({
   fullName: z.string().min(1),
   classId: z.string().min(1),
-  annualFee: z.union([z.string(), z.number()]).transform((v) => parseFloat(String(v)))
+  annualFee: z.union([z.string(), z.number()]).transform((v) => parseFloat(String(v))),
+  paymentOptionType: z.nativeEnum(PaymentOptionType).optional().default(PaymentOptionType.STANDARD_MONTHLY)
 });
 
 const parentSchema = z.object({
@@ -191,11 +194,34 @@ let demoParents: any[] = [
     phone: "+243810000001",
     email: "jean.kabila@example.com",
     students: [
-      { id: "demo-student-1", fullName: "Kabila Marie", classId: "section-grade-1", className: "Grade 1", annualFee: 450 }
+      {
+        id: "demo-student-1",
+        fullName: "Kabila Marie",
+        classId: "section-grade-1",
+        className: "Grade 1",
+        annualFee: 450,
+        paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,
+        paymentOptionLabel: getPaymentOptionLabel(PaymentOptionType.STANDARD_MONTHLY),
+        tuitionPlanName: "Grades 1-5 - Standard monthly payment"
+      }
     ],
     createdAt: new Date().toISOString()
   }
 ];
+
+const parentInclude = {
+  user: { select: { accessCode: true } },
+  students: {
+    include: {
+      class: true,
+      planAssignments: {
+        where: { isActive: true },
+        include: { tuitionPlan: true },
+        orderBy: { updatedAt: "desc" as const }
+      }
+    }
+  }
+} as const;
 
 function enrichParent(p: any) {
   const parts = (p.fullName || "").split(" ");
@@ -207,7 +233,12 @@ function enrichParent(p: any) {
     prenom: p.prenom || parts[2] || "",
     students: (p.students || []).map((s: any) => ({
       ...s,
-      className: s.class?.name ?? s.className ?? ""
+      className: s.class?.name ?? s.className ?? "",
+      paymentOptionType: s.planAssignments?.[0]?.paymentOptionType ?? s.paymentOptionType ?? null,
+      paymentOptionLabel: s.planAssignments?.[0]?.paymentOptionType
+        ? getPaymentOptionLabel(s.planAssignments[0].paymentOptionType)
+        : s.paymentOptionLabel ?? "",
+      tuitionPlanName: s.planAssignments?.[0]?.tuitionPlan?.name ?? s.tuitionPlanName ?? ""
     }))
   };
 }
@@ -241,7 +272,7 @@ parentRouter.get("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticate
   try {
     const parents = await prisma.parent.findMany({
       where: { schoolId: req.user!.schoolId },
-      include: { user: { select: { accessCode: true } }, students: { include: { class: true } } }
+      include: parentInclude
     });
     return res.json(parents.map(enrichParent));
   } catch (error) {
@@ -259,7 +290,20 @@ parentRouter.get("/me", authorize("PARENT"), async (req: AuthenticatedRequest, r
   try {
     const parent = await prisma.parent.findFirst({
       where: { schoolId: req.user!.schoolId, userId: req.user!.sub },
-      include: { user: { select: { accessCode: true } }, students: { include: { class: true, payments: true } } }
+      include: {
+        user: { select: { accessCode: true } },
+        students: {
+          include: {
+            class: true,
+            payments: true,
+            planAssignments: {
+              where: { isActive: true },
+              include: { tuitionPlan: true },
+              orderBy: { updatedAt: "desc" }
+            }
+          }
+        }
+      }
     });
     if (parent) return res.json(parentDashboardData(parent));
 
@@ -337,6 +381,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
           userId: user.id
         }
       });
+      const createdStudents: Array<{ id: string; paymentOptionType: PaymentOptionType }> = [];
       for (const st of payload.students) {
         const studentId = await generateUniqueStudentId(tx as typeof prisma, req.user!.schoolId, st.fullName);
         await tx.student.create({
@@ -349,20 +394,31 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
             schoolId: req.user!.schoolId
           }
         });
+        createdStudents.push({ id: studentId, paymentOptionType: st.paymentOptionType });
       }
-      return tx.parent.findUnique({
-        where: { id: p.id },
-        include: { user: { select: { accessCode: true } }, students: { include: { class: true } } }
-      });
+      return { parentId: p.id, createdStudents };
     });
-    const notificationStatus = await sendParentWelcomeNotifications(parent, temporaryPassword, req.user!.schoolId, {
+    for (const student of parent.createdStudents) {
+      await upsertParentPlanAssignment({
+        schoolId: req.user!.schoolId,
+        parentId: parent.parentId,
+        studentId: student.id,
+        paymentOptionType: student.paymentOptionType,
+        notes: "Assigned during parent onboarding"
+      });
+    }
+    const createdParent = await prisma.parent.findUnique({
+      where: { id: parent.parentId },
+      include: parentInclude
+    });
+    const notificationStatus = await sendParentWelcomeNotifications(createdParent, temporaryPassword, req.user!.schoolId, {
       notifyEmail: payload.notifyEmail,
       notifySms: payload.notifySms
     });
     return res.status(201).json({
-      ...enrichParent({ ...parent, nom: payload.nom, postnom: payload.postnom, prenom: payload.prenom }),
+      ...enrichParent(createdParent),
       temporaryPassword,
-      accessCode: parent?.user?.accessCode || "",
+      accessCode: createdParent?.user?.accessCode || "",
       notificationStatus
     });
   } catch (error) {
@@ -384,7 +440,10 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
         fullName: s.fullName,
         classId: s.classId,
         className: "Classe",
-        annualFee: s.annualFee
+        annualFee: s.annualFee,
+        paymentOptionType: s.paymentOptionType,
+        paymentOptionLabel: getPaymentOptionLabel(s.paymentOptionType),
+        tuitionPlanName: getPaymentOptionLabel(s.paymentOptionType)
       })),
       createdAt: new Date().toISOString()
     };
@@ -466,7 +525,7 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
         photoUrl: payload.photoUrl || null,
         preferredLanguage: payload.preferredLanguage
       },
-      include: { students: { include: { class: true } } }
+      include: parentInclude
     });
     return res.json(enrichParent({ ...parent, nom: payload.nom, postnom: payload.postnom, prenom: payload.prenom }));
   } catch (error) {

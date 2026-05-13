@@ -220,7 +220,7 @@ function clearLocalSession() {
   localStorage.removeItem("edupay_fullName");
 }
 
-function resolveApiUrl(path: string): string {
+export function resolveApiUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return API_BASE_URL ? `${API_BASE_URL}${normalizedPath}` : normalizedPath;

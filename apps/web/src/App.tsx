@@ -9,6 +9,7 @@ import { FinanceParentPage } from "./pages/FinanceParentPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ParentsManagementPage } from "./pages/ParentsManagementPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
+import { ReceiptVerificationPage } from "./pages/ReceiptVerificationPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { StudentsDirectoryPage } from "./pages/StudentsDirectoryPage";
 import { STAFF_ROLES, useAuthStore } from "./store/auth";
@@ -87,6 +88,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={token && role ? <Navigate to={getHomePathByRole(role)} replace /> : <LoginPage />} />
+      <Route path="/receipt/verify" element={<ReceiptVerificationPage />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<ProtectedLayout />}>
           <Route index element={<RoleHome />} />
