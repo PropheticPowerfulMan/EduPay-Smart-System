@@ -28,6 +28,7 @@ type OrbitSharedDirectory = {
     organizationId?: string | null;
     phone?: string | null;
     email?: string | null;
+    accessCode?: string | null;
     mustChangePassword?: boolean;
     studentIds: string[];
     externalIds: Array<{ appSlug: string; externalId: string }>;
@@ -42,6 +43,7 @@ type OrbitSharedDirectory = {
     studentNumber?: string;
     email?: string | null;
     phone?: string | null;
+    accessCode?: string | null;
     dateOfBirth?: string | null;
     status?: string | null;
     mustChangePassword?: boolean;
@@ -59,6 +61,7 @@ type OrbitSharedDirectory = {
     lastName?: string;
     phone?: string | null;
     email?: string | null;
+    accessCode?: string | null;
     subject?: string | null;
     employeeId?: string | null;
     employeeType?: string | null;
@@ -78,6 +81,7 @@ export type SharedStudentOption = {
   studentNumber?: string;
   email?: string | null;
   phone?: string | null;
+  accessCode?: string | null;
   dateOfBirth?: string | null;
   status?: string | null;
   mustChangePassword?: boolean;
@@ -92,6 +96,8 @@ export type SharedParentOption = {
   orbitId?: string;
   displayId?: string;
   createdAt?: Date;
+  accessCode?: string | null;
+  mustChangePassword?: boolean;
   fullName: string;
   phone: string;
   email: string;
@@ -151,6 +157,7 @@ export function mapOrbitDirectoryToSharedOptions(directory: OrbitSharedDirectory
           studentNumber: student.studentNumber,
           email: student.email,
           phone: student.phone,
+          accessCode: student.accessCode,
           dateOfBirth: student.dateOfBirth,
           status: student.status,
           mustChangePassword: student.mustChangePassword,
@@ -167,6 +174,8 @@ export function mapOrbitDirectoryToSharedOptions(directory: OrbitSharedDirectory
       id: displayId,
       orbitId: parent.id,
       displayId,
+      accessCode: parent.accessCode,
+      mustChangePassword: parent.mustChangePassword,
       lookupKey: buildParentLookupKey({
         fullName: parent.fullName,
         email: parent.email || undefined,
@@ -242,7 +251,9 @@ export async function createOrbitParent(payload: {
   lastName?: string;
   email?: string;
   phone?: string;
-  students?: Array<{ fullName: string; className?: string }>;
+  accessCode?: string;
+  mustChangePassword?: boolean;
+  students?: Array<{ fullName: string; className?: string; accessCode?: string; studentNumber?: string; mustChangePassword?: boolean }>;
 }) {
   const organizationId = process.env.KCS_ORBIT_ORGANIZATION_ID || "";
   const students = payload.students || [];
@@ -258,6 +269,8 @@ export async function createOrbitParent(payload: {
           lastName: payload.lastName || parentLastNameParts.join(" ") || "Parent",
           email: payload.email,
           phone: payload.phone,
+          accessCode: payload.accessCode,
+          mustChangePassword: payload.mustChangePassword ?? true,
         },
         students: students.map((student) => {
           const [firstName, ...lastNameParts] = student.fullName.trim().split(/\s+/);
@@ -266,6 +279,9 @@ export async function createOrbitParent(payload: {
             lastName: lastNameParts.join(" ") || "Student",
             gender: "O",
             className: student.className || "Non renseignee",
+            accessCode: student.accessCode,
+            studentNumber: student.studentNumber,
+            mustChangePassword: student.mustChangePassword ?? true,
           };
         }),
       }),
@@ -281,6 +297,8 @@ export async function createOrbitParent(payload: {
       lastName: payload.lastName,
       email: payload.email,
       phone: payload.phone,
+      accessCode: payload.accessCode,
+      mustChangePassword: payload.mustChangePassword ?? true,
     }),
   });
 }
@@ -488,11 +506,26 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
       fullName: parent.fullName,
       phone: parent.phone,
       email: parent.email,
+      accessCode: mappedParentByLookupKey.get(buildParentLookupKey({
+        fullName: parent.fullName,
+        email: parent.email,
+        phone: parent.phone,
+      }))?.accessCode,
+      mustChangePassword: mappedParentByLookupKey.get(buildParentLookupKey({
+        fullName: parent.fullName,
+        email: parent.email,
+        phone: parent.phone,
+      }))?.mustChangePassword,
       students: parent.students.map((student) => ({
         id: student.id,
         displayId: student.externalStudentId || student.id,
         externalStudentId: student.externalStudentId || undefined,
         studentNumber: student.externalStudentId || undefined,
+        accessCode: mappedParentByLookupKey.get(buildParentLookupKey({
+          fullName: parent.fullName,
+          email: parent.email,
+          phone: parent.phone,
+        }))?.students.find((entry) => entry.externalStudentId === (student.externalStudentId || undefined) || entry.fullName === student.fullName)?.accessCode,
         fullName: student.fullName,
         classId: student.classId,
         className: student.class.name,

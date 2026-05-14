@@ -331,6 +331,52 @@ body::-webkit-scrollbar-thumb:hover,
   line-height: 1.35;
 }
 
+.edupay-parent-admin {
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
+}
+
+.edupay-parent-admin * {
+  min-width: 0;
+}
+
+.edupay-parent-admin p,
+.edupay-parent-admin span,
+.edupay-parent-admin button,
+.edupay-parent-admin label,
+.edupay-parent-admin input,
+.edupay-parent-admin textarea,
+.edupay-parent-admin select {
+  max-width: 100%;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+
+.edupay-parent-admin button {
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.edupay-parent-admin th,
+.edupay-parent-admin td {
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+
+.edupay-parent-admin .font-mono {
+  font-size: clamp(0.76rem, 0.72rem + 0.2vw, 0.92rem);
+  line-height: 1.35;
+}
+
+.edupay-parent-admin input,
+.edupay-parent-admin textarea,
+.edupay-parent-admin select {
+  min-width: 0;
+}
+
 .edupay-finance-erp,
 .edupay-finance-erp-dialog,
 .edupay-finance-erp-modal {
@@ -377,6 +423,17 @@ body::-webkit-scrollbar-thumb:hover,
   .edupay-finance-erp .glass,
   .edupay-finance-erp .card {
     padding: 0.875rem;
+  }
+
+  .edupay-parent-admin .card,
+  .edupay-parent-admin .glass {
+    padding: 0.875rem;
+  }
+
+  .edupay-parent-admin h1,
+  .edupay-parent-admin h2,
+  .edupay-parent-admin h3 {
+    line-height: 1.12;
   }
 }
 

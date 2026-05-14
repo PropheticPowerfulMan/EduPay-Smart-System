@@ -10,8 +10,8 @@ const classSchema = z.object({
 });
 
 const schoolSections = [
-  ...Array.from({ length: 5 }, (_v, index) => {
-    const name = `K${index + 1}`;
+  ...Array.from({ length: 3 }, (_v, index) => {
+    const name = `K${index + 3}`;
     return { id: `section-${name.toLowerCase()}`, name, level: "Kindergarten", schoolId: "demo" };
   }),
   ...Array.from({ length: 12 }, (_v, index) => {

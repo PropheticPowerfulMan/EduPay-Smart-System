@@ -30,7 +30,8 @@ const PLACEHOLDER_API_URL = /MON-BACKEND|example\.com/i.test(API_BASE_URL);
 const LOCAL_API_FALLBACK_ENABLED =
   DEMO_FALLBACK_ENABLED ||
   STATIC_APP_FALLBACK_ENABLED ||
-  PLACEHOLDER_API_URL;
+  PLACEHOLDER_API_URL ||
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(API_BASE_URL);
 
 type DemoStudent = { id: string; fullName: string; classId: string; className: string; annualFee: number; payments?: DemoPayment[] };
 type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
@@ -171,7 +172,7 @@ type DemoPayrollRun = {
 };
 
 const demoClasses = [
-  ...Array.from({ length: 5 }, (_v, index) => ({ id: `section-k${index + 1}`, name: `K${index + 1}` })),
+  ...Array.from({ length: 3 }, (_v, index) => ({ id: `section-k${index + 3}`, name: `K${index + 3}` })),
   ...Array.from({ length: 12 }, (_v, index) => ({ id: `section-grade-${index + 1}`, name: `Grade ${index + 1}` }))
 ];
 
@@ -1499,6 +1500,7 @@ function canFallbackToDemo(path: string, init?: RequestInit) {
   if (!path.startsWith("/api/")) return false;
   return method === "GET" ||
     path === "/api/auth/login" ||
+    path === "/api/auth/change-password" ||
     path === "/api/ai/assistant" ||
     path.startsWith("/api/expenses") ||
     path.startsWith("/api/parents/me");

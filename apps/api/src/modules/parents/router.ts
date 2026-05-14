@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import bcrypt from "bcrypt";
 import { AgreementStatus, PaymentOptionType } from "@prisma/client";
-import { deleteOrbitParent, matchesSharedParentIdentifier, orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
+import { createOrbitParent, deleteOrbitParent, matchesSharedParentIdentifier, orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
 import { prisma } from "../../prisma";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
 import { sendEmail, sendSms } from "../../utils/messaging";
@@ -274,6 +274,112 @@ function parentDashboardData(parent: any) {
   };
 }
 
+function fallbackClassNameFromId(classId: string) {
+  const normalized = classId.trim().toLowerCase();
+  const kindergarten = normalized.match(/k([3-5])/);
+  if (kindergarten) return `K${kindergarten[1]}`;
+  const grade = normalized.match(/grade[-\s]?([1-9]|1[0-2])/);
+  if (grade) return `Grade ${Number(grade[1])}`;
+  return classId;
+}
+
+function splitPersonName(fullName: string) {
+  const [firstName, ...lastNameParts] = fullName.trim().split(/\s+/);
+  return {
+    firstName: firstName || fullName.trim(),
+    lastName: lastNameParts.join(" ") || "Parent",
+  };
+}
+
+async function ensureParentPortalUser(options: {
+  schoolId: string;
+  parentId: string;
+  fullName: string;
+  email: string;
+  accessCode: string;
+  temporaryPassword: string;
+}) {
+  const passwordHash = await bcrypt.hash(options.temporaryPassword, 10);
+  const parent = await prisma.parent.findFirst({
+    where: { id: options.parentId, schoolId: options.schoolId },
+    include: { user: true },
+  });
+  if (!parent) {
+    throw new Error("Parent mirror not found after Orbit synchronization.");
+  }
+
+  const candidateUser = parent.user || await prisma.user.findFirst({
+    where: {
+      schoolId: options.schoolId,
+      role: "PARENT",
+      OR: [
+        { email: options.email },
+        { accessCode: options.accessCode },
+      ],
+    },
+  });
+
+  const user = candidateUser
+    ? await prisma.user.update({
+      where: { id: candidateUser.id },
+      data: {
+        fullName: options.fullName,
+        email: options.email,
+        accessCode: options.accessCode,
+        passwordHash,
+      },
+    })
+    : await prisma.user.create({
+      data: {
+        fullName: options.fullName,
+        email: options.email,
+        accessCode: options.accessCode,
+        role: "PARENT",
+        schoolId: options.schoolId,
+        passwordHash,
+      },
+    });
+
+  if (parent.userId !== user.id) {
+    await prisma.parent.update({ where: { id: parent.id }, data: { userId: user.id } });
+  }
+
+  return user;
+}
+
+async function assignOnboardingFinance(options: {
+  schoolId: string;
+  parentId: string;
+  students: Array<{ id: string; fullName: string; annualFee: number; paymentOptionType: PaymentOptionType }>;
+}) {
+  for (const student of options.students) {
+    if (student.paymentOptionType === PaymentOptionType.SPECIAL_OWNER_AGREEMENT) {
+      if (student.annualFee <= 0) {
+        throw new Error("Le total de l'accord special doit etre positif.");
+      }
+      await createSpecialFinancialAgreement({
+        schoolId: options.schoolId,
+        parentId: options.parentId,
+        studentId: student.id,
+        title: `Accord special proprietaire - ${student.fullName}`,
+        customTotal: student.annualFee,
+        reductionAmount: 0,
+        status: AgreementStatus.APPROVED,
+        notes: "Created during parent onboarding",
+        installments: buildOwnerAgreementInstallments(student.annualFee)
+      });
+    } else {
+      await upsertParentPlanAssignment({
+        schoolId: options.schoolId,
+        parentId: options.parentId,
+        studentId: student.id,
+        paymentOptionType: student.paymentOptionType,
+        notes: "Assigned during parent onboarding"
+      });
+    }
+  }
+}
+
 export const parentRouter = Router();
 parentRouter.use(authGuard);
 
@@ -367,14 +473,123 @@ parentRouter.put("/me/photo", authorize("PARENT"), async (req: AuthenticatedRequ
 
 // POST create parent + students
 parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
-  if (orbitRegistryIsEnabled()) {
-    return res.status(409).json({
-      message: "La creation locale des parents et eleves est desactivee dans EduPay quand le registre Orbit est actif. Creez d'abord la famille dans SAVANEX."
-    });
-  }
-
   const payload = parentSchema.parse(req.body);
   const temporaryPassword = generateTemporaryPassword();
+
+  if (orbitRegistryIsEnabled()) {
+    try {
+      const accessCode = await generateUniqueParentAccessCode(prisma);
+      const classRows = await prisma.class.findMany({
+        where: {
+          schoolId: req.user!.schoolId,
+          id: { in: payload.students.map((student) => student.classId) },
+        },
+      });
+      const classNameById = new Map(classRows.map((classRow) => [classRow.id, classRow.name]));
+      const { firstName, lastName } = splitPersonName(payload.fullName);
+
+      const orbitResult = await createOrbitParent({
+        fullName: payload.fullName,
+        firstName: payload.prenom || firstName,
+        lastName: [payload.nom, payload.postnom].filter(Boolean).join(" ") || lastName,
+        email: payload.email,
+        phone: payload.phone,
+        accessCode,
+        mustChangePassword: true,
+        students: payload.students.map((student) => ({
+          fullName: student.fullName,
+          className: classNameById.get(student.classId) || fallbackClassNameFromId(student.classId),
+          mustChangePassword: true,
+        })),
+      });
+
+      const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);
+      const mirroredParent = mirrored.parents.find((parent) => (
+        parent.orbitId === orbitResult.orbitId
+        || parent.email.toLowerCase() === payload.email.toLowerCase()
+        || parent.phone === payload.phone
+      ));
+
+      if (!mirroredParent) {
+        return res.status(502).json({
+          message: "La famille a ete creee dans Orbit, mais EduPay n'a pas encore pu recuperer son miroir local.",
+          orbitResult,
+        });
+      }
+
+      const user = await ensureParentPortalUser({
+        schoolId: req.user!.schoolId,
+        parentId: mirroredParent.id,
+        fullName: payload.fullName,
+        email: payload.email,
+        accessCode: mirroredParent.accessCode || accessCode,
+        temporaryPassword,
+      });
+
+      const localParent = await prisma.parent.findFirst({
+        where: { id: mirroredParent.id, schoolId: req.user!.schoolId },
+        include: { user: true, students: { include: { class: true } } },
+      });
+
+      const unmatchedLocalStudents = [...(localParent?.students || [])];
+      const createdStudents: Array<{ id: string; fullName: string; annualFee: number; paymentOptionType: PaymentOptionType }> = [];
+      for (const requestedStudent of payload.students) {
+        const expectedClassName = classNameById.get(requestedStudent.classId) || fallbackClassNameFromId(requestedStudent.classId);
+        const matchIndex = unmatchedLocalStudents.findIndex((student) => (
+          student.fullName.trim().toLowerCase() === requestedStudent.fullName.trim().toLowerCase()
+          && student.class.name === expectedClassName
+        ));
+        const fallbackIndex = matchIndex >= 0 ? matchIndex : unmatchedLocalStudents.findIndex((student) => student.fullName.trim().toLowerCase() === requestedStudent.fullName.trim().toLowerCase());
+        if (fallbackIndex < 0) continue;
+        const [student] = unmatchedLocalStudents.splice(fallbackIndex, 1);
+        await prisma.student.update({
+          where: { id: student.id },
+          data: { annualFee: requestedStudent.annualFee },
+        });
+        createdStudents.push({
+          id: student.id,
+          fullName: student.fullName,
+          annualFee: requestedStudent.annualFee,
+          paymentOptionType: requestedStudent.paymentOptionType,
+        });
+      }
+
+      await assignOnboardingFinance({
+        schoolId: req.user!.schoolId,
+        parentId: mirroredParent.id,
+        students: createdStudents,
+      });
+
+      const createdParent = await prisma.parent.findUnique({
+        where: { id: mirroredParent.id },
+        include: parentInclude
+      });
+      if (!createdParent) {
+        return res.status(502).json({
+          message: "La famille a ete creee dans Orbit, mais EduPay n'a pas retrouve le parent local apres synchronisation.",
+          orbitResult,
+        });
+      }
+      const notificationStatus = await sendParentWelcomeNotifications(createdParent, temporaryPassword, req.user!.schoolId, {
+        notifyEmail: payload.notifyEmail,
+        notifySms: payload.notifySms
+      });
+
+      return res.status(201).json({
+        ...enrichParent(createdParent),
+        temporaryPassword,
+        accessCode: user.accessCode,
+        notificationStatus,
+        propagatedToOrbit: true,
+      });
+    } catch (error) {
+      console.error("Orbit parent create failed", error);
+      return res.status(502).json({
+        message: "EduPay n'a pas pu creer cette famille dans le registre partage Orbit.",
+      });
+    }
+  }
+
   try {
     const parent = await prisma.$transaction(async (tx) => {
       const passwordHash = await bcrypt.hash(temporaryPassword, 10);
@@ -418,32 +633,11 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       }
       return { parentId: p.id, createdStudents };
     });
-    for (const student of parent.createdStudents) {
-      if (student.paymentOptionType === PaymentOptionType.SPECIAL_OWNER_AGREEMENT) {
-        if (student.annualFee <= 0) {
-          throw new Error("Le total de l'accord special doit etre positif.");
-        }
-        await createSpecialFinancialAgreement({
-          schoolId: req.user!.schoolId,
-          parentId: parent.parentId,
-          studentId: student.id,
-          title: `Accord special proprietaire - ${student.fullName}`,
-          customTotal: student.annualFee,
-          reductionAmount: 0,
-          status: AgreementStatus.APPROVED,
-          notes: "Created during parent onboarding",
-          installments: buildOwnerAgreementInstallments(student.annualFee)
-        });
-      } else {
-        await upsertParentPlanAssignment({
-          schoolId: req.user!.schoolId,
-          parentId: parent.parentId,
-          studentId: student.id,
-          paymentOptionType: student.paymentOptionType,
-          notes: "Assigned during parent onboarding"
-        });
-      }
-    }
+    await assignOnboardingFinance({
+      schoolId: req.user!.schoolId,
+      parentId: parent.parentId,
+      students: parent.createdStudents,
+    });
     const createdParent = await prisma.parent.findUnique({
       where: { id: parent.parentId },
       include: parentInclude
