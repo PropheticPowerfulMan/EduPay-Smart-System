@@ -20,6 +20,14 @@ import { startOrbitOutboxWorker } from "./integrations/orbit";
 
 const app = express();
 
+if (env.NODE_ENV === "production") {
+  const weakJwtSecret = !env.JWT_SECRET || env.JWT_SECRET.includes("CHANGE_ME") || env.JWT_SECRET.includes("dev-secret");
+  const missingDatabase = !env.DATABASE_URL;
+  if (weakJwtSecret || missingDatabase || env.ENABLE_DEMO_AUTH_FALLBACK === "true" || env.ENABLE_DEMO_DATA_FALLBACK === "true") {
+    throw new Error("EduPay production configuration is unsafe. Set DATABASE_URL/JWT_SECRET and disable demo fallbacks.");
+  }
+}
+
 const allowedOrigins = new Set([
   "http://localhost:5173",
   "http://127.0.0.1:5173",

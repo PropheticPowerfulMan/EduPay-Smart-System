@@ -47,8 +47,8 @@ services:
     buildCommand: >-
       corepack enable &&
       pnpm install &&
-      pnpm --filter "@edupay/api" run build &&
-      pnpm --filter "@edupay/api" run prisma:generate
+      pnpm --filter "@edupay/api" run prisma:generate &&
+      pnpm --filter "@edupay/api" run build
 
     startCommand: >-
       cd apps/api &&
@@ -67,6 +67,12 @@ services:
 
       - key: JWT_SECRET
         generateValue: true
+
+      - key: ENABLE_DEMO_AUTH_FALLBACK
+        value: "false"
+
+      - key: ENABLE_DEMO_DATA_FALLBACK
+        value: "false"
 
       - key: FRONTEND_URL
         fromService:

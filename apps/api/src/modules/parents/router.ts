@@ -4,6 +4,7 @@ import bcrypt from "bcrypt";
 import { AgreementStatus, PaymentOptionType } from "@prisma/client";
 import { createOrbitParent, deleteOrbitParent, matchesSharedParentIdentifier, orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
 import { prisma } from "../../prisma";
+import { env } from "../../config/env";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
 import { sendEmail, sendSms } from "../../utils/messaging";
 import { createSpecialFinancialAgreement, getPaymentOptionLabel, upsertParentPlanAssignment } from "../finance/service";
@@ -229,6 +230,10 @@ let demoParents: any[] = [
   }
 ];
 
+function demoDataFallbackEnabled() {
+  return env.ENABLE_DEMO_DATA_FALLBACK === "true" && env.NODE_ENV !== "production";
+}
+
 const parentInclude = {
   user: { select: { accessCode: true } },
   students: {
@@ -404,14 +409,15 @@ parentRouter.get("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticate
     });
     return res.json(parents.map(enrichParent));
   } catch (error) {
-    console.error("DB unavailable on parent list, using demo data", error);
-    return res.json(demoParents);
+    console.error("DB unavailable on parent list", error);
+    if (demoDataFallbackEnabled()) return res.json(demoParents);
+    return res.status(503).json({ message: "Service parents temporairement indisponible." });
   }
 });
 
 // GET /me (for PARENT role)
 parentRouter.get("/me", authorize("PARENT"), async (req: AuthenticatedRequest, res) => {
-  if (req.user!.sub.startsWith("demo-")) {
+  if (demoDataFallbackEnabled() && req.user!.sub.startsWith("demo-")) {
     return res.json(parentDashboardData(demoParents[0]));
   }
 
@@ -435,19 +441,25 @@ parentRouter.get("/me", authorize("PARENT"), async (req: AuthenticatedRequest, r
     });
     if (parent) return res.json(parentDashboardData(parent));
 
-    const demoParent = demoParents.find((item) => item.userId === req.user!.sub) ?? demoParents[0];
-    return res.json(parentDashboardData(demoParent));
+    if (demoDataFallbackEnabled()) {
+      const demoParent = demoParents.find((item) => item.userId === req.user!.sub) ?? demoParents[0];
+      return res.json(parentDashboardData(demoParent));
+    }
+    return res.status(404).json({ message: "Parent non trouve" });
   } catch (error) {
     console.error("DB unavailable on parent/me", error);
-    const demoParent = demoParents.find((item) => item.userId === req.user!.sub) ?? demoParents[0];
-    return res.json(parentDashboardData(demoParent));
+    if (demoDataFallbackEnabled()) {
+      const demoParent = demoParents.find((item) => item.userId === req.user!.sub) ?? demoParents[0];
+      return res.json(parentDashboardData(demoParent));
+    }
+    return res.status(503).json({ message: "Espace parent temporairement indisponible." });
   }
 });
 
 parentRouter.put("/me/photo", authorize("PARENT"), async (req: AuthenticatedRequest, res) => {
   const payload = z.object({ photoUrl: z.string().max(750_000).optional().default("") }).parse(req.body);
 
-  if (req.user!.sub.startsWith("demo-")) {
+  if (demoDataFallbackEnabled() && req.user!.sub.startsWith("demo-")) {
     demoParents[0] = { ...demoParents[0], photoUrl: payload.photoUrl };
     return res.json({ photoUrl: payload.photoUrl });
   }
@@ -466,10 +478,13 @@ parentRouter.put("/me/photo", authorize("PARENT"), async (req: AuthenticatedRequ
     });
     return res.json({ photoUrl: updated.photoUrl || "" });
   } catch (error) {
-    console.error("DB unavailable on parent photo update, using demo store", error);
-    const demoParent = demoParents.find((item) => item.userId === req.user!.sub) ?? demoParents[0];
-    demoParent.photoUrl = payload.photoUrl;
-    return res.json({ photoUrl: payload.photoUrl });
+    console.error("DB unavailable on parent photo update", error);
+    if (demoDataFallbackEnabled()) {
+      const demoParent = demoParents.find((item) => item.userId === req.user!.sub) ?? demoParents[0];
+      demoParent.photoUrl = payload.photoUrl;
+      return res.json({ photoUrl: payload.photoUrl });
+    }
+    return res.status(503).json({ message: "Mise a jour photo temporairement indisponible." });
   }
 });
 
@@ -656,7 +671,10 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       notificationStatus
     });
   } catch (error) {
-    console.error("DB unavailable on parent create, using demo store", error);
+    console.error("DB unavailable on parent create", error);
+    if (!demoDataFallbackEnabled()) {
+      return res.status(503).json({ message: "Creation parent temporairement indisponible. Verifiez la base de donnees." });
+    }
     const parentId = buildReadableEntityId("PAR", payload.fullName);
     const newParent = {
       id: parentId,
@@ -732,7 +750,10 @@ parentRouter.post("/:id/reset-password", authorize("ADMIN", "ACCOUNTANT"), async
     const notificationStatus = await sendParentWelcomeNotifications(parent, temporaryPassword, req.user!.schoolId, preferences);
     return res.json({ parentId: parent.id, email: user.email, accessCode: user.accessCode, temporaryPassword, notificationStatus });
   } catch (error) {
-    console.error("DB unavailable on parent password reset, using demo store", error);
+    console.error("DB unavailable on parent password reset", error);
+    if (!demoDataFallbackEnabled()) {
+      return res.status(503).json({ message: "Reinitialisation parent temporairement indisponible." });
+    }
     const parent = demoParents.find((p) => p.id === id);
     if (!parent) return res.status(404).json({ message: "Parent non trouve" });
     parent.temporaryPassword = temporaryPassword;
@@ -765,7 +786,10 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
     });
     return res.json(enrichParent({ ...parent, nom: payload.nom, postnom: payload.postnom, prenom: payload.prenom }));
   } catch (error) {
-    console.error("DB unavailable on parent update, using demo store", error);
+    console.error("DB unavailable on parent update", error);
+    if (!demoDataFallbackEnabled()) {
+      return res.status(503).json({ message: "Mise a jour parent temporairement indisponible." });
+    }
     const idx = demoParents.findIndex((p) => p.id === id);
     if (idx !== -1) {
       demoParents[idx] = { ...demoParents[idx], ...payload };
@@ -809,7 +833,10 @@ parentRouter.delete("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authen
     await prisma.parent.delete({ where: { id } });
     return res.status(204).end();
   } catch (error) {
-    console.error("DB unavailable on parent delete, using demo store", error);
+    console.error("DB unavailable on parent delete", error);
+    if (!demoDataFallbackEnabled()) {
+      return res.status(503).json({ message: "Suppression parent temporairement indisponible." });
+    }
     demoParents = demoParents.filter((p) => p.id !== id);
     return res.status(204).end();
   }

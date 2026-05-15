@@ -4,6 +4,7 @@ import { z } from "zod";
 dotenv.config();
 
 const envSchema = z.object({
+  NODE_ENV: z.string().default("development"),
   DATABASE_URL: z.string().default(""),
   JWT_SECRET: z.string().min(8).default("dev-secret-change-in-production-please"),
   JWT_EXPIRES_IN: z.string().default("1d"),
@@ -21,6 +22,7 @@ const envSchema = z.object({
   AFRIKTALK_SENDER: z.string().default("EduPay"),
   DEFAULT_LANG: z.enum(["fr", "en"]).default("fr"),
   ENABLE_DEMO_AUTH_FALLBACK: z.enum(["true", "false"]).default("false"),
+  ENABLE_DEMO_DATA_FALLBACK: z.enum(["true", "false"]).default("false"),
   ADMIN_RECOVERY_CODE: z.string().default("")
 });
 
