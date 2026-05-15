@@ -26,6 +26,20 @@ type VerificationApiResponse = {
     createdAt: string;
     schoolName: string;
     receiptNumber: string | null;
+    tuitionAllocationSummary?: {
+      mode: string;
+      message: string;
+      totalReceived: number;
+      allocatedTotal: number;
+      missingAmount: number;
+      advanceBalance: number;
+      perChild: Array<{
+        studentName: string;
+        allocated: number;
+        remaining: number;
+        lines: Array<{ label: string; dueBucket: string; allocated: number; outstandingAfter: number }>;
+      }>;
+    } | null;
     downloads: {
       pdfPath: string;
       pngPath: string;
@@ -62,6 +76,34 @@ function DetailGrid({ rows }: { rows: Array<[string, string]> }) {
         </div>
       ))}
     </div>
+  );
+}
+
+function AllocationSummaryBlock({ summary }: { summary: NonNullable<VerificationApiResponse["payment"]["tuitionAllocationSummary"]> }) {
+  return (
+    <section className="rounded-3xl border border-emerald-400/20 bg-emerald-500/10 p-5 shadow-xl">
+      <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-200">Repartition tuition</p>
+      <h2 className="mt-2 font-display text-xl font-bold text-white">
+        Repartition {summary.mode === "AUTO" ? "automatique executee par le systeme" : "manuelle executee par le financier"}
+      </h2>
+      <p className="mt-3 text-sm leading-6 text-emerald-50/90">{summary.message}</p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        {summary.perChild.map((child) => (
+          <div key={child.studentName} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="font-semibold text-white">{child.studentName}</p>
+            <p className="mt-2 text-sm text-emerald-100">Applique: $ {child.allocated.toFixed(5)}</p>
+            <p className="text-sm text-amber-100">Reste: $ {child.remaining.toFixed(5)}</p>
+            <div className="mt-2 space-y-1 text-xs text-ink-dim">
+              {child.lines.map((line) => (
+                <p key={`${child.studentName}-${line.label}-${line.allocated}`}>
+                  {line.label}: $ {line.allocated.toFixed(5)} applique ({line.dueBucket})
+                </p>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -205,6 +247,9 @@ export function ReceiptVerificationPage() {
                         ["Code QR", codeParam || "N/A"]
                       ]} />
                     </section>
+                    {apiResult.payment.tuitionAllocationSummary && (
+                      <AllocationSummaryBlock summary={apiResult.payment.tuitionAllocationSummary} />
+                    )}
                   </div>
                 )}
               </div>
@@ -287,6 +332,9 @@ export function ReceiptVerificationPage() {
                     </section>
                   </aside>
                 </div>
+                {apiResult?.payment.tuitionAllocationSummary && (
+                  <AllocationSummaryBlock summary={apiResult.payment.tuitionAllocationSummary} />
+                )}
               </div>
             )}
           </div>

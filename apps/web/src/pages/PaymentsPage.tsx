@@ -1623,6 +1623,10 @@ export function PaymentsPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
+    if (tuitionPreview) {
+      await confirmTuitionPayment();
+      return;
+    }
     setSaving(true);
     setApiError(null);
 
@@ -1971,6 +1975,19 @@ export function PaymentsPage() {
                       <div className="min-w-[220px]">
                         <p className="font-semibold text-white">{getPaymentSubjectName(p)}</p>
                         {getPaymentParentCaption(p) ? <p className="mt-0.5 text-xs text-ink-dim">Parent: {getPaymentParentCaption(p)}</p> : null}
+                        {p.tuitionAllocationSummary && (
+                          <div className="mt-2 rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-2 text-xs text-emerald-50">
+                            <p className="font-black uppercase tracking-[0.12em]">Repartition {p.tuitionAllocationSummary.mode}</p>
+                            {p.tuitionAllocationSummary.perChild.slice(0, 4).map((child) => (
+                              <p key={child.studentName} className="mt-1">
+                                {child.studentName}: applique {fmtUsd(child.allocated)} - reste {fmtUsd(child.remaining)}
+                              </p>
+                            ))}
+                            {p.tuitionAllocationSummary.perChild.length > 4 && (
+                              <p className="mt-1 text-emerald-100/80">+ {p.tuitionAllocationSummary.perChild.length - 4} autre(s) enfant(s)</p>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </td>
                     <td className="py-3 px-3 text-ink-dim max-w-[140px] truncate" title={p.reason}>{p.reason}</td>
@@ -1983,7 +2000,10 @@ export function PaymentsPage() {
                       <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
                           title="Imprimer le reçu"
-                          onClick={() => void printReceiptDocument(p, lang)}
+                          onClick={() => {
+                            setCurrentReceipt(p);
+                            setView("receipt");
+                          }}
                           className="p-1.5 rounded bg-brand-600/20 text-brand-300 hover:bg-brand-600/40 transition-colors"
                         >
                           <PrintIcon className="w-3.5 h-3.5" />
