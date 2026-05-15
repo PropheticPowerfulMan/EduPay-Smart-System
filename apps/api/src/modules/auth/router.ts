@@ -1,5 +1,6 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
+import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import rateLimit from "express-rate-limit";
 import { z } from "zod";
@@ -38,6 +39,15 @@ const loginSchema = z.object({
   password: z.string().min(8)
 });
 
+const forgotPasswordSchema = z.object({
+  identifier: z.string().min(3).max(120)
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(24).max(120),
+  newPassword: z.string().min(8)
+});
+
 const demoUsers = [
   {
     email: "admin@school.com",
@@ -60,6 +70,19 @@ function buildToken(user: { id: string; role: StaffRole; schoolId: string }) {
   return jwt.sign({ sub: user.id, role: user.role, schoolId: user.schoolId }, env.JWT_SECRET, {
     expiresIn: env.JWT_EXPIRES_IN as any
   });
+}
+
+function hashResetToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+function buildPasswordResetLink(token: string) {
+  const baseUrl = (env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+  return `${baseUrl}/#/login?resetToken=${encodeURIComponent(token)}`;
+}
+
+function normalizeIdentifier(identifier: string) {
+  return identifier.trim();
 }
 
 export const authRouter = Router();
@@ -154,31 +177,92 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
   return res.status(401).json({ message: "Identifiants invalides" });
 });
 
-authRouter.post("/forgot-password", async (req, res) => {
-  const payload = z.object({ email: z.string().email() }).safeParse(req.body);
-  if (!payload.success) return res.json({ message: "Si cet email existe, un lien de réinitialisation sera envoyé." });
+authRouter.post("/forgot-password", recoveryLimiter, async (req, res) => {
+  const payload = forgotPasswordSchema.safeParse(req.body);
+  const genericMessage = "Si ce compte existe, un code de reinitialisation vient d'etre envoye.";
+  if (!payload.success) return res.json({ message: genericMessage });
 
   try {
-    const user = await prisma.user.findUnique({ where: { email: payload.data.email } });
+    const identifier = normalizeIdentifier(payload.data.identifier);
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { email: identifier.toLowerCase() },
+          { accessCode: identifier.toUpperCase() }
+        ]
+      }
+    });
     if (user) {
+      await prisma.passwordResetToken.updateMany({
+        where: { userId: user.id, usedAt: null, expiresAt: { gt: new Date() } },
+        data: { usedAt: new Date() }
+      });
+      const token = crypto.randomBytes(24).toString("base64url");
+      await prisma.passwordResetToken.create({
+        data: {
+          userId: user.id,
+          tokenHash: hashResetToken(token),
+          expiresAt: new Date(Date.now() + 30 * 60 * 1000)
+        }
+      });
       await sendEmail({
         to: user.email,
-        subject: "Demande de réinitialisation EduPay",
+        subject: "Reinitialisation de mot de passe EduPay",
         text: [
           `Bonjour ${user.fullName},`,
           "",
-          "Une demande de réinitialisation de mot de passe a été reçue pour votre compte EduPay.",
-          "Veuillez contacter l'administration de l'école pour recevoir un mot de passe temporaire sécurisé.",
+          "Une demande de reinitialisation de mot de passe a ete recue pour votre compte EduPay.",
           "",
-          "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message."
+          `Code de reinitialisation: ${token}`,
+          `Lien direct: ${buildPasswordResetLink(token)}`,
+          "Ce code expire dans 30 minutes et ne peut etre utilise qu'une seule fois.",
+          "",
+          "Si vous n'etes pas a l'origine de cette demande, ignorez ce message."
         ].join("\n")
       });
     }
+    return res.json({ message: genericMessage });
   } catch (error) {
     console.error("Forgot password email flow failed", error);
+    return res.json({ message: genericMessage });
+  }
+});
+
+authRouter.post("/reset-password", recoveryLimiter, async (req, res) => {
+  const payload = resetPasswordSchema.parse(req.body);
+  const resetToken = await prisma.passwordResetToken.findUnique({
+    where: { tokenHash: hashResetToken(payload.token.trim()) },
+    include: { user: true }
+  });
+
+  if (!resetToken || resetToken.usedAt || resetToken.expiresAt.getTime() < Date.now()) {
+    return res.status(400).json({ message: "Code de reinitialisation invalide ou expire." });
   }
 
-  return res.json({ message: "Si cet email existe, un lien de réinitialisation sera envoyé." });
+  const passwordHash = await bcrypt.hash(payload.newPassword, 12);
+  await prisma.$transaction([
+    prisma.user.update({
+      where: { id: resetToken.userId },
+      data: { passwordHash, mustChangePassword: false }
+    }),
+    prisma.passwordResetToken.update({
+      where: { id: resetToken.id },
+      data: { usedAt: new Date() }
+    })
+  ]);
+
+  await sendEmail({
+    to: resetToken.user.email,
+    subject: "Mot de passe EduPay reinitialise",
+    text: [
+      `Bonjour ${resetToken.user.fullName},`,
+      "",
+      "Votre mot de passe EduPay vient d'etre reinitialise.",
+      "Si vous n'avez pas effectue cette action, contactez immediatement l'administration."
+    ].join("\n")
+  }).catch((error) => console.error("Reset confirmation email failed", error));
+
+  return res.json({ message: "Mot de passe reinitialise. Vous pouvez vous connecter." });
 });
 
 authRouter.post("/recover-admin-password", recoveryLimiter, async (req, res) => {
@@ -237,7 +321,7 @@ authRouter.post("/change-password", authGuard, async (req: AuthenticatedRequest,
   const passwordHash = await bcrypt.hash(payload.newPassword, 10);
   await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash }
+    data: { passwordHash, mustChangePassword: false }
   });
 
   await sendEmail({

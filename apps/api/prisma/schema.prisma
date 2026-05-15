@@ -259,6 +259,7 @@ model User {
   parent       Parent?
   createdPayments Payment[] @relation("CreatedPayments")
   auditLogs    AuditLog[]
+  passwordResetTokens PasswordResetToken[]
   approvedDiscounts Discount[] @relation("DiscountApprover")
   approvedAgreements FinancialAgreement[] @relation("AgreementApprover")
   submittedExpenses Expense[] @relation("ExpenseSubmitter")
@@ -267,6 +268,18 @@ model User {
   uploadedFinancialAttachments FinancialAttachment[] @relation("AttachmentUploader")
   createdBudgets Budget[] @relation("BudgetCreator")
   createdPayrollRuns PayrollRun[] @relation("PayrollCreator")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
 }
 
 model Parent {

@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { FontSwitch } from "../components/FontSwitch";
@@ -26,10 +26,11 @@ function EyeIcon({ open }: { open: boolean }) {
 
 type ForgotStep = "form" | "sent";
 
-function ForgotPasswordModal({ onClose, t }: { onClose: () => void; t: (k: string) => string }) {
+function ForgotPasswordModal({ onClose, t, initialResetToken = "" }: { onClose: () => void; t: (k: string) => string; initialResetToken?: string }) {
   const [step, setStep] = useState<ForgotStep>("form");
   const [adminRecovery, setAdminRecovery] = useState(false);
-  const [email, setEmail] = useState("");
+  const [identifier, setIdentifier] = useState("");
+  const [resetToken, setResetToken] = useState(initialResetToken);
   const [recoveryCode, setRecoveryCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -37,30 +38,72 @@ function ForgotPasswordModal({ onClose, t }: { onClose: () => void; t: (k: strin
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
 
+  useEffect(() => {
+    if (initialResetToken) {
+      setResetToken(initialResetToken);
+      setStep("sent");
+    }
+  }, [initialResetToken]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !email.includes("@")) {
-      setError(t("forgotInvalidEmail"));
+    if (identifier.trim().length < 3) {
+      setError("Entrez votre email ou votre code d'acces.");
       return;
     }
     setLoading(true);
     setError("");
     try {
-      await api("/api/auth/forgot-password", {
+      const result = await api<{ message?: string }>("/api/auth/forgot-password", {
         method: "POST",
-        body: JSON.stringify({ email: email.trim().toLowerCase() })
+        body: JSON.stringify({ identifier: identifier.trim() })
       });
+      setSuccessMessage(result.message || "Si ce compte existe, un code vient d'etre envoye.");
     } catch {
       // Even on error we show success to not leak account existence
+      setSuccessMessage("Si ce compte existe, un code vient d'etre envoye.");
     } finally {
       setLoading(false);
       setStep("sent");
     }
   };
 
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (resetToken.trim().length < 24) {
+      setError("Entrez le code de reinitialisation recu par email.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setError(t("passwordTooShort"));
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError(t("passwordMismatch"));
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setSuccessMessage("");
+    try {
+      const result = await api<{ message?: string }>("/api/auth/reset-password", {
+        method: "POST",
+        body: JSON.stringify({ token: resetToken.trim(), newPassword })
+      });
+      setSuccessMessage(result.message || "Mot de passe reinitialise. Vous pouvez vous connecter.");
+      setResetToken("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Impossible de reinitialiser le mot de passe.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleAdminRecovery = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !email.includes("@")) {
+    if (!identifier.trim() || !identifier.includes("@")) {
       setError(t("forgotInvalidEmail"));
       return;
     }
@@ -79,7 +122,7 @@ function ForgotPasswordModal({ onClose, t }: { onClose: () => void; t: (k: strin
       const result = await api<{ message?: string }>("/api/auth/recover-admin-password", {
         method: "POST",
         body: JSON.stringify({
-          email: email.trim().toLowerCase(),
+          email: identifier.trim().toLowerCase(),
           recoveryCode,
           newPassword
         })
@@ -123,8 +166,8 @@ function ForgotPasswordModal({ onClose, t }: { onClose: () => void; t: (k: strin
                 <label className="text-sm font-medium text-ink-dim">Email ou code d'accès</label>
                 <input
                   type="text"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   placeholder="email@exemple.com ou ACC-PAR-XXXXXX"
                   className="w-full"
                   autoFocus
@@ -163,7 +206,7 @@ function ForgotPasswordModal({ onClose, t }: { onClose: () => void; t: (k: strin
               <p className="text-sm text-ink-dim mt-2">{t("adminRecoverySubtitle")}</p>
             </div>
             <form onSubmit={handleAdminRecovery} className="space-y-4">
-              <input type="text" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email ou code d'accès" className="w-full" />
+              <input type="text" value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="Email administrateur" className="w-full" />
               <input type="password" value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} placeholder={t("adminRecoveryCode")} className="w-full" />
               <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={t("newPasswordField")} className="w-full" />
               <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder={t("confirmNewPassword")} className="w-full" />
@@ -186,15 +229,32 @@ function ForgotPasswordModal({ onClose, t }: { onClose: () => void; t: (k: strin
             </form>
           </>
         ) : (
-          <div className="text-center space-y-4">
+          <div className="space-y-4">
             <div className="mx-auto w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center">
               <svg xmlns="http://www.w3.org/2000/svg" className="w-8 h-8 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <polyline points="20 6 9 17 4 12" />
               </svg>
             </div>
-            <h3 className="font-display text-xl font-bold text-white">{t("forgotSentTitle")}</h3>
-            <p className="text-sm text-ink-dim">{t("forgotSentBody").replace("{{email}}", email)}</p>
-            <button onClick={onClose} className="w-full btn-primary py-3 font-semibold">{t("forgotClose")}</button>
+            <div className="text-center">
+              <h3 className="font-display text-xl font-bold text-white">{t("forgotSentTitle")}</h3>
+              <p className="text-sm text-ink-dim">{successMessage || "Si ce compte existe, un code vient d'etre envoye. Collez ce code ci-dessous pour choisir un nouveau mot de passe."}</p>
+            </div>
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <textarea
+                value={resetToken}
+                onChange={(e) => setResetToken(e.target.value)}
+                placeholder="Code de reinitialisation recu par email"
+                className="min-h-20 w-full resize-none"
+              />
+              <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={t("newPasswordField")} className="w-full" />
+              <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder={t("confirmNewPassword")} className="w-full" />
+              {error && <p className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>}
+              {successMessage && resetToken === "" && <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">{successMessage}</p>}
+              <button type="submit" disabled={loading} className="w-full btn-primary py-3 font-semibold disabled:opacity-50">
+                {loading ? t("forgotSending") : "Reinitialiser le mot de passe"}
+              </button>
+              <button type="button" onClick={onClose} className="w-full rounded-lg border border-slate-600 px-4 py-3 text-sm font-semibold text-ink-dim hover:text-white">{t("forgotClose")}</button>
+            </form>
           </div>
         )}
       </div>
@@ -226,9 +286,10 @@ type LoginInput = z.infer<typeof loginSchema>;
 export function LoginPage() {
   const { t } = useI18n();
   const { setAuth } = useAuthStore();
+  const resetTokenFromUrl = new URLSearchParams((window.location.hash.split("?")[1] ?? "")).get("resetToken") ?? "";
   const [apiError, setApiError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  const [showForgot, setShowForgot] = useState(false);
+  const [showForgot, setShowForgot] = useState(Boolean(resetTokenFromUrl));
   const { register, handleSubmit, setValue, formState: { errors, isSubmitting } } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -271,7 +332,7 @@ export function LoginPage() {
 
   return (
     <div className="min-h-screen grid place-items-center relative overflow-hidden px-4 py-8">
-      {showForgot && <ForgotPasswordModal onClose={() => setShowForgot(false)} t={t} />}
+      {showForgot && <ForgotPasswordModal initialResetToken={resetTokenFromUrl} onClose={() => setShowForgot(false)} t={t} />}
       {/* Animated background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 -right-20 w-96 h-96 bg-brand-500 rounded-full mix-blend-multiply filter blur-3xl opacity-10 animate-pulse"></div>
