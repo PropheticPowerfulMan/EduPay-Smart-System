@@ -49,6 +49,23 @@ type VerificationApiResponse = {
   };
 };
 
+function roundMoney(n: number): number {
+  const rounded = Math.round((Number(n || 0) + Number.EPSILON) * 100000) / 100000;
+  const nearestInteger = Math.round(rounded);
+  return Math.abs(rounded - nearestInteger) <= 0.00001 ? nearestInteger : rounded;
+}
+
+function formatMoney(n: number): string {
+  const rounded = roundMoney(n);
+  if (Number.isInteger(rounded)) return String(rounded);
+  return rounded.toFixed(5).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function formatMoneyString(value: string): string {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? formatMoney(amount) : value;
+}
+
 function compareReceiptWithApi(receipt: ReceiptVerificationRecord, apiPayment: VerificationApiResponse["payment"]) {
   const mismatches: string[] = [];
   if (receipt.transaction.transactionNumber !== apiPayment.transactionNumber) mismatches.push("Transaction");
@@ -91,12 +108,12 @@ function AllocationSummaryBlock({ summary }: { summary: NonNullable<Verification
         {summary.perChild.map((child) => (
           <div key={child.studentName} className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <p className="font-semibold text-white">{child.studentName}</p>
-            <p className="mt-2 text-sm text-emerald-100">Applique: $ {child.allocated.toFixed(5)}</p>
-            <p className="text-sm text-amber-100">Reste: $ {child.remaining.toFixed(5)}</p>
+            <p className="mt-2 text-sm text-emerald-100">Applique: $ {formatMoney(child.allocated)}</p>
+            <p className="text-sm text-amber-100">Reste: $ {formatMoney(child.remaining)}</p>
             <div className="mt-2 space-y-1 text-xs text-ink-dim">
               {child.lines.map((line) => (
                 <p key={`${child.studentName}-${line.label}-${line.allocated}`}>
-                  {line.label}: avant $ {line.outstandingBefore.toFixed(5)}, applique $ {line.allocated.toFixed(5)}, reste $ {line.outstandingAfter.toFixed(5)} ({line.dueBucket})
+                  {line.label}: avant $ {formatMoney(line.outstandingBefore)}, applique $ {formatMoney(line.allocated)}, reste $ {formatMoney(line.outstandingAfter)} ({line.dueBucket})
                 </p>
               ))}
             </div>
@@ -241,7 +258,7 @@ export function ReceiptVerificationPage() {
                         ["Paiement pour", apiResult.payment.paymentSubjectName],
                         ["Eleves", apiResult.payment.studentNames.join(" / ") || "N/A"],
                         ["Motif", apiResult.payment.reason],
-                        ["Montant", `$ ${apiResult.payment.amount.toFixed(5)}`],
+                        ["Montant", `$ ${formatMoney(apiResult.payment.amount)}`],
                         ["Methode", apiResult.payment.method],
                         ["Statut", apiResult.payment.status],
                         ["Code QR", codeParam || "N/A"]
@@ -305,7 +322,7 @@ export function ReceiptVerificationPage() {
                       ["Paiement pour", receipt.parties.paymentSubjectName],
                       ["Eleves", receipt.parties.studentNames.join(" / ") || "N/A"],
                       ["Motif", receipt.transaction.reason],
-                      ["Montant", `$ ${receipt.transaction.amount}`],
+                      ["Montant", `$ ${formatMoneyString(receipt.transaction.amount)}`],
                       ["Montant en lettres", receipt.transaction.amountWords],
                       ["Methode", receipt.transaction.methodLabel],
                       ["Statut", receipt.transaction.statusLabel]

@@ -92,8 +92,9 @@ function n2wEn(n: number): string {
 
 /* --- Amount to words (5 decimals) ---------------------------------------- */
 function amountToWords(amount: number, lang: "fr" | "en"): string {
-  const intPart = Math.floor(amount);
-  const decStr = amount.toFixed(5).split(".")[1] ?? "00000";
+  const normalizedAmount = roundMoney(amount);
+  const intPart = Math.floor(normalizedAmount);
+  const decStr = normalizedAmount.toFixed(5).split(".")[1] ?? "00000";
   const decNum = parseInt(decStr, 10);
   const fn = lang === "fr" ? n2wFr : n2wEn;
   const intWords = fn(intPart);
@@ -104,9 +105,21 @@ function amountToWords(amount: number, lang: "fr" | "en"): string {
   return `${intWords} ${dollarLabel} et ${decWords} ${centLabel}`;
 }
 
+function roundMoney(n: number): number {
+  const rounded = Math.round((Number(n || 0) + Number.EPSILON) * 100000) / 100000;
+  const nearestInteger = Math.round(rounded);
+  return Math.abs(rounded - nearestInteger) <= 0.00001 ? nearestInteger : rounded;
+}
+
+function formatMoney(n: number): string {
+  const rounded = roundMoney(n);
+  if (Number.isInteger(rounded)) return String(rounded);
+  return rounded.toFixed(5).replace(/0+$/, "").replace(/\.$/, "");
+}
+
 /* --- Format USD ----------------------------------------------------------- */
 function fmtUsd(n: number): string {
-  return `$ ${n.toFixed(5)}`;
+  return `$ ${formatMoney(n)}`;
 }
 
 function escapeHtml(value: string): string {
@@ -142,7 +155,7 @@ function buildReceiptSecurity(r: Pick<PaymentRecord, "transactionNumber" | "date
     r.date,
     getPaymentSubjectName(r).trim().toUpperCase(),
     r.reason.trim().toUpperCase(),
-    r.amount.toFixed(5),
+    roundMoney(r.amount).toFixed(5),
     r.method,
     r.status
   ].join("|");
@@ -215,7 +228,7 @@ function getStatusLabel(status: string) {
 
 function buildReceiptMicroText(r: PaymentRecord) {
   const sec = buildReceiptSecurity(r);
-  return `EDUPAY-OFFICIAL ${r.transactionNumber} ${sec.verificationCode} ${r.amount.toFixed(5)}USD ${r.status}`;
+  return `EDUPAY-OFFICIAL ${r.transactionNumber} ${sec.verificationCode} ${formatMoney(r.amount)}USD ${r.status}`;
 }
 
 type ReceiptPrintFonts = {
@@ -294,9 +307,9 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
           <thead><tr><th>Eleve</th><th>Applique</th><th>Reste</th><th>Details</th></tr></thead>
           <tbody>${r.tuitionAllocationSummary.perChild.map((child) => `<tr>
             <td>${escapeHtml(child.studentName)}</td>
-            <td>$ ${child.allocated.toFixed(5)}</td>
-            <td>$ ${child.remaining.toFixed(5)}</td>
-            <td>${child.lines.map((line) => `${escapeHtml(line.label)}: avant $ ${line.outstandingBefore.toFixed(5)}, applique $ ${line.allocated.toFixed(5)}, reste $ ${line.outstandingAfter.toFixed(5)} (${escapeHtml(getDueBucketLabel(line.dueBucket))})`).join("<br/>")}</td>
+            <td>$ ${formatMoney(child.allocated)}</td>
+            <td>$ ${formatMoney(child.remaining)}</td>
+            <td>${child.lines.map((line) => `${escapeHtml(line.label)}: avant $ ${formatMoney(line.outstandingBefore)}, applique $ ${formatMoney(line.allocated)}, reste $ ${formatMoney(line.outstandingAfter)} (${escapeHtml(getDueBucketLabel(line.dueBucket))})`).join("<br/>")}</td>
           </tr>`).join("")}</tbody>
         </table>
       </div>`
@@ -391,7 +404,7 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
       <div class="field"><div class="label">Statut</div><div class="value">${safe.status}</div></div>
       <div class="amount">
         <div class="amount-label">Montant reçu en dollars américains</div>
-        <div class="amount-value">$ ${r.amount.toFixed(5)}</div>
+        <div class="amount-value">$ ${formatMoney(r.amount)}</div>
         <div class="words"><strong>En toutes lettres:</strong> ${safe.amountWords}</div>
       </div>
       ${allocationSummaryHtml}
@@ -488,7 +501,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
   const methodRows = Object.entries(byMethod)
     .map(([m, total]) => `<tr>
       <td style="padding:5px 10px">${methodLabel[m] ?? plainPrintText(m)}</td>
-      <td style="padding:5px 10px; font-family:monospace; font-weight:bold; text-align:right; color:#1e3a5f">$ ${total.toFixed(5)}</td>
+      <td style="padding:5px 10px; font-family:monospace; font-weight:bold; text-align:right; color:#1e3a5f">$ ${formatMoney(total)}</td>
     </tr>`)
     .join("");
 
@@ -501,7 +514,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
       <td style="padding:6px 8px; font-size:11px; white-space:nowrap">${plainPrintText(r.date.split(",").slice(0, 2).join(","))}</td>
       <td style="padding:6px 8px; font-size:11px">${plainPrintText(r.reason)}</td>
       <td style="padding:6px 8px; font-size:11px">${methodLabel[r.method] ?? plainPrintText(r.method)}</td>
-      <td style="padding:6px 8px; text-align:right; font-family:monospace; font-weight:bold; font-size:12px">$ ${r.amount.toFixed(5)}</td>
+      <td style="padding:6px 8px; text-align:right; font-family:monospace; font-weight:bold; font-size:12px">$ ${formatMoney(r.amount)}</td>
       <td style="padding:6px 8px; text-align:center; font-size:11px; font-weight:bold; color:${statusColor[r.status] ?? "#111"}">${statusLabel[r.status] ?? plainPrintText(r.status)}</td>
     </tr>`).join("");
 
@@ -511,7 +524,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
           <div style="font-weight:bold; font-size:14px">${parentName}</div>
           ${parentCaption ? `<div style="margin-top:4px; font-size:11px; color:rgba(255,255,255,0.78)">Parent concerne : ${parentCaption}</div>` : ""}
         </div>
-        <div style="font-family:monospace; font-weight:bold; font-size:14px">Total : $ ${total.toFixed(5)}</div>
+        <div style="font-family:monospace; font-weight:bold; font-size:14px">Total : $ ${formatMoney(total)}</div>
       </div>
       <table style="width:100%; border-collapse:collapse; border:1px solid #e2e8f0; border-top:none; font-size:12px;">
         <thead style="background:#f1f5f9;">
@@ -528,7 +541,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
         <tfoot>
           <tr style="background:#f8fafc; border-top:2px solid #1e3a5f">
             <td colspan="4" style="padding:8px; font-weight:bold; font-size:12px; text-align:right">Sous-total :</td>
-            <td style="padding:8px; text-align:right; font-family:monospace; font-weight:bold; font-size:13px; color:#1e3a5f">$ ${total.toFixed(5)}</td>
+            <td style="padding:8px; text-align:right; font-family:monospace; font-weight:bold; font-size:13px; color:#1e3a5f">$ ${formatMoney(total)}</td>
             <td></td>
           </tr>
         </tfoot>
@@ -636,20 +649,20 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
     <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px; margin-bottom:24px;">
       <div style="border:1px solid #e2e8f0; border-radius:6px; padding:12px 14px; background:#f8fafc;">
         <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Total encaisse (USD)</div>
-        <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${grandTotal.toFixed(5)}</div>
+        <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${formatMoney(grandTotal)}</div>
         <div style="font-size:9px; color:#94a3b8; margin-top:2px;">${filtered.length} transaction${filtered.length > 1 ? "s" : ""}</div>
       </div>
       <div style="border:1px solid #d1fae5; border-radius:6px; padding:12px 14px; background:#f0fdf4;">
         <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Paiements regles</div>
-        <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#16a34a;">$ ${completedTotal.toFixed(5)}</div>
+        <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#16a34a;">$ ${formatMoney(completedTotal)}</div>
       </div>
       <div style="border:1px solid #fef3c7; border-radius:6px; padding:12px 14px; background:#fffbeb;">
         <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">En attente</div>
-        <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#d97706;">$ ${pendingTotal.toFixed(5)}</div>
+        <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#d97706;">$ ${formatMoney(pendingTotal)}</div>
       </div>
       <div style="border:1px solid #fee2e2; border-radius:6px; padding:12px 14px; background:#fef2f2;">
         <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Échoués</div>
-        <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#dc2626;">$ ${failedTotal.toFixed(5)}</div>
+        <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#dc2626;">$ ${formatMoney(failedTotal)}</div>
       </div>
     </div>
 
@@ -669,7 +682,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
 
     <div style="border-top:3px double #1e3a5f; padding-top:16px; display:flex; justify-content:flex-end; align-items:center; gap:20px; margin-top:12px;">
       <span style="font-size:14px; font-weight:bold; text-transform:uppercase; letter-spacing:1px;">TOTAL GENERAL (USD)</span>
-      <span style="font-size:22px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${grandTotal.toFixed(5)}</span>
+      <span style="font-size:22px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${formatMoney(grandTotal)}</span>
     </div>
     <div style="margin-top:28px; text-align:center; font-size:10px; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:14px;">
       Document généré officiellement par <strong>${brand.appName}</strong> pour <strong>${brand.schoolName}</strong> -
@@ -1255,7 +1268,7 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
           ))}
           <div className="mt-3 border-2 border-slate-900 bg-slate-50 p-3">
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Montant reçu en dollars américains</p>
-            <p className="mt-1 font-mono text-2xl font-black text-slate-900">$ {receipt.amount.toFixed(5)}</p>
+            <p className="mt-1 font-mono text-2xl font-black text-slate-900">$ {formatMoney(receipt.amount)}</p>
             <p className="mt-2 border-t border-slate-300 pt-2 text-xs italic text-slate-700">
               <strong>En toutes lettres:</strong> {receipt.amountWords}
             </p>
@@ -1271,10 +1284,10 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
                   <div key={child.studentName} className="rounded-md border border-slate-200 bg-white p-2 text-[11px]">
                     <div className="flex justify-between gap-3 font-bold text-slate-900">
                       <span>{child.studentName}</span>
-                      <span>Applique $ {child.allocated.toFixed(5)} - Reste $ {child.remaining.toFixed(5)}</span>
+                      <span>Applique $ {formatMoney(child.allocated)} - Reste $ {formatMoney(child.remaining)}</span>
                     </div>
                     <div className="mt-1 text-slate-600">
-                      {child.lines.map((line) => `${line.label}: avant $ ${line.outstandingBefore.toFixed(5)}, applique $ ${line.allocated.toFixed(5)}, reste $ ${line.outstandingAfter.toFixed(5)} (${getDueBucketLabel(line.dueBucket)})`).join(" | ")}
+                      {child.lines.map((line) => `${line.label}: avant $ ${formatMoney(line.outstandingBefore)}, applique $ ${formatMoney(line.allocated)}, reste $ ${formatMoney(line.outstandingAfter)} (${getDueBucketLabel(line.dueBucket)})`).join(" | ")}
                     </div>
                   </div>
                 ))}
@@ -1710,7 +1723,7 @@ export function PaymentsPage() {
     setSaving(true);
     setApiError(null);
 
-    const finalAmount = parseFloat(parseFloat(form.amount).toFixed(5));
+    const finalAmount = roundMoney(parseFloat(form.amount));
     const now = new Date();
     const dateStr = now.toLocaleString(lang === "fr" ? "fr-FR" : "en-US", {
       weekday: "long", year: "numeric", month: "long", day: "numeric",
@@ -2073,7 +2086,7 @@ export function PaymentsPage() {
                     <td className="py-3 px-3 text-ink-dim max-w-[140px] truncate" title={p.reason}>{p.reason}</td>
                     <td className="py-3 px-3 text-xs text-ink-dim">{p.method.replace(/_/g, " ")}</td>
                     <td className="py-3 px-3 font-mono font-bold text-emerald-300 whitespace-nowrap">
-                      $ {p.amount.toFixed(5)}
+                      $ {formatMoney(p.amount)}
                     </td>
                     <td className="py-3 px-3"><StatusBadge status={p.status} /></td>
                     <td className="py-3 px-3 last:pr-0">
@@ -2125,7 +2138,7 @@ export function PaymentsPage() {
                     Total ({filteredPayments.length} paiement{filteredPayments.length > 1 ? "s" : ""})
                   </td>
                   <td className="py-4 font-mono font-bold text-xl text-brand-300">
-                    $ {filteredPayments.reduce((s, p) => s + p.amount, 0).toFixed(5)}
+                    $ {formatMoney(filteredPayments.reduce((s, p) => s + p.amount, 0))}
                   </td>
                   <td colSpan={2} />
                 </tr>
@@ -2240,7 +2253,7 @@ export function PaymentsPage() {
                   </div>
                   <div className="text-right">
                     <p className="text-xs text-ink-dim uppercase tracking-wide">Total payé</p>
-                    <p className="font-mono font-bold text-xl text-brand-300">$ {parentTotal.toFixed(5)}</p>
+                    <p className="font-mono font-bold text-xl text-brand-300">$ {formatMoney(parentTotal)}</p>
                   </div>
                 </div>
 
@@ -2248,15 +2261,15 @@ export function PaymentsPage() {
                 <div className="grid grid-cols-3 gap-3 mb-4">
                   <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-2">
                     <p className="text-xs text-ink-dim mb-1">Réglé</p>
-                    <p className="font-mono text-sm font-bold text-emerald-300">$ {completedAmt.toFixed(5)}</p>
+                    <p className="font-mono text-sm font-bold text-emerald-300">$ {formatMoney(completedAmt)}</p>
                   </div>
                   <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2">
                     <p className="text-xs text-ink-dim mb-1">En attente</p>
-                    <p className="font-mono text-sm font-bold text-amber-300">$ {pendingAmt.toFixed(5)}</p>
+                    <p className="font-mono text-sm font-bold text-amber-300">$ {formatMoney(pendingAmt)}</p>
                   </div>
                   <div className="rounded-lg bg-red-500/10 border border-red-500/20 px-3 py-2">
                     <p className="text-xs text-ink-dim mb-1">Échoués</p>
-                    <p className="font-mono text-sm font-bold text-red-300">$ {failedAmt.toFixed(5)}</p>
+                    <p className="font-mono text-sm font-bold text-red-300">$ {formatMoney(failedAmt)}</p>
                   </div>
                 </div>
 
@@ -2281,7 +2294,7 @@ export function PaymentsPage() {
                           </td>
                           <td className="py-2.5 px-2 text-ink-dim">{r.reason}</td>
                           <td className="py-2.5 px-2 text-xs text-ink-dim">{r.method.replace(/_/g, " ")}</td>
-                          <td className="py-2.5 px-2 font-mono font-bold text-emerald-300">$ {r.amount.toFixed(5)}</td>
+                          <td className="py-2.5 px-2 font-mono font-bold text-emerald-300">$ {formatMoney(r.amount)}</td>
                           <td className="py-2.5 px-2"><StatusBadge status={r.status} /></td>
                           <td className="py-2.5 px-2 last:pr-0">
                             <button
@@ -2305,7 +2318,7 @@ export function PaymentsPage() {
                     <tfoot>
                       <tr className="border-t border-brand-500/30">
                         <td colSpan={4} className="py-3 pl-0 text-xs font-bold text-ink-dim uppercase">Sous-total</td>
-                        <td className="py-3 font-mono font-bold text-brand-300">$ {parentTotal.toFixed(5)}</td>
+                        <td className="py-3 font-mono font-bold text-brand-300">$ {formatMoney(parentTotal)}</td>
                         <td colSpan={2} />
                       </tr>
                     </tfoot>
@@ -2339,7 +2352,7 @@ export function PaymentsPage() {
               {reportSearch ? `Total - ${reportSearch}` : "TOTAL GENERAL"}
             </p>
             <div className="text-right">
-              <p className="font-mono text-2xl font-bold text-brand-300">$ {reportTotal.toFixed(5)}</p>
+              <p className="font-mono text-2xl font-bold text-brand-300">$ {formatMoney(reportTotal)}</p>
               <p className="text-xs text-ink-dim mt-0.5">Dollars américains (USD)</p>
             </div>
           </div>
@@ -2489,7 +2502,7 @@ export function PaymentsPage() {
                       key={`${suggestion.studentId}-${suggestion.label}-${suggestion.dueDate}`}
                       type="button"
                       onClick={() => {
-                        setField("amount", suggestion.balance.toFixed(5));
+                        setField("amount", formatMoney(suggestion.balance));
                         const nextReason = buildReasonForStudents(suggestion.label, suggestion.studentName);
                         lastAutoReasonRef.current = nextReason;
                         setField("reason", nextReason);
