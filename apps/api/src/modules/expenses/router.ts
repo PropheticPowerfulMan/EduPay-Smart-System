@@ -19,8 +19,8 @@ import {
   createVendor,
   getExpenseOverview,
   listAccountingEntries,
-  listCashflowEntries,
   listBudgets,
+  listCashflowEntries,
   listExpenseCategories,
   listExpenses,
   listPayrollRuns,
@@ -204,22 +204,6 @@ expenseRouter.post("/", authorize(...writeRoles), async (req: AuthenticatedReque
   }
 });
 
-expenseRouter.post("/:expenseId/approval", authorize(...writeRoles), async (req: AuthenticatedRequest, res) => {
-  try {
-    const payload = approvalSchema.parse(req.body);
-    return res.json(await processExpenseApproval({
-      schoolId: req.user!.schoolId,
-      expenseId: req.params.expenseId,
-      userId: req.user!.sub,
-      userRole: req.user!.role,
-      ...payload
-    }));
-  } catch (error) {
-    console.error("Expense approval error", error);
-    return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to process approval." });
-  }
-});
-
 expenseRouter.get("/accounting-entries", authorize(...readRoles), async (req: AuthenticatedRequest, res) => {
   try {
     return res.json(await listAccountingEntries({ schoolId: req.user!.schoolId }));
@@ -235,6 +219,22 @@ expenseRouter.get("/cashflow-entries", authorize(...readRoles), async (req: Auth
   } catch (error) {
     console.error("Cashflow entries list error", error);
     return res.status(500).json({ message: "Unable to load cashflow entries." });
+  }
+});
+
+expenseRouter.post("/:expenseId/approval", authorize(...writeRoles), async (req: AuthenticatedRequest, res) => {
+  try {
+    const payload = approvalSchema.parse(req.body);
+    return res.json(await processExpenseApproval({
+      schoolId: req.user!.schoolId,
+      expenseId: req.params.expenseId,
+      userId: req.user!.sub,
+      userRole: req.user!.role,
+      ...payload
+    }));
+  } catch (error) {
+    console.error("Expense approval error", error);
+    return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to process approval." });
   }
 });
 

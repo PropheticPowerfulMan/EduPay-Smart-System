@@ -35,7 +35,34 @@ const LOCAL_API_FALLBACK_ENABLED =
 
 type DemoStudent = { id: string; fullName: string; classId: string; className: string; annualFee: number; payments?: DemoPayment[] };
 type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
-type DemoPayment = { id: string; transactionNumber: string; parentId?: string; parentFullName: string; paymentSubjectName?: string; studentNames?: string[]; reason: string; method: string; amount: number; status: string; createdAt: string; date: string };
+type DemoTuitionAllocationLine = {
+  installmentId: string;
+  studentId: string;
+  studentName: string;
+  label: string;
+  dueDate: string;
+  dueBucket: "OVERDUE" | "CURRENT" | "FUTURE";
+  amountDue: number;
+  alreadyPaid: number;
+  outstandingBefore: number;
+  allocated: number;
+  outstandingAfter: number;
+};
+type DemoTuitionAllocationSummary = {
+  mode: "AUTO" | "MANUAL";
+  message: string;
+  totalReceived: number;
+  allocatedTotal: number;
+  missingAmount: number;
+  advanceBalance: number;
+  perChild: Array<{
+    studentName: string;
+    allocated: number;
+    remaining: number;
+    lines: Array<{ label: string; dueBucket: string; outstandingBefore: number; allocated: number; outstandingAfter: number }>;
+  }>;
+};
+type DemoPayment = { id: string; transactionNumber: string; parentId?: string; parentFullName: string; paymentSubjectName?: string; studentNames?: string[]; reason: string; method: string; amount: number; status: string; createdAt: string; date: string; tuitionAllocationSummary?: DemoTuitionAllocationSummary };
 type DemoParentCredential = { parentId: string; email: string; password: string };
 type DemoPaymentOptionType = "FULL_PRESEPTEMBER" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS" | "STANDARD_MONTHLY" | "SPECIAL_OWNER_AGREEMENT";
 type DemoFinanceOverride =
@@ -352,6 +379,117 @@ function buildOwnerAgreementInstallments(customTotal: number) {
 
 function roundAmount(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function getDemoBaseAnnualTuition(className: string, annualFee: number) {
+  if (/grade\s*(9|10|11|12)/i.test(className)) return 5420;
+  if (/grade\s*(6|7|8)/i.test(className)) return 4595;
+  if (/^k|kindergarten/i.test(className)) return 3082.5;
+  if (/grade\s*(1|2|3|4|5)/i.test(className)) return 3770;
+  return roundAmount(Number(annualFee || 0));
+}
+
+function buildDemoTuitionSchedule(paymentOptionType: DemoPaymentOptionType, finalTuition: number) {
+  const split = (rows: Array<{ label: string; dueDate: string }>) => {
+    const base = Math.floor((finalTuition / rows.length) * 100) / 100;
+    let running = 0;
+    return rows.map((row, index) => {
+      const amountDue = index === rows.length - 1 ? roundAmount(finalTuition - running) : roundAmount(base);
+      running = roundAmount(running + amountDue);
+      return { sequence: index + 1, ...row, amountDue };
+    });
+  };
+
+  if (paymentOptionType === "FULL_PRESEPTEMBER") {
+    return split([{ label: "Full annual payment before September", dueDate: buildAcademicDueDate(8, 31) }]);
+  }
+  if (paymentOptionType === "TWO_INSTALLMENTS") {
+    return split([
+      { label: "Installment 1 - before September", dueDate: buildAcademicDueDate(8, 31) },
+      { label: "Installment 2 - before February", dueDate: buildAcademicDueDate(2, 28) }
+    ]);
+  }
+  if (paymentOptionType === "THREE_INSTALLMENTS") {
+    return split([
+      { label: "Installment 1 - before September", dueDate: buildAcademicDueDate(8, 31) },
+      { label: "Installment 2 - Dec/Jan/Feb period", dueDate: buildAcademicDueDate(2, 28) },
+      { label: "Installment 3 - Mar/Apr/May/June period", dueDate: buildAcademicDueDate(6, 30) }
+    ]);
+  }
+
+  const monthlyAmount = roundAmount(finalTuition / 10);
+  return [
+    { sequence: 1, label: "Initial 4-month payment", dueDate: buildAcademicDueDate(8, 31), amountDue: roundAmount(monthlyAmount * 4) },
+    { sequence: 2, label: "Month 5 payment", dueDate: buildAcademicDueDate(9, 30), amountDue: monthlyAmount },
+    { sequence: 3, label: "Month 6 payment", dueDate: buildAcademicDueDate(10, 31), amountDue: monthlyAmount },
+    { sequence: 4, label: "Month 7 payment", dueDate: buildAcademicDueDate(11, 30), amountDue: monthlyAmount },
+    { sequence: 5, label: "Month 8 payment", dueDate: buildAcademicDueDate(12, 31), amountDue: monthlyAmount },
+    { sequence: 6, label: "Month 9 payment", dueDate: buildAcademicDueDate(1, 31), amountDue: monthlyAmount },
+    { sequence: 7, label: "Month 10 payment", dueDate: buildAcademicDueDate(2, 28), amountDue: roundAmount(finalTuition - roundAmount(monthlyAmount * 9)) }
+  ];
+}
+
+function getDemoDueBucket(dueDate: string): DemoTuitionAllocationLine["dueBucket"] {
+  const due = new Date(dueDate).getTime();
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+  const currentEnd = new Date(todayEnd);
+  currentEnd.setDate(currentEnd.getDate() + 30);
+  if (due < todayEnd.getTime()) return "OVERDUE";
+  if (due < currentEnd.getTime()) return "CURRENT";
+  return "FUTURE";
+}
+
+function buildDemoAllocationMessage(input: { amount: number; lines: DemoTuitionAllocationLine[]; advanceBalance: number }) {
+  const byStudent = input.lines.reduce<Record<string, number>>((acc, line) => {
+    acc[line.studentName] = roundAmount((acc[line.studentName] ?? 0) + line.allocated);
+    return acc;
+  }, {});
+  const unpaid = roundAmount(input.lines.reduce((sum, line) => sum + line.outstandingAfter, 0));
+  const next = input.lines
+    .filter((line) => line.outstandingAfter > 0)
+    .sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime())[0];
+  const overdue = roundAmount(input.lines
+    .filter((line) => line.dueBucket === "OVERDUE" && line.outstandingAfter > 0)
+    .reduce((sum, line) => sum + line.outstandingAfter, 0));
+
+  return [
+    `Total amount received: $ ${input.amount.toFixed(2)}.`,
+    Object.keys(byStudent).length
+      ? `Allocated: ${Object.entries(byStudent).map(([student, total]) => `${student} $ ${total.toFixed(2)}`).join("; ")}.`
+      : "No allocation was applied.",
+    unpaid > 0 ? `Remaining unpaid: $ ${unpaid.toFixed(2)}.` : "All targeted obligations are fully paid.",
+    next ? `Next required payment: ${next.studentName} - ${next.label}, $ ${next.outstandingAfter.toFixed(2)} by ${new Date(next.dueDate).toLocaleDateString("fr-FR")}.` : "No next payment is currently required.",
+    overdue > 0 ? `Overdue balance: $ ${overdue.toFixed(2)}.` : "No overdue balance remains in this allocation preview.",
+    input.advanceBalance > 0 ? `Advance payment balance: $ ${input.advanceBalance.toFixed(2)}.` : ""
+  ].filter(Boolean).join(" ");
+}
+
+function buildDemoTuitionAllocationSummary(mode: "AUTO" | "MANUAL", preview: { allocationPreview: { message: string; totalReceived: number; allocatedTotal: number; missingAmount: number; advanceBalance: number; lines: DemoTuitionAllocationLine[] } }): DemoTuitionAllocationSummary {
+  const perChild = preview.allocationPreview.lines.reduce<Record<string, DemoTuitionAllocationSummary["perChild"][number]>>((acc, line) => {
+    const current = acc[line.studentName] ?? { studentName: line.studentName, allocated: 0, remaining: 0, lines: [] };
+    current.allocated = roundAmount(current.allocated + line.allocated);
+    current.remaining = roundAmount(current.remaining + line.outstandingAfter);
+    current.lines.push({
+      label: line.label,
+      dueBucket: line.dueBucket,
+      outstandingBefore: line.outstandingBefore,
+      allocated: line.allocated,
+      outstandingAfter: line.outstandingAfter
+    });
+    acc[line.studentName] = current;
+    return acc;
+  }, {});
+
+  return {
+    mode,
+    message: preview.allocationPreview.message,
+    totalReceived: preview.allocationPreview.totalReceived,
+    allocatedTotal: preview.allocationPreview.allocatedTotal,
+    missingAmount: preview.allocationPreview.missingAmount,
+    advanceBalance: preview.allocationPreview.advanceBalance,
+    perChild: Object.values(perChild)
+  };
 }
 
 function expenseOverview() {
@@ -1212,20 +1350,22 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const parent = getDemoParents().find((item) => item.id === parentId);
     const amount = roundAmount(Number(body.amount ?? 0));
     const paymentOptionType = String(body.paymentOptionType ?? "STANDARD_MONTHLY") as DemoPaymentOptionType;
+    const allocationMode = String(body.allocationMode ?? "AUTO") === "MANUAL" ? "MANUAL" : "AUTO";
+    const manualAllocations = Array.isArray(body.manualAllocations)
+      ? (body.manualAllocations as Array<Record<string, unknown>>).map((row) => ({
+          installmentId: String(row.installmentId ?? ""),
+          amount: roundAmount(Number(row.amount ?? 0))
+        }))
+      : [];
     const familyRate = (parent?.students.length ?? 0) >= 2 ? 10 : 0;
     const planRate = paymentOptionType === "FULL_PRESEPTEMBER" ? 10 : paymentOptionType === "TWO_INSTALLMENTS" ? 5 : paymentOptionType === "THREE_INSTALLMENTS" ? 2 : 0;
     const calculations = (parent?.students ?? []).map((student) => {
-      const baseAnnualTuition = student.className.includes("Grade 9") || student.className.includes("Grade 10") || student.className.includes("Grade 11") || student.className.includes("Grade 12")
-        ? 5420
-        : student.className.includes("Grade 6") || student.className.includes("Grade 7") || student.className.includes("Grade 8")
-          ? 4595
-          : student.className.includes("K")
-            ? 3082.5
-            : 3770;
+      const baseAnnualTuition = getDemoBaseAnnualTuition(student.className, student.annualFee);
       const familyDiscountAmount = roundAmount(baseAnnualTuition * familyRate / 100);
       const familyAdjustedTuition = roundAmount(baseAnnualTuition - familyDiscountAmount);
       const planDiscountAmount = roundAmount(familyAdjustedTuition * planRate / 100);
       const finalTuition = roundAmount(familyAdjustedTuition - planDiscountAmount);
+      const schedule = buildDemoTuitionSchedule(paymentOptionType, finalTuition);
       return {
         studentId: student.id,
         studentName: student.fullName,
@@ -1239,42 +1379,83 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
         planDiscountAmount,
         finalTuition,
         monthlyAmount: paymentOptionType === "STANDARD_MONTHLY" ? roundAmount(finalTuition / 10) : null,
-        schedule: [{ sequence: 1, label: "Current tuition obligation", dueDate: new Date().toISOString(), amountDue: finalTuition }]
+        schedule
       };
     });
-    const totalDue = roundAmount(calculations.reduce((sum, row) => sum + row.finalTuition, 0));
-    let allocatedSoFar = 0;
-    const lines = calculations.map((row, index) => {
-      const allocated = index === calculations.length - 1
-        ? roundAmount(Math.max(amount - allocatedSoFar, 0))
-        : roundAmount(totalDue > 0 ? amount * row.finalTuition / totalDue : 0);
-      allocatedSoFar = roundAmount(allocatedSoFar + allocated);
-      const capped = Math.min(allocated, row.finalTuition);
+    const candidates = calculations.flatMap((row) => row.schedule.map((installment) => ({
+      installmentId: `demo-installment-${row.studentId}-${installment.sequence}`,
+      studentId: row.studentId,
+      studentName: row.studentName,
+      label: installment.label,
+      dueDate: installment.dueDate,
+      dueBucket: getDemoDueBucket(installment.dueDate),
+      amountDue: installment.amountDue,
+      alreadyPaid: 0,
+      outstandingBefore: installment.amountDue
+    }))).filter((line) => line.outstandingBefore > 0);
+
+    const allocatedByInstallment = new Map<string, number>();
+    if (allocationMode === "MANUAL") {
+      for (const manual of manualAllocations) {
+        const candidate = candidates.find((line) => line.installmentId === manual.installmentId);
+        if (candidate) allocatedByInstallment.set(manual.installmentId, roundAmount(Math.min(manual.amount, candidate.outstandingBefore)));
+      }
+    } else {
+      let remaining = amount;
+      for (const bucket of ["OVERDUE", "CURRENT", "FUTURE"] as const) {
+        const bucketRows = candidates
+          .filter((line) => line.dueBucket === bucket)
+          .sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime());
+        const dueDates = Array.from(new Set(bucketRows.map((line) => line.dueDate)));
+        for (const dueDate of dueDates) {
+          if (remaining <= 0) break;
+          const group = bucketRows.filter((line) => line.dueDate === dueDate);
+          const groupOutstanding = roundAmount(group.reduce((sum, line) => sum + line.outstandingBefore, 0));
+          if (remaining >= groupOutstanding) {
+            for (const line of group) allocatedByInstallment.set(line.installmentId, line.outstandingBefore);
+            remaining = roundAmount(remaining - groupOutstanding);
+          } else {
+            let distributed = 0;
+            group.forEach((line, index) => {
+              const allocated = index === group.length - 1
+                ? roundAmount(remaining - distributed)
+                : roundAmount((remaining * line.outstandingBefore) / groupOutstanding);
+              distributed = roundAmount(distributed + allocated);
+              allocatedByInstallment.set(line.installmentId, roundAmount(Math.min(allocated, line.outstandingBefore)));
+            });
+            remaining = 0;
+          }
+        }
+        if (remaining <= 0) break;
+      }
+    }
+
+    const lines: DemoTuitionAllocationLine[] = candidates.map((line) => {
+      const allocated = roundAmount(allocatedByInstallment.get(line.installmentId) ?? 0);
       return {
-        installmentId: `demo-installment-${row.studentId}`,
-        studentId: row.studentId,
-        studentName: row.studentName,
-        label: "Current tuition obligation",
-        dueDate: new Date().toISOString(),
-        dueBucket: "CURRENT",
-        amountDue: row.finalTuition,
-        alreadyPaid: 0,
-        outstandingBefore: row.finalTuition,
-        allocated: capped,
-        outstandingAfter: roundAmount(Math.max(row.finalTuition - capped, 0))
+        ...line,
+        allocated,
+        outstandingAfter: roundAmount(Math.max(line.outstandingBefore - allocated, 0))
       };
     });
     const allocatedTotal = roundAmount(lines.reduce((sum, line) => sum + line.allocated, 0));
+    const advanceBalance = roundAmount(Math.max(amount - allocatedTotal, 0));
+    const missingAmount = roundAmount(lines.reduce((sum, line) => sum + line.outstandingAfter, 0));
+    const manualTotal = roundAmount(manualAllocations.reduce((sum, row) => sum + row.amount, 0));
     return {
       parent: { id: parentId, fullName: parent?.fullName ?? "Parent" },
       calculations,
       allocationPreview: {
         totalReceived: amount,
         allocatedTotal,
-        advanceBalance: roundAmount(Math.max(amount - allocatedTotal, 0)),
-        missingAmount: roundAmount(lines.reduce((sum, line) => sum + line.outstandingAfter, 0)),
-        message: `Demo preview: received $ ${amount.toFixed(2)}, allocated $ ${allocatedTotal.toFixed(2)}.`,
-        warnings: lines.filter((line) => line.outstandingAfter > 0).map((line) => `${line.studentName} remains underpaid.`),
+        advanceBalance,
+        missingAmount,
+        message: buildDemoAllocationMessage({ amount, lines, advanceBalance }),
+        warnings: [
+          allocationMode === "MANUAL" && manualTotal !== amount ? "Manual allocation total must equal the payment amount before saving." : "",
+          ...lines.filter((line) => line.allocated > 0 && line.outstandingAfter > 0).map((line) => `${line.studentName} remains underpaid for ${line.label}.`),
+          ...lines.filter((line) => line.dueBucket !== "FUTURE" && line.allocated === 0 && line.outstandingBefore > 0).map((line) => `${line.studentName} has an unpaid scheduled obligation: ${line.label}.`)
+        ].filter(Boolean),
         lines
       }
     } as T;
@@ -1297,7 +1478,8 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       status: String(body.status ?? "COMPLETED"),
       method: String(body.method ?? "CASH"),
       createdAt: new Date().toISOString(),
-      date: new Date().toLocaleString("fr-FR")
+      date: new Date().toLocaleString("fr-FR"),
+      tuitionAllocationSummary: buildDemoTuitionAllocationSummary(String(body.allocationMode ?? "AUTO") === "MANUAL" ? "MANUAL" : "AUTO", preview as any)
     };
     writeJson(DEMO_PAYMENTS_KEY, [payment, ...getDemoPayments()]);
     return { ...preview, payment, receipt: { receiptNumber: `REC-${payment.transactionNumber}` } } as T;
@@ -1422,6 +1604,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
         createdAt: payment.createdAt,
         schoolName: "Kinshasa Christian School",
         receiptNumber: `REC-${payment.transactionNumber}`,
+        tuitionAllocationSummary: payment.tuitionAllocationSummary ?? null,
         downloads: null
       }
     } as T;

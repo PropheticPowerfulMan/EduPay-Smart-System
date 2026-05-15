@@ -37,7 +37,7 @@ type VerificationApiResponse = {
         studentName: string;
         allocated: number;
         remaining: number;
-        lines: Array<{ label: string; dueBucket: string; allocated: number; outstandingAfter: number }>;
+        lines: Array<{ label: string; dueBucket: string; outstandingBefore: number; allocated: number; outstandingAfter: number }>;
       }>;
     } | null;
     downloads: {
@@ -96,7 +96,7 @@ function AllocationSummaryBlock({ summary }: { summary: NonNullable<Verification
             <div className="mt-2 space-y-1 text-xs text-ink-dim">
               {child.lines.map((line) => (
                 <p key={`${child.studentName}-${line.label}-${line.allocated}`}>
-                  {line.label}: $ {line.allocated.toFixed(5)} applique ({line.dueBucket})
+                  {line.label}: avant $ {line.outstandingBefore.toFixed(5)}, applique $ {line.allocated.toFixed(5)}, reste $ {line.outstandingAfter.toFixed(5)} ({line.dueBucket})
                 </p>
               ))}
             </div>

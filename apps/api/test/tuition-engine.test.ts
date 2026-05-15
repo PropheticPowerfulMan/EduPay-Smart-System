@@ -1,6 +1,6 @@
 import { PaymentOptionType } from "@prisma/client";
 import { describe, expect, it } from "vitest";
-import { simulateTuitionEngineScenario } from "../src/modules/finance/service";
+import { buildTuitionParentNotificationMessages, simulateTuitionEngineScenario } from "../src/modules/finance/service";
 
 const tenChildFamily = [
   { id: "stu-k5", fullName: "Child K5", className: "K5" },
@@ -44,6 +44,90 @@ describe("EduPay Tuition Payment Engine", () => {
     expect(allocatedByChild["Child G1"]).toBeCloseTo(1018.06, 2);
     expect(allocatedByChild["Child G6"]).toBeCloseTo(1240.84, 2);
     expect(allocatedByChild["Child G9"]).toBeCloseTo(1463.63, 2);
+  });
+
+  it("keeps every 10-child transaction detail needed by the finance officer and receipt", () => {
+    const result = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,
+      amount: 12000,
+      children: tenChildFamily
+    });
+
+    expect(result.allocationPreview.totalReceived).toBe(12000);
+    expect(result.allocationPreview.allocatedTotal).toBe(12000);
+    expect(result.allocationPreview.missingAmount).toBe(27993.75);
+    expect(result.allocationPreview.advanceBalance).toBe(0);
+    expect(result.allocationPreview.lines).toHaveLength(70);
+    expect(result.allocationPreview.lines.every((line) => line.outstandingBefore >= line.allocated)).toBe(true);
+    expect(result.allocationPreview.lines.every((line) => line.outstandingAfter === Number((line.outstandingBefore - line.allocated).toFixed(5)))).toBe(true);
+
+    const firstObligations = result.allocationPreview.lines.filter((line) => line.label === "Initial 4-month payment");
+    expect(firstObligations).toHaveLength(10);
+    expect(firstObligations.every((line) => line.allocated > 0)).toBe(true);
+    expect(firstObligations.every((line) => line.outstandingAfter > 0)).toBe(true);
+
+    const laterObligations = result.allocationPreview.lines.filter((line) => line.label !== "Initial 4-month payment");
+    expect(laterObligations.some((line) => line.outstandingAfter > 0)).toBe(true);
+    expect(laterObligations.every((line) => line.allocated === 0)).toBe(true);
+
+    const financeMessage = result.allocationPreview.message;
+    expect(financeMessage).toContain("Total amount received: $ 12000.00 USD.");
+    expect(financeMessage).toContain("Allocated:");
+    expect(financeMessage).toContain("Remaining unpaid: $ 27993.75 USD.");
+    expect(financeMessage).toContain("Next required payment:");
+    expect(financeMessage).toContain("No overdue balance remains");
+
+    const receiptChildren = Object.values(result.allocationPreview.lines.reduce<Record<string, {
+      studentName: string;
+      allocated: number;
+      remaining: number;
+      lines: Array<{ label: string; dueBucket: string; outstandingBefore: number; allocated: number; outstandingAfter: number }>;
+    }>>((acc, line) => {
+      const current = acc[line.studentName] ?? { studentName: line.studentName, allocated: 0, remaining: 0, lines: [] };
+      current.allocated = Number((current.allocated + line.allocated).toFixed(5));
+      current.remaining = Number((current.remaining + line.outstandingAfter).toFixed(5));
+      current.lines.push({
+        label: line.label,
+        dueBucket: line.dueBucket,
+        outstandingBefore: line.outstandingBefore,
+        allocated: line.allocated,
+        outstandingAfter: line.outstandingAfter
+      });
+      acc[line.studentName] = current;
+      return acc;
+    }, {}));
+
+    expect(receiptChildren).toHaveLength(10);
+    expect(receiptChildren.every((child) => child.lines.length === 7)).toBe(true);
+    expect(receiptChildren.find((child) => child.studentName === "Child G9")?.allocated).toBeCloseTo(1463.63, 2);
+    expect(receiptChildren.find((child) => child.studentName === "Child G9")?.remaining).toBeCloseTo(3414.37, 2);
+  });
+
+  it("builds parent email and SMS notices with receipt, allocation, balance, and next payment", () => {
+    const result = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,
+      amount: 12000,
+      children: tenChildFamily
+    });
+    const messages = buildTuitionParentNotificationMessages({
+      parentName: "Parent Ten",
+      transactionNumber: "TXN-10-CHILDREN",
+      receiptNumber: "REC-TXN-10-CHILDREN",
+      paymentMethod: "CASH",
+      allocationMode: "AUTO",
+      allocationPreview: result.allocationPreview
+    });
+
+    expect(messages.subject).toContain("REC-TXN-10-CHILDREN");
+    expect(messages.emailBody).toContain("Transaction: TXN-10-CHILDREN");
+    expect(messages.emailBody).toContain("Receipt: REC-TXN-10-CHILDREN");
+    expect(messages.emailBody).toContain("Amount received: $ 12000.00 USD");
+    expect(messages.emailBody).toContain("Remaining balance: $ 27993.75 USD");
+    expect(messages.emailBody).toContain("- Child G9: paid $ 1463.63 USD, remaining $ 3414.37 USD");
+    expect(messages.emailBody).toContain("Next payment:");
+    expect(messages.emailBody).toContain("Finance note:");
+    expect(messages.smsBody).toContain("received $ 12000.00 USD");
+    expect(messages.smsBody).toContain("remaining $ 27993.75 USD");
   });
 
   it("allocates first to open scheduled obligations and keeps overpayment as advance", () => {

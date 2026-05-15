@@ -1899,6 +1899,70 @@ function summarizeTuitionMessage(input: {
   ].filter(Boolean).join(" ");
 }
 
+export function buildTuitionParentNotificationMessages(input: {
+  parentName: string;
+  transactionNumber: string;
+  receiptNumber: string;
+  paymentMethod: PaymentMethod | string;
+  allocationMode: "AUTO" | "MANUAL";
+  allocationPreview: {
+    totalReceived: number;
+    allocatedTotal: number;
+    missingAmount: number;
+    advanceBalance: number;
+    message: string;
+    lines: TuitionAllocationLine[];
+  };
+}) {
+  const byStudent = input.allocationPreview.lines.reduce<Record<string, { allocated: number; remaining: number }>>((acc, line) => {
+    const current = acc[line.studentName] ?? { allocated: 0, remaining: 0 };
+    current.allocated = roundCurrency(current.allocated + line.allocated);
+    current.remaining = roundCurrency(current.remaining + line.outstandingAfter);
+    acc[line.studentName] = current;
+    return acc;
+  }, {});
+  const nextPayment = input.allocationPreview.lines
+    .filter((line) => line.outstandingAfter > 0)
+    .sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime())[0];
+  const allocationLines = Object.entries(byStudent).map(([studentName, summary]) =>
+    `- ${studentName}: paid ${formatAlertCurrency(summary.allocated)}, remaining ${formatAlertCurrency(summary.remaining)}`
+  );
+  const nextLine = nextPayment
+    ? `${nextPayment.studentName} - ${nextPayment.label}: ${formatAlertCurrency(nextPayment.outstandingAfter)} due by ${dayjs(nextPayment.dueDate).format("DD/MM/YYYY")}`
+    : "No next payment is currently required.";
+  const subject = `EduPay tuition receipt ${input.receiptNumber}`;
+  const emailBody = [
+    `Hello ${input.parentName},`,
+    "",
+    "EduPay has recorded a tuition payment on your family account.",
+    "",
+    `Transaction: ${input.transactionNumber}`,
+    `Receipt: ${input.receiptNumber}`,
+    `Payment method: ${input.paymentMethod}`,
+    `Allocation mode: ${input.allocationMode}`,
+    `Amount received: ${formatAlertCurrency(input.allocationPreview.totalReceived)}`,
+    `Amount allocated: ${formatAlertCurrency(input.allocationPreview.allocatedTotal)}`,
+    `Remaining balance: ${formatAlertCurrency(input.allocationPreview.missingAmount)}`,
+    `Advance balance: ${formatAlertCurrency(input.allocationPreview.advanceBalance)}`,
+    "",
+    "Allocation by child:",
+    allocationLines.join("\n") || "- No allocation was applied.",
+    "",
+    `Next payment: ${nextLine}`,
+    "",
+    `Finance note: ${input.allocationPreview.message}`,
+    "",
+    "Please keep this message with your EduPay receipt."
+  ].join("\n");
+  const smsBody = [
+    `EduPay ${input.receiptNumber}: received ${formatAlertCurrency(input.allocationPreview.totalReceived)}`,
+    `allocated ${formatAlertCurrency(input.allocationPreview.allocatedTotal)}`,
+    `remaining ${formatAlertCurrency(input.allocationPreview.missingAmount)}.`,
+    `Next: ${nextLine}`
+  ].join(" ");
+  return { subject, emailBody, smsBody };
+}
+
 export async function ensureParentTuitionEnginePlan(input: {
   schoolId: string;
   parentId: string;
@@ -2427,39 +2491,47 @@ export async function recordTuitionEnginePayment(input: {
     academicYearName: setup.academicYear.name
   });
 
-  if (result.allocationPreview.missingAmount > 0 || result.allocationPreview.warnings.length > 0) {
-    const parent = await prisma.parent.findFirst({ where: { id: input.parentId, schoolId: input.schoolId } });
-    if (parent) {
-      const subject = "EduPay tuition payment allocation notice";
-      const text = result.allocationPreview.message;
-      if (parent.email) {
-        const status = await sendEmail({ to: parent.email, subject, text });
-        await prisma.notificationLog.create({
-          data: {
-            schoolId: input.schoolId,
-            parentId: input.parentId,
-            type: NotificationType.UNPAID_BALANCE,
-            language: parent.preferredLanguage || "fr",
-            channel: NotificationChannel.EMAIL,
-            content: text,
-            status
-          }
-        }).catch((error) => console.error("Tuition allocation email log failed", error));
-      }
-      if (parent.phone) {
-        const status = await sendSms({ to: parent.phone, text: `EduPay: ${text}` });
-        await prisma.notificationLog.create({
-          data: {
-            schoolId: input.schoolId,
-            parentId: input.parentId,
-            type: NotificationType.UNPAID_BALANCE,
-            language: parent.preferredLanguage || "fr",
-            channel: NotificationChannel.SMS,
-            content: text,
-            status
-          }
-        }).catch((error) => console.error("Tuition allocation SMS log failed", error));
-      }
+  const parent = await prisma.parent.findFirst({ where: { id: input.parentId, schoolId: input.schoolId } });
+  if (parent) {
+    const messages = buildTuitionParentNotificationMessages({
+      parentName: parent.fullName,
+      transactionNumber: result.payment.transactionNumber,
+      receiptNumber: result.receipt.receiptNumber,
+      paymentMethod: input.method,
+      allocationMode: input.allocationMode,
+      allocationPreview: result.allocationPreview
+    });
+    const notificationType = result.allocationPreview.missingAmount > 0 || result.allocationPreview.warnings.length > 0
+      ? NotificationType.UNPAID_BALANCE
+      : NotificationType.CONFIRMATION;
+
+    if (parent.email) {
+      const status = await sendEmail({ to: parent.email, subject: messages.subject, text: messages.emailBody });
+      await prisma.notificationLog.create({
+        data: {
+          schoolId: input.schoolId,
+          parentId: input.parentId,
+          type: notificationType,
+          language: parent.preferredLanguage || "fr",
+          channel: NotificationChannel.EMAIL,
+          content: messages.emailBody,
+          status
+        }
+      }).catch((error) => console.error("Tuition parent email notification log failed", error));
+    }
+    if (parent.phone) {
+      const status = await sendSms({ to: parent.phone, text: messages.smsBody });
+      await prisma.notificationLog.create({
+        data: {
+          schoolId: input.schoolId,
+          parentId: input.parentId,
+          type: notificationType,
+          language: parent.preferredLanguage || "fr",
+          channel: NotificationChannel.SMS,
+          content: messages.smsBody,
+          status
+        }
+      }).catch((error) => console.error("Tuition parent SMS notification log failed", error));
     }
   }
 

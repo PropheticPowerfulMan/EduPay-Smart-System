@@ -103,6 +103,7 @@ function serializePublicVerificationPayment(
             studentName: string;
             label: string;
             dueBucket: string;
+            outstandingBefore?: number;
             allocated: number;
             outstandingAfter: number;
           }>;
@@ -113,7 +114,7 @@ function serializePublicVerificationPayment(
           studentName: string;
           allocated: number;
           remaining: number;
-          lines: Array<{ label: string; dueBucket: string; allocated: number; outstandingAfter: number }>;
+          lines: Array<{ label: string; dueBucket: string; outstandingBefore: number; allocated: number; outstandingAfter: number }>;
         }>>((acc, line) => {
           const current = acc[line.studentName] ?? { studentName: line.studentName, allocated: 0, remaining: 0, lines: [] };
           current.allocated += Number(line.allocated || 0);
@@ -121,6 +122,7 @@ function serializePublicVerificationPayment(
           current.lines.push({
             label: line.label,
             dueBucket: line.dueBucket,
+            outstandingBefore: Number(line.outstandingBefore || 0),
             allocated: Number(line.allocated || 0),
             outstandingAfter: Number(line.outstandingAfter || 0)
           });
