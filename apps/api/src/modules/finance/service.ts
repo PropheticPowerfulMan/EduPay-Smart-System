@@ -2150,26 +2150,40 @@ function buildAllocationPreviewFromInstallments(input: {
       const bucketRows = candidates
         .filter((row) => row.dueBucket === bucket && row.outstandingBefore > 0)
         .sort((left, right) => left.installment.dueDate.getTime() - right.installment.dueDate.getTime());
-      const bucketOutstanding = roundCurrency(bucketRows.reduce((sum, row) => sum + row.outstandingBefore, 0));
-      if (bucketOutstanding <= 0) continue;
-
-      if (remaining >= bucketOutstanding) {
-        for (const row of bucketRows) {
-          allocatedByInstallment.set(row.installment.id, roundCurrency((allocatedByInstallment.get(row.installment.id) ?? 0) + row.outstandingBefore));
+      const dueDateGroups = bucketRows.reduce<Array<typeof bucketRows>>((groups, row) => {
+        const lastGroup = groups[groups.length - 1];
+        const lastDueDate = lastGroup?.[0]?.installment.dueDate.getTime();
+        if (lastGroup && lastDueDate === row.installment.dueDate.getTime()) {
+          lastGroup.push(row);
+        } else {
+          groups.push([row]);
         }
-        remaining = roundCurrency(remaining - bucketOutstanding);
-        continue;
-      }
+        return groups;
+      }, []);
 
-      let distributed = 0;
-      bucketRows.forEach((row, index) => {
-        const amount = index === bucketRows.length - 1
-          ? roundCurrency(remaining - distributed)
-          : roundCurrency((remaining * row.outstandingBefore) / bucketOutstanding);
-        distributed = roundCurrency(distributed + amount);
-        allocatedByInstallment.set(row.installment.id, roundCurrency((allocatedByInstallment.get(row.installment.id) ?? 0) + Math.min(amount, row.outstandingBefore)));
-      });
-      remaining = 0;
+      for (const dueDateGroup of dueDateGroups) {
+        if (remaining <= 0) break;
+        const groupOutstanding = roundCurrency(dueDateGroup.reduce((sum, row) => sum + row.outstandingBefore, 0));
+        if (groupOutstanding <= 0) continue;
+
+        if (remaining >= groupOutstanding) {
+          for (const row of dueDateGroup) {
+            allocatedByInstallment.set(row.installment.id, roundCurrency((allocatedByInstallment.get(row.installment.id) ?? 0) + row.outstandingBefore));
+          }
+          remaining = roundCurrency(remaining - groupOutstanding);
+          continue;
+        }
+
+        let distributed = 0;
+        dueDateGroup.forEach((row, index) => {
+          const amount = index === dueDateGroup.length - 1
+            ? roundCurrency(remaining - distributed)
+            : roundCurrency((remaining * row.outstandingBefore) / groupOutstanding);
+          distributed = roundCurrency(distributed + amount);
+          allocatedByInstallment.set(row.installment.id, roundCurrency((allocatedByInstallment.get(row.installment.id) ?? 0) + Math.min(amount, row.outstandingBefore)));
+        });
+        remaining = 0;
+      }
     }
   }
 

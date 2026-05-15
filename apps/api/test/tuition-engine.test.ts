@@ -58,4 +58,23 @@ describe("EduPay Tuition Payment Engine", () => {
     expect(result.totals.remaining).toBe(0);
     expect(result.totals.advance).toBe(14005.625);
   });
+
+  it("pays the oldest future installment before later future installments", () => {
+    const result = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,
+      amount: 20000,
+      children: tenChildFamily
+    });
+
+    const month5Lines = result.allocationPreview.lines.filter((line) => line.label === "Month 5 payment");
+    const month6Lines = result.allocationPreview.lines.filter((line) => line.label === "Month 6 payment");
+    expect(month5Lines.reduce((sum, line) => sum + line.allocated, 0)).toBeCloseTo(3999.375, 3);
+    expect(month6Lines.reduce((sum, line) => sum + line.allocated, 0)).toBeCloseTo(3.125, 3);
+
+    const month7Lines = result.allocationPreview.lines.filter((line) => line.label === "Month 7 payment");
+    expect(month7Lines.reduce((sum, line) => sum + line.allocated, 0)).toBe(0);
+
+    const initialLines = result.allocationPreview.lines.filter((line) => line.label === "Initial 4-month payment");
+    expect(initialLines.every((line) => line.outstandingAfter === 0)).toBe(true);
+  });
 });
