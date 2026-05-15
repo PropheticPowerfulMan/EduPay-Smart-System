@@ -286,6 +286,21 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
   const parentSecondaryLine = safe.parentCaption
     ? `<div class="value-sub"><span class="value-sub-badge">Parent concerne</span><span>${safe.parentCaption}</span></div>`
     : "";
+  const allocationSummaryHtml = r.tuitionAllocationSummary
+    ? `<div class="allocation">
+        <div class="allocation-title">Repartition ${escapeHtml(r.tuitionAllocationSummary.mode === "AUTO" ? "automatique executee par le systeme" : "manuelle executee par le financier")}</div>
+        <div class="allocation-message">${escapeHtml(r.tuitionAllocationSummary.message)}</div>
+        <table>
+          <thead><tr><th>Eleve</th><th>Applique</th><th>Reste</th><th>Details</th></tr></thead>
+          <tbody>${r.tuitionAllocationSummary.perChild.map((child) => `<tr>
+            <td>${escapeHtml(child.studentName)}</td>
+            <td>$ ${child.allocated.toFixed(5)}</td>
+            <td>$ ${child.remaining.toFixed(5)}</td>
+            <td>${child.lines.map((line) => `${escapeHtml(line.label)}: $ ${line.allocated.toFixed(5)} (${escapeHtml(line.dueBucket)})`).join("<br/>")}</td>
+          </tr>`).join("")}</tbody>
+        </table>
+      </div>`
+    : "";
   return `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
@@ -336,6 +351,12 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
     .stamp { align-items:center; justify-content:center; text-align:center; border-style:solid; }
     .stamp-circle { width:17mm; height:17mm; border:1px dashed #123047; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:auto; background:#fff; color:#94a3b8; font-size:5.8px; font-weight:800; text-transform:uppercase; letter-spacing:.45px; }
     .warning { margin-top:2.2mm; border-left:2.4px solid #b45309; background:#fffbeb; color:#78350f; padding:1.5mm; font-size:7px; }
+    .allocation { position:relative; margin-top:2.2mm; border:1px solid #cbd5e1; background:#f8fafc; padding:1.8mm; }
+    .allocation-title { font-size:7px; font-weight:900; color:#123047; text-transform:uppercase; letter-spacing:.7px; }
+    .allocation-message { margin-top:.8mm; font-size:6.5px; color:#334155; line-height:1.35; }
+    .allocation table { width:100%; border-collapse:collapse; margin-top:1.2mm; font-size:6.2px; }
+    .allocation th, .allocation td { border-top:1px solid #e2e8f0; padding:.8mm; text-align:left; vertical-align:top; }
+    .allocation th { color:#475569; text-transform:uppercase; letter-spacing:.45px; }
     .footer { margin-top:2.6mm; display:flex; justify-content:space-between; color:#64748b; font-size:7px; border-top:1px solid #dbe4ef; padding-top:1.4mm; }
     @media print { html, body { width:210mm; height:148mm; overflow:hidden; } body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } .receipt { margin:0; page-break-inside:avoid; break-inside:avoid; } }
   </style>
@@ -373,6 +394,7 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
         <div class="amount-value">$ ${r.amount.toFixed(5)}</div>
         <div class="words"><strong>En toutes lettres:</strong> ${safe.amountWords}</div>
       </div>
+      ${allocationSummaryHtml}
     </div>
 
     <div>
@@ -775,6 +797,25 @@ type PaymentRecord = {
   amountWords: string;
   method: "CASH" | "AIRTEL_MONEY" | "MPESA" | "ORANGE_MONEY";
   status: "COMPLETED" | "PENDING" | "FAILED";
+  tuitionAllocationSummary?: {
+    mode: "AUTO" | "MANUAL";
+    message: string;
+    totalReceived: number;
+    allocatedTotal: number;
+    missingAmount: number;
+    advanceBalance: number;
+    perChild: Array<{
+      studentName: string;
+      allocated: number;
+      remaining: number;
+      lines: Array<{
+        label: string;
+        dueBucket: string;
+        allocated: number;
+        outstandingAfter: number;
+      }>;
+    }>;
+  };
 };
 
 type FormState = {
@@ -830,6 +871,55 @@ type FinanceParentSnapshot = {
       isOverdue: boolean;
     }>;
   }>;
+};
+
+type PaymentOptionType = "FULL_PRESEPTEMBER" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS" | "STANDARD_MONTHLY";
+type AllocationMode = "AUTO" | "MANUAL";
+
+type TuitionEngineCalculation = {
+  studentId: string;
+  studentName: string;
+  gradeGroup: string;
+  paymentOptionType: PaymentOptionType;
+  baseAnnualTuition: number;
+  familyDiscountRate: number;
+  familyDiscountAmount: number;
+  familyAdjustedTuition: number;
+  planDiscountRate: number;
+  planDiscountAmount: number;
+  finalTuition: number;
+  monthlyAmount: number | null;
+  schedule: Array<{ sequence: number; label: string; dueDate: string; amountDue: number }>;
+};
+
+type TuitionAllocationPreview = {
+  totalReceived: number;
+  allocatedTotal: number;
+  advanceBalance: number;
+  missingAmount: number;
+  message: string;
+  warnings: string[];
+  lines: Array<{
+    installmentId: string;
+    studentId: string | null;
+    studentName: string;
+    label: string;
+    dueDate: string;
+    dueBucket: "OVERDUE" | "CURRENT" | "FUTURE";
+    amountDue: number;
+    alreadyPaid: number;
+    outstandingBefore: number;
+    allocated: number;
+    outstandingAfter: number;
+  }>;
+};
+
+type TuitionEngineResponse = {
+  parent: { id: string; fullName: string };
+  calculations: TuitionEngineCalculation[];
+  allocationPreview: TuitionAllocationPreview;
+  payment?: { id: string; transactionNumber: string; amount: number; status: PaymentRecord["status"]; method: PaymentRecord["method"]; createdAt?: string };
+  receipt?: { receiptNumber: string };
 };
 
 type View = "form" | "receipt" | "history" | "report";
@@ -916,6 +1006,13 @@ const PAYMENT_REASON_SUGGESTIONS = [
   "Sortie pédagogique",
   "Rattrapage des arriérés",
   "Avance sur frais scolaires",
+];
+
+const TUITION_PLAN_OPTIONS: Array<{ value: PaymentOptionType; label: string; detail: string }> = [
+  { value: "FULL_PRESEPTEMBER", label: "Full Annual", detail: "10% plan discount after family discount" },
+  { value: "TWO_INSTALLMENTS", label: "Two Installments", detail: "5% plan discount after family discount" },
+  { value: "THREE_INSTALLMENTS", label: "Three Installments", detail: "2% plan discount after family discount" },
+  { value: "STANDARD_MONTHLY", label: "Monthly", detail: "No plan discount, 4 months due upfront" }
 ];
 
 const HISTORY_PRODUCT_FILTERS = [
@@ -1088,6 +1185,27 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
               <strong>En toutes lettres:</strong> {receipt.amountWords}
             </p>
           </div>
+          {receipt.tuitionAllocationSummary && (
+            <div className="mt-3 border border-slate-300 bg-slate-50 p-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
+                Repartition {receipt.tuitionAllocationSummary.mode === "AUTO" ? "automatique executee par le systeme" : "manuelle executee par le financier"}
+              </p>
+              <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-600">{receipt.tuitionAllocationSummary.message}</p>
+              <div className="mt-2 space-y-2">
+                {receipt.tuitionAllocationSummary.perChild.map((child) => (
+                  <div key={child.studentName} className="rounded-md border border-slate-200 bg-white p-2 text-[11px]">
+                    <div className="flex justify-between gap-3 font-bold text-slate-900">
+                      <span>{child.studentName}</span>
+                      <span>Applique $ {child.allocated.toFixed(5)} - Reste $ {child.remaining.toFixed(5)}</span>
+                    </div>
+                    <div className="mt-1 text-slate-600">
+                      {child.lines.map((line) => `${line.label}: $ ${line.allocated.toFixed(5)} (${line.dueBucket})`).join(" | ")}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div>
@@ -1164,6 +1282,11 @@ export function PaymentsPage() {
   const [parents, setParents] = useState<ParentOption[]>([]);
   const [selectedParentFinance, setSelectedParentFinance] = useState<FinanceParentSnapshot | null>(null);
   const [financeLoading, setFinanceLoading] = useState(false);
+  const [tuitionPlan, setTuitionPlan] = useState<PaymentOptionType>("STANDARD_MONTHLY");
+  const [allocationMode, setAllocationMode] = useState<AllocationMode>("AUTO");
+  const [manualAllocations, setManualAllocations] = useState<Record<string, string>>({});
+  const [tuitionPreview, setTuitionPreview] = useState<TuitionEngineResponse | null>(null);
+  const [tuitionEngineBusy, setTuitionEngineBusy] = useState(false);
   // Historique
   const [searchQuery, setSearchQuery]       = useState("");
   const [filterStatus, setFilterStatus]     = useState("ALL");
@@ -1211,6 +1334,11 @@ export function PaymentsPage() {
     if (amountNum <= 0) return "-";
     return amountToWords(amountNum, lang as "fr" | "en");
   }, [amountNum, lang]);
+
+  useEffect(() => {
+    setTuitionPreview(null);
+    setManualAllocations({});
+  }, [form.parentId, form.amount, tuitionPlan, allocationMode]);
 
   const filteredPayments = useMemo(() => payments.filter((p) => {
     const query = normalizeSearchText(searchQuery);
@@ -1366,6 +1494,130 @@ export function PaymentsPage() {
         : [...prev.studentIds, studentId]
     }));
     setFieldErrors((prev) => ({ ...prev, studentIds: undefined }));
+  };
+
+  const buildManualAllocationPayload = () => Object.entries(manualAllocations)
+    .map(([installmentId, amount]) => ({ installmentId, amount: Number(amount || 0) }))
+    .filter((row) => row.amount > 0);
+
+  const buildReceiptAllocationSummary = (preview: TuitionAllocationPreview, mode: AllocationMode): PaymentRecord["tuitionAllocationSummary"] => {
+    type ReceiptAllocationChild = NonNullable<PaymentRecord["tuitionAllocationSummary"]>["perChild"][number];
+    const grouped = preview.lines.reduce<Record<string, ReceiptAllocationChild>>((acc, line) => {
+      const current = acc[line.studentName] ?? {
+        studentName: line.studentName,
+        allocated: 0,
+        remaining: 0,
+        lines: []
+      };
+      current.allocated += line.allocated;
+      current.remaining += line.outstandingAfter;
+      current.lines.push({
+        label: line.label,
+        dueBucket: line.dueBucket,
+        allocated: line.allocated,
+        outstandingAfter: line.outstandingAfter
+      });
+      acc[line.studentName] = current;
+      return acc;
+    }, {});
+
+    return {
+      mode,
+      message: preview.message,
+      totalReceived: preview.totalReceived,
+      allocatedTotal: preview.allocatedTotal,
+      missingAmount: preview.missingAmount,
+      advanceBalance: preview.advanceBalance,
+      perChild: Object.values(grouped).map((child) => ({
+        ...child,
+        allocated: Number(child.allocated.toFixed(5)),
+        remaining: Number(child.remaining.toFixed(5))
+      }))
+    };
+  };
+
+  const previewTuitionAllocation = async () => {
+    if (!form.parentId || amountNum <= 0) {
+      setApiError("Choisissez un parent et entrez un montant avant la previsualisation tuition.");
+      return;
+    }
+    setTuitionEngineBusy(true);
+    setApiError(null);
+    try {
+      const preview = await api<TuitionEngineResponse>("/api/finance/tuition-engine/preview-allocation", {
+        method: "POST",
+        body: JSON.stringify({
+          parentId: form.parentId,
+          amount: amountNum,
+          paymentOptionType: tuitionPlan,
+          allocationMode,
+          manualAllocations: allocationMode === "MANUAL" ? buildManualAllocationPayload() : []
+        })
+      });
+      setTuitionPreview(preview);
+      if (form.studentIds.length === 0 && selectedParent?.students?.length) {
+        setForm((current) => ({ ...current, studentIds: selectedParent.students!.map((student) => student.id) }));
+      }
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "Impossible de previsualiser l'allocation tuition.");
+    } finally {
+      setTuitionEngineBusy(false);
+    }
+  };
+
+  const confirmTuitionPayment = async () => {
+    if (!form.parentId || amountNum <= 0) {
+      setApiError("Choisissez un parent et entrez un montant avant de confirmer.");
+      return;
+    }
+    setTuitionEngineBusy(true);
+    setSaving(true);
+    setApiError(null);
+    try {
+      const result = await api<TuitionEngineResponse>("/api/finance/tuition-engine/payments", {
+        method: "POST",
+        body: JSON.stringify({
+          parentId: form.parentId,
+          amount: amountNum,
+          paymentOptionType: tuitionPlan,
+          allocationMode,
+          method: form.method,
+          status: form.status,
+          transactionNumber: txNumber,
+          notes: form.reason || "Tuition payment recorded through EduPay Tuition Payment Engine",
+          manualAllocations: allocationMode === "MANUAL" ? buildManualAllocationPayload() : []
+        })
+      });
+      const parentName = selectedParent?.fullName ?? result.parent.fullName;
+      const subjectName = result.calculations.map((row) => row.studentName).join(" / ") || parentName;
+      const record: PaymentRecord = {
+        id: result.payment?.id ?? `tuition-${Date.now()}`,
+        transactionNumber: result.payment?.transactionNumber ?? txNumber,
+        date: new Date().toLocaleString(lang === "fr" ? "fr-FR" : "en-US"),
+        parentId: form.parentId,
+        parentFullName: parentName,
+        paymentSubjectName: subjectName,
+        studentNames: result.calculations.map((row) => row.studentName),
+        reason: form.reason || `Tuition - ${TUITION_PLAN_OPTIONS.find((plan) => plan.value === tuitionPlan)?.label ?? tuitionPlan}`,
+        amount: amountNum,
+        amountWords: amountToWords(amountNum, lang as "fr" | "en"),
+        method: form.method,
+        status: form.status,
+        tuitionAllocationSummary: buildReceiptAllocationSummary(result.allocationPreview, allocationMode)
+      };
+      setPayments((prev) => [record, ...prev]);
+      setCurrentReceipt(record);
+      setTuitionPreview(result);
+      setNotificationStatus("Tuition allocation saved, alerts/audit log generated when required.");
+      setView("receipt");
+      setForm(EMPTY_FORM);
+      setFieldErrors({});
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "Impossible d'enregistrer le paiement tuition.");
+    } finally {
+      setSaving(false);
+      setTuitionEngineBusy(false);
+    }
   };
 
   const handleSubmit = async (e: FormEvent) => {
@@ -2161,6 +2413,191 @@ export function PaymentsPage() {
                     </button>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {selectedParent && (
+              <div className="lg:col-span-2 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 p-4">
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-200">EduPay Tuition Payment Engine</p>
+                    <h3 className="mt-1 text-lg font-bold text-white">Family discount first, plan discount second</h3>
+                    <p className="mt-1 text-sm text-emerald-100/85">
+                      {selectedParent.students?.length ?? 0} child account{(selectedParent.students?.length ?? 0) > 1 ? "s" : ""}. Family discount applies when there are 2 or more linked children.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => void previewTuitionAllocation()}
+                      disabled={tuitionEngineBusy || !form.parentId || amountNum <= 0}
+                      className="rounded-xl border border-emerald-400/40 bg-emerald-500/20 px-4 py-2 text-sm font-bold text-emerald-50 hover:bg-emerald-500/30 disabled:opacity-50"
+                    >
+                      {tuitionEngineBusy ? "Calcul..." : allocationMode === "MANUAL" && tuitionPreview ? "Recalculer manuel" : "Preview allocation"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void confirmTuitionPayment()}
+                      disabled={tuitionEngineBusy || !form.parentId || amountNum <= 0}
+                      className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      Confirm tuition payment
+                    </button>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_0.8fr]">
+                  <div>
+                    <p className="mb-2 text-xs font-bold uppercase tracking-wide text-emerald-100">Payment plan</p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {TUITION_PLAN_OPTIONS.map((plan) => (
+                        <button
+                          key={plan.value}
+                          type="button"
+                          onClick={() => setTuitionPlan(plan.value)}
+                          className={`rounded-xl border px-3 py-2 text-left transition-all ${
+                            tuitionPlan === plan.value
+                              ? "border-emerald-300 bg-emerald-400/20 text-white"
+                              : "border-white/10 bg-slate-950/30 text-ink-dim hover:border-emerald-300/40 hover:text-white"
+                          }`}
+                        >
+                          <span className="block text-sm font-bold">{plan.label}</span>
+                          <span className="mt-1 block text-[11px]">{plan.detail}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="mb-2 text-xs font-bold uppercase tracking-wide text-emerald-100">Allocation mode</p>
+                    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                      {(["AUTO", "MANUAL"] as AllocationMode[]).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setAllocationMode(mode)}
+                          className={`rounded-xl border px-3 py-2 text-left text-sm font-bold transition-all ${
+                            allocationMode === mode
+                              ? "border-cyan-300 bg-cyan-400/20 text-white"
+                              : "border-white/10 bg-slate-950/30 text-ink-dim hover:border-cyan-300/40 hover:text-white"
+                          }`}
+                        >
+                          {mode === "AUTO" ? "Automatic scientific allocation" : "Manual finance split"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {tuitionPreview && (
+                  <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+                    <div className="rounded-xl border border-white/10 bg-slate-950/35 p-3">
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-100">Tuition calculation</p>
+                      <div className="mt-3 space-y-3">
+                        {tuitionPreview.calculations.map((row) => (
+                          <div key={row.studentId} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="font-semibold text-white">{row.studentName}</p>
+                                <p className="mt-1 text-xs text-ink-dim">{row.gradeGroup} · {row.paymentOptionType}</p>
+                              </div>
+                              <p className="font-mono text-sm font-bold text-emerald-100">{fmtUsd(row.finalTuition)}</p>
+                            </div>
+                            <div className="mt-3 grid gap-2 text-xs text-emerald-50/85 sm:grid-cols-2">
+                              <span>Base {fmtUsd(row.baseAnnualTuition)}</span>
+                              <span>Family -{fmtUsd(row.familyDiscountAmount)}</span>
+                              <span>After family {fmtUsd(row.familyAdjustedTuition)}</span>
+                              <span>Plan -{fmtUsd(row.planDiscountAmount)}</span>
+                              {row.monthlyAmount ? <span>Monthly {fmtUsd(row.monthlyAmount)}</span> : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-white/10 bg-slate-950/35 p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-100">Allocation preview</p>
+                          <p className="mt-1 text-xs text-ink-dim">{tuitionPreview.allocationPreview.message}</p>
+                          {allocationMode === "AUTO" && (
+                            <p className="mt-2 rounded-lg border border-cyan-300/20 bg-cyan-300/10 p-2 text-xs font-semibold text-cyan-50">
+                              Methode systeme: le moteur paie d'abord les retards, ensuite l'echeance courante, puis les echeances futures. Si le montant ne suffit pas, il repartit proportionnellement selon le solde du par enfant.
+                            </p>
+                          )}
+                          {allocationMode === "MANUAL" && (
+                            <p className="mt-2 rounded-lg border border-amber-300/20 bg-amber-300/10 p-2 text-xs font-semibold text-amber-50">
+                              Saisissez les montants par ligne, puis cliquez sur Recalculer manuel avant de confirmer.
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right text-xs">
+                          <p className="font-mono font-bold text-white">Allocated {fmtUsd(tuitionPreview.allocationPreview.allocatedTotal)}</p>
+                          <p className="font-mono text-amber-100">Missing {fmtUsd(tuitionPreview.allocationPreview.missingAmount)}</p>
+                          {tuitionPreview.allocationPreview.advanceBalance > 0 && <p className="font-mono text-emerald-100">Advance {fmtUsd(tuitionPreview.allocationPreview.advanceBalance)}</p>}
+                        </div>
+                      </div>
+
+                      {tuitionPreview.allocationPreview.warnings.length > 0 && (
+                        <div className="mt-3 rounded-lg border border-amber-400/30 bg-amber-400/10 p-3 text-xs font-semibold text-amber-100">
+                          {tuitionPreview.allocationPreview.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+                        </div>
+                      )}
+
+                      <div className="edupay-scrollbar mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
+                        {tuitionPreview.allocationPreview.lines.length > 0 && (
+                          <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3">
+                            <p className="text-xs font-black uppercase tracking-[0.16em] text-cyan-100">Resume par enfant</p>
+                            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                              {Object.values(tuitionPreview.allocationPreview.lines.reduce<Record<string, { allocated: number; remaining: number }>>((acc, line) => {
+                                const current = acc[line.studentName] ?? { allocated: 0, remaining: 0 };
+                                current.allocated += line.allocated;
+                                current.remaining += line.outstandingAfter;
+                                acc[line.studentName] = current;
+                                return acc;
+                              }, {})).map((summary, index) => {
+                                const studentName = Object.keys(tuitionPreview.allocationPreview.lines.reduce<Record<string, true>>((acc, line) => ({ ...acc, [line.studentName]: true }), {}))[index];
+                                return (
+                                  <div key={studentName} className="rounded-md border border-white/10 bg-slate-950/40 p-2 text-xs">
+                                    <p className="font-semibold text-white">{studentName}</p>
+                                    <p className="mt-1 text-emerald-100">Applique {fmtUsd(summary.allocated)}</p>
+                                    <p className="text-amber-100">Reste {fmtUsd(summary.remaining)}</p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                        {tuitionPreview.allocationPreview.lines.map((line) => (
+                          <div key={line.installmentId} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div>
+                                <p className="text-sm font-semibold text-white">{line.studentName}</p>
+                                <p className="mt-1 text-xs text-ink-dim">{line.label} · {new Date(line.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")} · {line.dueBucket}</p>
+                              </div>
+                              <div className="text-right text-xs">
+                                <p className="font-mono text-emerald-100">Apply {fmtUsd(line.allocated)}</p>
+                                <p className="font-mono text-ink-dim">Left {fmtUsd(line.outstandingAfter)}</p>
+                              </div>
+                            </div>
+                            {allocationMode === "MANUAL" && (
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                max={line.outstandingBefore}
+                                value={manualAllocations[line.installmentId] ?? ""}
+                                onChange={(event) => setManualAllocations((current) => ({ ...current, [line.installmentId]: event.target.value }))}
+                                placeholder={`Manual amount up to ${line.outstandingBefore.toFixed(2)}`}
+                                className="mt-2 w-full"
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

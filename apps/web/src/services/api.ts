@@ -1207,6 +1207,102 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     return run as T;
   }
 
+  if (normalizedPath === "/api/finance/tuition-engine/preview-allocation" && method === "POST") {
+    const parentId = String(body.parentId ?? "");
+    const parent = getDemoParents().find((item) => item.id === parentId);
+    const amount = roundAmount(Number(body.amount ?? 0));
+    const paymentOptionType = String(body.paymentOptionType ?? "STANDARD_MONTHLY") as DemoPaymentOptionType;
+    const familyRate = (parent?.students.length ?? 0) >= 2 ? 10 : 0;
+    const planRate = paymentOptionType === "FULL_PRESEPTEMBER" ? 10 : paymentOptionType === "TWO_INSTALLMENTS" ? 5 : paymentOptionType === "THREE_INSTALLMENTS" ? 2 : 0;
+    const calculations = (parent?.students ?? []).map((student) => {
+      const baseAnnualTuition = student.className.includes("Grade 9") || student.className.includes("Grade 10") || student.className.includes("Grade 11") || student.className.includes("Grade 12")
+        ? 5420
+        : student.className.includes("Grade 6") || student.className.includes("Grade 7") || student.className.includes("Grade 8")
+          ? 4595
+          : student.className.includes("K")
+            ? 3082.5
+            : 3770;
+      const familyDiscountAmount = roundAmount(baseAnnualTuition * familyRate / 100);
+      const familyAdjustedTuition = roundAmount(baseAnnualTuition - familyDiscountAmount);
+      const planDiscountAmount = roundAmount(familyAdjustedTuition * planRate / 100);
+      const finalTuition = roundAmount(familyAdjustedTuition - planDiscountAmount);
+      return {
+        studentId: student.id,
+        studentName: student.fullName,
+        gradeGroup: student.className,
+        paymentOptionType,
+        baseAnnualTuition,
+        familyDiscountRate: familyRate,
+        familyDiscountAmount,
+        familyAdjustedTuition,
+        planDiscountRate: planRate,
+        planDiscountAmount,
+        finalTuition,
+        monthlyAmount: paymentOptionType === "STANDARD_MONTHLY" ? roundAmount(finalTuition / 10) : null,
+        schedule: [{ sequence: 1, label: "Current tuition obligation", dueDate: new Date().toISOString(), amountDue: finalTuition }]
+      };
+    });
+    const totalDue = roundAmount(calculations.reduce((sum, row) => sum + row.finalTuition, 0));
+    let allocatedSoFar = 0;
+    const lines = calculations.map((row, index) => {
+      const allocated = index === calculations.length - 1
+        ? roundAmount(Math.max(amount - allocatedSoFar, 0))
+        : roundAmount(totalDue > 0 ? amount * row.finalTuition / totalDue : 0);
+      allocatedSoFar = roundAmount(allocatedSoFar + allocated);
+      const capped = Math.min(allocated, row.finalTuition);
+      return {
+        installmentId: `demo-installment-${row.studentId}`,
+        studentId: row.studentId,
+        studentName: row.studentName,
+        label: "Current tuition obligation",
+        dueDate: new Date().toISOString(),
+        dueBucket: "CURRENT",
+        amountDue: row.finalTuition,
+        alreadyPaid: 0,
+        outstandingBefore: row.finalTuition,
+        allocated: capped,
+        outstandingAfter: roundAmount(Math.max(row.finalTuition - capped, 0))
+      };
+    });
+    const allocatedTotal = roundAmount(lines.reduce((sum, line) => sum + line.allocated, 0));
+    return {
+      parent: { id: parentId, fullName: parent?.fullName ?? "Parent" },
+      calculations,
+      allocationPreview: {
+        totalReceived: amount,
+        allocatedTotal,
+        advanceBalance: roundAmount(Math.max(amount - allocatedTotal, 0)),
+        missingAmount: roundAmount(lines.reduce((sum, line) => sum + line.outstandingAfter, 0)),
+        message: `Demo preview: received $ ${amount.toFixed(2)}, allocated $ ${allocatedTotal.toFixed(2)}.`,
+        warnings: lines.filter((line) => line.outstandingAfter > 0).map((line) => `${line.studentName} remains underpaid.`),
+        lines
+      }
+    } as T;
+  }
+
+  if (normalizedPath === "/api/finance/tuition-engine/payments" && method === "POST") {
+    const preview = await demoApi<Record<string, unknown>>("/api/finance/tuition-engine/preview-allocation", {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+    const payment = {
+      id: `pay-${Date.now()}`,
+      transactionNumber: String(body.transactionNumber ?? `TXN-${Date.now()}`),
+      parentId: String(body.parentId ?? ""),
+      parentFullName: String((preview as any).parent?.fullName ?? "Parent"),
+      paymentSubjectName: Array.isArray((preview as any).calculations) ? (preview as any).calculations.map((row: any) => String(row.studentName ?? "")).filter(Boolean).join(" / ") : "Tuition",
+      studentNames: Array.isArray((preview as any).calculations) ? (preview as any).calculations.map((row: any) => String(row.studentName ?? "")).filter(Boolean) : [],
+      reason: "Tuition payment",
+      amount: Number(body.amount ?? 0),
+      status: String(body.status ?? "COMPLETED"),
+      method: String(body.method ?? "CASH"),
+      createdAt: new Date().toISOString(),
+      date: new Date().toLocaleString("fr-FR")
+    };
+    writeJson(DEMO_PAYMENTS_KEY, [payment, ...getDemoPayments()]);
+    return { ...preview, payment, receipt: { receiptNumber: `REC-${payment.transactionNumber}` } } as T;
+  }
+
   const financeParentProfileMatch = normalizedPath.match(/^\/api\/finance\/parents\/([^/]+)\/profile$/);
   if (financeParentProfileMatch && method === "GET") {
     return financeProfile(financeParentProfileMatch[1]) as T;
@@ -1302,6 +1398,33 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
   if (normalizedPath === "/api/payments/settings/notifications") {
     if (method === "PUT") localStorage.setItem(DEMO_NOTIFICATIONS_KEY, String(Boolean(body.paymentNotificationsEnabled)));
     return { paymentNotificationsEnabled: localStorage.getItem(DEMO_NOTIFICATIONS_KEY) !== "false" } as T;
+  }
+
+  const paymentVerifyMatch = normalizedPath.match(/^\/api\/payments\/verify\/([^/]+)$/);
+  if (paymentVerifyMatch && method === "GET") {
+    const tx = decodeURIComponent(paymentVerifyMatch[1]);
+    const payment = getDemoPayments().find((item) => item.transactionNumber === tx);
+    if (!payment) throw new Error("Paiement introuvable");
+    return {
+      source: "database",
+      payment: {
+        id: payment.id,
+        transactionNumber: payment.transactionNumber,
+        parentFullName: payment.parentFullName,
+        paymentSubjectName: payment.paymentSubjectName || payment.studentNames?.join(" / ") || payment.parentFullName,
+        studentNames: payment.studentNames ?? [],
+        reason: payment.reason,
+        amount: payment.amount,
+        amountInWords: "",
+        method: payment.method,
+        status: payment.status,
+        date: payment.date,
+        createdAt: payment.createdAt,
+        schoolName: "Kinshasa Christian School",
+        receiptNumber: `REC-${payment.transactionNumber}`,
+        downloads: null
+      }
+    } as T;
   }
 
   if (normalizedPath === "/api/payments" && method === "GET") return getDemoPayments() as T;
@@ -1502,6 +1625,7 @@ function canFallbackToDemo(path: string, init?: RequestInit) {
     path === "/api/auth/login" ||
     path === "/api/auth/change-password" ||
     path === "/api/ai/assistant" ||
+    path.startsWith("/api/finance") ||
     path.startsWith("/api/expenses") ||
     path.startsWith("/api/parents/me");
 }

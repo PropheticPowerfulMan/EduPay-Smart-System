@@ -6,9 +6,12 @@ import { prisma } from "../../prisma";
 import {
   createSpecialFinancialAgreement,
   ensureOfficialKcsCatalog,
+  ensureParentTuitionEnginePlan,
   getParentFinancialSnapshot,
   getReductionAnalytics,
   getSchoolFinanceOverview,
+  previewTuitionPaymentAllocation,
+  recordTuitionEnginePayment,
   runOverdueTuitionReminderSweep,
   upsertParentPlanAssignment
 } from "./service";
@@ -46,6 +49,30 @@ const agreementSchema = z.object({
 const overdueReminderSweepSchema = z.object({
   parentId: z.string().min(1).optional(),
   academicYearName: z.string().optional()
+});
+
+const tuitionManualAllocationSchema = z.object({
+  installmentId: z.string().min(1),
+  amount: z.number().min(0)
+});
+
+const tuitionEnginePlanSchema = z.object({
+  parentId: z.string().min(1),
+  academicYearName: z.string().optional(),
+  paymentOptionType: z.nativeEnum(PaymentOptionType),
+  notes: z.string().max(4000).optional()
+});
+
+const tuitionAllocationPreviewSchema = tuitionEnginePlanSchema.extend({
+  amount: z.number().positive(),
+  allocationMode: z.enum(["AUTO", "MANUAL"]).default("AUTO"),
+  manualAllocations: z.array(tuitionManualAllocationSchema).optional().default([])
+});
+
+const tuitionPaymentCommitSchema = tuitionAllocationPreviewSchema.extend({
+  method: z.enum(["CASH", "AIRTEL_MONEY", "MPESA", "ORANGE_MONEY", "BANK_TRANSFER", "CHEQUE", "INTERNAL_TRANSFER"]).default("CASH"),
+  status: z.enum(["COMPLETED", "PENDING", "FAILED"]).default("COMPLETED"),
+  transactionNumber: z.string().min(3).optional()
 });
 
 export const financeRouter = Router();
@@ -161,6 +188,50 @@ financeRouter.post("/assignments", authorize("ADMIN", "ACCOUNTANT"), async (req:
   } catch (error) {
     console.error("Plan assignment error", error);
     return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to assign tuition plan." });
+  }
+});
+
+financeRouter.post("/tuition-engine/plan", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
+  try {
+    const payload = tuitionEnginePlanSchema.parse(req.body);
+    const result = await ensureParentTuitionEnginePlan({
+      schoolId: req.user!.schoolId,
+      actorUserId: req.user!.sub,
+      ...payload
+    });
+    return res.status(201).json(result);
+  } catch (error) {
+    console.error("Tuition engine plan error", error);
+    return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to calculate tuition plan." });
+  }
+});
+
+financeRouter.post("/tuition-engine/preview-allocation", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
+  try {
+    const payload = tuitionAllocationPreviewSchema.parse(req.body);
+    const result = await previewTuitionPaymentAllocation({
+      schoolId: req.user!.schoolId,
+      ...payload
+    });
+    return res.json(result);
+  } catch (error) {
+    console.error("Tuition allocation preview error", error);
+    return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to preview tuition allocation." });
+  }
+});
+
+financeRouter.post("/tuition-engine/payments", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
+  try {
+    const payload = tuitionPaymentCommitSchema.parse(req.body);
+    const result = await recordTuitionEnginePayment({
+      schoolId: req.user!.schoolId,
+      createdById: req.user!.sub,
+      ...payload
+    });
+    return res.status(201).json(result);
+  } catch (error) {
+    console.error("Tuition engine payment error", error);
+    return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to record tuition payment." });
   }
 });
 

@@ -163,8 +163,10 @@ export function buildReceiptVerificationUrl(
   input: ReceiptVerificationInput,
   locationLike: Pick<Location, "origin" | "pathname"> = window.location
 ) {
-  const token = encodeBase64Url(JSON.stringify(buildReceiptVerificationRecord(input)));
-  return `${locationLike.origin}${locationLike.pathname}#/receipt/verify?d=${encodeURIComponent(token)}`;
+  const security = buildReceiptSecurity(input);
+  const tx = encodeURIComponent(input.transactionNumber);
+  const code = encodeURIComponent(security.verificationCode);
+  return `${locationLike.origin}${locationLike.pathname}#/receipt/verify?tx=${tx}&c=${code}`;
 }
 
 export function parseReceiptVerificationToken(token: string | null) {
