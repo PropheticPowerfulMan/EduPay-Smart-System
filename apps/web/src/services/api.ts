@@ -322,6 +322,16 @@ function saveDemoParentCredential(credential: DemoParentCredential) {
   writeJson(DEMO_PARENT_CREDENTIALS_KEY, [{ ...credential, email }, ...credentials]);
 }
 
+function generateDemoTemporaryPassword() {
+  const values = new Uint32Array(1);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(values);
+    return `KCS-${String(values[0] % 1_000_000).padStart(6, "0")}`;
+  }
+
+  return `KCS-${String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0")}`;
+}
+
 function getDemoFinanceOverrides() {
   const overrides = readJson<Record<string, DemoFinanceOverride>>(DEMO_FINANCE_OVERRIDES_KEY, {});
   setDemoFinanceOverrides(overrides);
@@ -1725,7 +1735,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     };
     const notifyEmail = body.notifyEmail !== false;
     const notifySms = body.notifySms !== false;
-    const temporaryPassword = `KCS-${String(Date.now()).slice(-4)}`;
+    const temporaryPassword = generateDemoTemporaryPassword();
     if (parent.email) {
       saveDemoParentCredential({ parentId: parent.id, email: parent.email, password: temporaryPassword });
     }
@@ -1776,7 +1786,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
   const resetMatch = normalizedPath.match(/^\/api\/parents\/([^/]+)\/reset-password$/);
   if (resetMatch) {
     const parent = getDemoParents().find((item) => item.id === resetMatch[1]);
-    const temporaryPassword = `KCS-${String(Date.now()).slice(-4)}`;
+    const temporaryPassword = generateDemoTemporaryPassword();
     const notifyEmail = body.notifyEmail !== false;
     const notifySms = body.notifySms !== false;
     if (parent?.email) {

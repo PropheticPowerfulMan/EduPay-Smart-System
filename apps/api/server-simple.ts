@@ -6,7 +6,7 @@ import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
-import { timingSafeEqual } from "crypto";
+import { randomInt, timingSafeEqual } from "crypto";
 import { sendEmail, sendSms } from "./src/utils/messaging";
 
 const env = {
@@ -101,9 +101,7 @@ function generateParentId() {
 }
 
 function generateTemporaryPassword() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  const pick = (length: number) => Array.from({ length }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
-  return `KCS-${pick(4)}-${pick(4)}`;
+  return `KCS-${randomInt(0, 1_000_000).toString().padStart(6, "0")}`;
 }
 
 function buildParentWelcomeMessages(parent: any, password: string, email: string) {

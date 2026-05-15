@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import bcrypt from "bcrypt";
+import { randomInt } from "crypto";
 import { AgreementStatus, PaymentOptionType } from "@prisma/client";
 import { createOrbitParent, deleteOrbitParent, matchesSharedParentIdentifier, orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
 import { prisma } from "../../prisma";
@@ -51,9 +52,7 @@ const notificationPreferenceSchema = z.object({
 });
 
 function generateTemporaryPassword() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789";
-  const pick = (length: number) => Array.from({ length }, () => alphabet[Math.floor(Math.random() * alphabet.length)]).join("");
-  return `KCS-${pick(4)}-${pick(4)}`;
+  return `KCS-${randomInt(0, 1_000_000).toString().padStart(6, "0")}`;
 }
 
 function buildReadableEntityId(prefix: "PAR" | "STU", fullName: string) {
