@@ -27,11 +27,14 @@ const DEMO_PAYROLL_RUNS_KEY = "edupay_demo_payroll_runs_v1";
 const DEMO_FALLBACK_ENABLED = (import.meta.env.VITE_ENABLE_DEMO_FALLBACK ?? "").trim().toLowerCase() === "true";
 const STATIC_APP_FALLBACK_ENABLED = ["demo", "github-pages", "pages"].includes((import.meta.env.VITE_ENVIRONMENT ?? "").trim().toLowerCase());
 const PLACEHOLDER_API_URL = /MON-BACKEND|example\.com/i.test(API_BASE_URL);
+const PRODUCTION_MODE = import.meta.env.PROD && !STATIC_APP_FALLBACK_ENABLED && !DEMO_FALLBACK_ENABLED;
 const LOCAL_API_FALLBACK_ENABLED =
-  DEMO_FALLBACK_ENABLED ||
-  STATIC_APP_FALLBACK_ENABLED ||
-  PLACEHOLDER_API_URL ||
-  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(API_BASE_URL);
+  !PRODUCTION_MODE && (
+    DEMO_FALLBACK_ENABLED ||
+    STATIC_APP_FALLBACK_ENABLED ||
+    PLACEHOLDER_API_URL ||
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(API_BASE_URL)
+  );
 
 type DemoStudent = { id: string; fullName: string; classId: string; className: string; annualFee: number; payments?: DemoPayment[] };
 type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
@@ -1794,7 +1797,9 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function shouldUseDemoApi(path: string) {
-  return (!API_BASE_URL || PLACEHOLDER_API_URL) && path.startsWith("/api/");
+  if (!path.startsWith("/api/")) return false;
+  if (PRODUCTION_MODE) return false;
+  return (DEMO_FALLBACK_ENABLED || STATIC_APP_FALLBACK_ENABLED || PLACEHOLDER_API_URL || !API_BASE_URL);
 }
 
 function isLocalSessionToken(token: string | null) {

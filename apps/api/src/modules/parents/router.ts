@@ -327,6 +327,7 @@ async function ensureParentPortalUser(options: {
         email: options.email,
         accessCode: options.accessCode,
         passwordHash,
+        mustChangePassword: true,
       },
     })
     : await prisma.user.create({
@@ -337,6 +338,7 @@ async function ensureParentPortalUser(options: {
         role: "PARENT",
         schoolId: options.schoolId,
         passwordHash,
+        mustChangePassword: true,
       },
     });
 
@@ -601,7 +603,8 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
           accessCode: await generateUniqueParentAccessCode(tx as typeof prisma),
           role: "PARENT",
           schoolId: req.user!.schoolId,
-          passwordHash
+          passwordHash,
+          mustChangePassword: true
         }
       });
       const p = await tx.parent.create({
@@ -709,7 +712,8 @@ parentRouter.post("/:id/reset-password", authorize("ADMIN", "ACCOUNTANT"), async
           accessCode: await generateUniqueParentAccessCode(prisma),
           role: "PARENT",
           schoolId: req.user!.schoolId,
-          passwordHash
+          passwordHash,
+          mustChangePassword: true
         }
       });
       await prisma.parent.update({ where: { id: parent.id }, data: { userId: user.id } });
@@ -719,7 +723,8 @@ parentRouter.post("/:id/reset-password", authorize("ADMIN", "ACCOUNTANT"), async
         data: {
           fullName: parent.fullName,
           email: parent.email,
-          passwordHash
+          passwordHash,
+          mustChangePassword: true
         }
       });
     }

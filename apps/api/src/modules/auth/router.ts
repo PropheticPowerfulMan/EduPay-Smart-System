@@ -120,7 +120,15 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
         const parent = user.role === "PARENT"
           ? await prisma.parent.findUnique({ where: { userId: user.id }, select: { id: true, photoUrl: true } })
           : null;
-        return res.json({ token, role: user.role, fullName: user.fullName, parentId: parent?.id, photoUrl: parent?.photoUrl, accessCode: user.accessCode });
+        return res.json({
+          token,
+          role: user.role,
+          fullName: user.fullName,
+          parentId: parent?.id,
+          photoUrl: parent?.photoUrl,
+          accessCode: user.accessCode,
+          mustChangePassword: user.mustChangePassword
+        });
       }
     }
   } catch (error) {
@@ -197,7 +205,7 @@ authRouter.post("/recover-admin-password", recoveryLimiter, async (req, res) => 
   const passwordHash = await bcrypt.hash(payload.newPassword, 12);
   await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash }
+    data: { passwordHash, mustChangePassword: false }
   });
 
   await sendEmail({

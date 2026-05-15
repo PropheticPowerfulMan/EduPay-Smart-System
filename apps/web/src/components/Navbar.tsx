@@ -39,7 +39,7 @@ function imageFileToAvatar(file: File): Promise<string> {
   });
 }
 
-function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+function ChangePasswordModal({ onClose, onChanged, required = false }: { onClose: () => void; onChanged?: () => void; required?: boolean }) {
   const { t } = useI18n();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -70,6 +70,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      onChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("passwordChangeFailed"));
     } finally {
@@ -78,12 +79,12 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" onClick={required ? undefined : onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
       <form onSubmit={submit} className="glass relative w-full max-w-sm rounded-2xl p-7 space-y-4 animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
         <div>
           <h3 className="font-display text-xl font-bold text-white">{t("changePasswordTitle")}</h3>
-          <p className="mt-1 text-sm text-ink-dim">{t("changePasswordSubtitle")}</p>
+          <p className="mt-1 text-sm text-ink-dim">{required ? "Pour sécuriser ce compte réel, changez le mot de passe temporaire avant de continuer." : t("changePasswordSubtitle")}</p>
         </div>
         <input
           type="password"
@@ -112,7 +113,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
           <button disabled={saving} className="flex-1 btn-primary py-3 text-sm font-bold disabled:opacity-60">
             {saving ? t("pmSaving") : t("pmSave")}
           </button>
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-600 px-4 py-3 text-sm font-semibold text-ink-dim hover:text-white">
+          <button type="button" onClick={onClose} disabled={required} className="rounded-lg border border-slate-600 px-4 py-3 text-sm font-semibold text-ink-dim hover:text-white disabled:cursor-not-allowed disabled:opacity-40">
             {t("close")}
           </button>
         </div>
@@ -123,7 +124,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 
 export function Navbar() {
   const { t } = useI18n();
-  const { fullName, role, photoUrl, setPhotoUrl, logout } = useAuthStore();
+  const { fullName, role, photoUrl, mustChangePassword, setPhotoUrl, setMustChangePassword, logout } = useAuthStore();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [photoError, setPhotoError] = useState("");
@@ -149,6 +150,10 @@ export function Navbar() {
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [isUserMenuOpen]);
+
+  useEffect(() => {
+    if (mustChangePassword) setShowPasswordModal(true);
+  }, [mustChangePassword]);
 
   const updatePhoto = async (file?: File) => {
     if (!file) return;
@@ -184,7 +189,13 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-brand-300/20 bg-slate-950/70 shadow-[0_18px_60px_rgba(0,0,0,0.22)] backdrop-blur-2xl">
-      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
+      {showPasswordModal && <ChangePasswordModal required={mustChangePassword} onChanged={() => {
+        setMustChangePassword(false);
+        setShowPasswordModal(false);
+      }} onClose={() => {
+        if (mustChangePassword) return;
+        setShowPasswordModal(false);
+      }} />}
       <div className="mx-auto max-w-[1440px] px-3 py-2.5 sm:px-6 sm:py-3 lg:px-8">
         <div className="flex items-center justify-between gap-2">
           {/* Logo Section */}

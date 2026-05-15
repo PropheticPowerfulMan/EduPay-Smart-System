@@ -252,6 +252,7 @@ model User {
   email        String   @unique
   accessCode   String   @unique
   passwordHash String
+  mustChangePassword Boolean @default(false)
   role         Role
   createdAt    DateTime @default(now())
   school       School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
