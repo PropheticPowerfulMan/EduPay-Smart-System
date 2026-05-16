@@ -2,14 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   BriefcaseBusiness,
-  Building2,
+  ChevronRight,
   CheckCircle2,
   CircleDollarSign,
   Download,
+  FilePlus2,
   Landmark,
   Printer,
   ReceiptText,
+  UserPlus,
   Users,
+  WalletCards,
   X
 } from "lucide-react";
 import { SearchField } from "../components/SearchField";
@@ -244,6 +247,7 @@ type PayrollFormState = {
 const PAYMENT_METHODS = ["CASH", "BANK_TRANSFER", "MPESA", "AIRTEL_MONEY", "ORANGE_MONEY", "CHEQUE", "INTERNAL_TRANSFER"];
 const PAYROLL_FREQUENCIES = ["MONTHLY", "BI_MONTHLY", "QUARTERLY", "ANNUAL"];
 type OperationTab = "expenses" | "budgets" | "payroll" | "accounting" | "cashflow" | "documents";
+type OperationSubDialog = "expense-create" | "vendor-create" | "budget-create" | "salary-profile-create" | "payroll-run-create";
 
 const EMPTY_EXPENSE_FORM: ExpenseFormState = {
   title: "",
@@ -310,6 +314,44 @@ function SectionCard({ title, subtitle, children }: { title: string; subtitle: s
   );
 }
 
+function ActionNodeCard({
+  title,
+  subtitle,
+  detail,
+  icon: Icon,
+  tone,
+  onClick
+}: {
+  title: string;
+  subtitle: string;
+  detail: string;
+  icon: React.ComponentType<{ className?: string }>;
+  tone: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="group flex min-w-0 items-start gap-3 rounded-2xl border border-white/10 bg-slate-950/36 p-4 text-left transition hover:border-brand-300/30 hover:bg-white/[0.06]"
+    >
+      <span className={`inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${tone}`}>
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex min-w-0 items-start justify-between gap-3">
+          <span className="font-semibold text-white">{title}</span>
+          <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-ink-dim transition group-hover:translate-x-0.5 group-hover:text-brand-100" />
+        </span>
+        <span className="mt-1 block text-sm text-ink-dim">{subtitle}</span>
+        <span className="mt-3 inline-flex max-w-full rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-brand-100">
+          {detail}
+        </span>
+      </span>
+    </button>
+  );
+}
+
 function StatusBadge({ value }: { value: string }) {
   const tone = value === "APPROVED" || value === "PAID"
     ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200"
@@ -359,6 +401,44 @@ function OperationsDialog({
   );
 }
 
+function OperationsSubDialog({
+  title,
+  subtitle,
+  children,
+  onClose
+}: {
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+  onClose: () => void;
+}) {
+  return (
+    <div className="absolute inset-0 z-10 flex items-end justify-center bg-slate-950/72 p-3 backdrop-blur-md sm:items-center sm:p-5">
+      <button aria-label="Fermer le sous-dialogue" className="absolute inset-0" onClick={onClose} />
+      <section className="edupay-operations-submodal relative flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-slate-950/98 shadow-2xl">
+        <header className="flex items-start justify-between gap-4 border-b border-white/10 bg-white/[0.04] px-4 py-4 sm:px-5">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Sous-dialogue</p>
+            <h3 className="mt-1 font-display text-xl font-bold text-white sm:text-2xl">{title}</h3>
+            <p className="mt-1 text-sm text-ink-dim">{subtitle}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-ink-dim hover:border-brand-300/30 hover:text-white"
+            aria-label="Fermer le sous-dialogue"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </header>
+        <div className="edupay-scrollbar min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+          {children}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function labelizeFrequency(value: string) {
   const map: Record<string, string> = {
     MONTHLY: "Mensuel",
@@ -378,6 +458,7 @@ export function FinancialOperationsPage() {
 
   const [activeTab, setActiveTab] = useState<OperationTab>("expenses");
   const [activeDialog, setActiveDialog] = useState<OperationTab | null>(null);
+  const [activeSubDialog, setActiveSubDialog] = useState<OperationSubDialog | null>(null);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -917,6 +998,7 @@ export function FinancialOperationsPage() {
       const created = await api<Vendor>("/api/expenses/vendors", { method: "POST", body: JSON.stringify(vendorForm) });
       setVendors((current) => [created, ...current]);
       setVendorForm(EMPTY_VENDOR_FORM);
+      setActiveSubDialog(null);
       setSuccess("Fournisseur ajoute.");
     } catch (submitError) {
       setActionError(submitError instanceof Error ? submitError.message : "Impossible de creer le fournisseur.");
@@ -944,6 +1026,7 @@ export function FinancialOperationsPage() {
       });
       setBudgets((current) => [created, ...current]);
       setBudgetForm(EMPTY_BUDGET_FORM);
+      setActiveSubDialog(null);
       setSuccess("Budget enregistre.");
       await refreshOverview();
       await refreshLedgers();
@@ -990,6 +1073,7 @@ export function FinancialOperationsPage() {
       setExpenses((current) => [created, ...current]);
       setExpenseForm(EMPTY_EXPENSE_FORM);
       setPendingAttachments([]);
+      setActiveSubDialog(null);
       setSuccess("Depense soumise au workflow d'approbation.");
       await refreshOverview();
       await refreshLedgers();
@@ -1043,6 +1127,7 @@ export function FinancialOperationsPage() {
       });
       setSalaryProfiles((current) => [created, ...current]);
       setSalaryForm(EMPTY_SALARY_FORM);
+      setActiveSubDialog(null);
       setSuccess("Profil salarial ajoute.");
       await refreshOverview();
       await refreshLedgers();
@@ -1065,6 +1150,7 @@ export function FinancialOperationsPage() {
       });
       setPayrollRuns((current) => [created, ...current]);
       setPayrollForm(EMPTY_PAYROLL_FORM);
+      setActiveSubDialog(null);
       setSuccess("Run de paie genere.");
       await refreshOverview();
       await refreshLedgers();
@@ -1247,6 +1333,7 @@ export function FinancialOperationsPage() {
               onClick={() => {
                 setActiveTab(module.value);
                 setActiveDialog(module.value);
+                setActiveSubDialog(null);
               }}
               className="group min-w-0 rounded-2xl border border-white/10 bg-white/[0.045] p-4 text-left shadow-lg transition hover:border-brand-300/30 hover:bg-white/[0.075]"
             >
@@ -1281,10 +1368,13 @@ export function FinancialOperationsPage() {
       {success && <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{success}</div>}
 
       {activeDialog && activeModule && (
-        <OperationsDialog title={activeModule.title} subtitle={activeModule.description} onClose={() => setActiveDialog(null)}>
+        <OperationsDialog title={activeModule.title} subtitle={activeModule.description} onClose={() => {
+          setActiveSubDialog(null);
+          setActiveDialog(null);
+        }}>
       {activeTab === "expenses" && (
-        <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="space-y-6">
+        <div className="space-y-6">
+          <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
             <SectionCard title="Workflow des depenses" subtitle="Recherche, suivi de statut et traitement des approbations en cours.">
               <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
                 <SearchField value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rechercher une depense, un service, un fournisseur..." />
@@ -1363,13 +1453,53 @@ export function FinancialOperationsPage() {
                 {!filteredExpenses.length && <p className="text-sm text-ink-dim">Aucune depense ne correspond au filtre actuel.</p>}
               </div>
             </SectionCard>
+
+            <SectionCard title="Arborescence des actions" subtitle="Choisissez une branche, puis travaillez dans une boite de dialogue dediee.">
+              <div className="grid gap-3">
+                <div className="rounded-2xl border border-cyan-300/15 bg-cyan-400/10 p-4">
+                  <div className="flex items-start gap-3">
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-cyan-200" />
+                    <div>
+                      <p className="font-semibold text-white">Depenses</p>
+                      <p className="mt-1 text-sm text-ink-dim">Workflow principal: consulter, filtrer, valider ou rejeter les demandes.</p>
+                    </div>
+                  </div>
+                </div>
+                {canWrite && (
+                  <>
+                    <ActionNodeCard
+                      title="Nouvelle depense"
+                      subtitle="Sortie de cash, budget, fournisseur et justificatifs."
+                      detail={`${leafCategories.length} categories disponibles`}
+                      icon={FilePlus2}
+                      tone="border-red-400/25 bg-red-500/10 text-red-200"
+                      onClick={() => setActiveSubDialog("expense-create")}
+                    />
+                    <ActionNodeCard
+                      title="Nouveau fournisseur"
+                      subtitle="Creer un tiers payable avant de lier une depense."
+                      detail={`${vendors.length} fournisseurs actifs`}
+                      icon={UserPlus}
+                      tone="border-brand-300/25 bg-brand-500/10 text-brand-100"
+                      onClick={() => setActiveSubDialog("vendor-create")}
+                    />
+                  </>
+                )}
+                <ActionNodeCard
+                  title="Justificatifs"
+                  subtitle="Voir les pieces indexees dans la branche Documents."
+                  detail={`${documentEntries.length} piece(s)`}
+                  icon={BriefcaseBusiness}
+                  tone="border-amber-300/25 bg-amber-500/10 text-amber-100"
+                  onClick={() => setActiveTab("documents")}
+                />
+              </div>
+            </SectionCard>
           </div>
 
-          <div className="space-y-6">
-            {canWrite && (
-              <>
-                <SectionCard title="Nouvelle depense" subtitle="Soumettre une sortie de cash avec categorie, budget et piece justificative.">
-                  <form className="grid gap-3" onSubmit={handleCreateExpense}>
+          {activeSubDialog === "expense-create" && canWrite && (
+            <OperationsSubDialog title="Nouvelle depense" subtitle="Soumettre une sortie de cash avec categorie, budget et piece justificative." onClose={() => setActiveSubDialog(null)}>
+              <form className="grid gap-3" onSubmit={handleCreateExpense}>
                     <input className="input" value={expenseForm.title} onChange={(event) => setExpenseForm((current) => ({ ...current, title: event.target.value }))} placeholder="Titre de la depense" required />
                     <div className="grid gap-3 sm:grid-cols-2">
                       <select className="input" value={expenseForm.categoryId} onChange={(event) => setExpenseForm((current) => ({ ...current, categoryId: event.target.value }))} required>
@@ -1430,11 +1560,13 @@ export function FinancialOperationsPage() {
                     <button type="submit" disabled={submittingKey === "expense"} className="btn-primary justify-center px-5 py-3 text-sm font-semibold disabled:opacity-60">
                       Soumettre la depense
                     </button>
-                  </form>
-                </SectionCard>
+              </form>
+            </OperationsSubDialog>
+          )}
 
-                <SectionCard title="Nouveau fournisseur" subtitle="Creer un tiers payable pour les achats, abonnements et utilities.">
-                  <form className="grid gap-3" onSubmit={handleCreateVendor}>
+          {activeSubDialog === "vendor-create" && canWrite && (
+            <OperationsSubDialog title="Nouveau fournisseur" subtitle="Creer un tiers payable pour les achats, abonnements et utilities." onClose={() => setActiveSubDialog(null)}>
+              <form className="grid gap-3" onSubmit={handleCreateVendor}>
                     <input className="input" value={vendorForm.name} onChange={(event) => setVendorForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nom fournisseur" required />
                     <div className="grid gap-3 sm:grid-cols-2">
                       <input className="input" value={vendorForm.contactName} onChange={(event) => setVendorForm((current) => ({ ...current, contactName: event.target.value }))} placeholder="Contact" />
@@ -1446,36 +1578,34 @@ export function FinancialOperationsPage() {
                     <button type="submit" disabled={submittingKey === "vendor"} className="rounded-xl border border-brand-500/30 bg-brand-500/10 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-500/20 disabled:opacity-60">
                       Ajouter le fournisseur
                     </button>
-                  </form>
-                </SectionCard>
-              </>
-            )}
-          </div>
+              </form>
+            </OperationsSubDialog>
+          )}
         </div>
       )}
 
       {activeTab === "budgets" && (
         <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
           {canWrite && (
-            <SectionCard title="Nouveau budget" subtitle="Planifier les enveloppes annuelles ou departementales avec seuil d'alerte.">
-              <form className="grid gap-3" onSubmit={handleCreateBudget}>
-                <input className="input" value={budgetForm.name} onChange={(event) => setBudgetForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nom du budget" required />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input className="input" value={budgetForm.department} onChange={(event) => setBudgetForm((current) => ({ ...current, department: event.target.value }))} placeholder="Departement" required />
-                  <input className="input" type="number" min="0" step="0.01" value={budgetForm.plannedAmount} onChange={(event) => setBudgetForm((current) => ({ ...current, plannedAmount: event.target.value }))} placeholder="Montant planifie" required />
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <select className="input" value={budgetForm.categoryId} onChange={(event) => setBudgetForm((current) => ({ ...current, categoryId: event.target.value }))}>
-                    <option value="">Categorie associee</option>
-                    {categories.filter((category) => !category.parentCategoryId).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                  </select>
-                  <input className="input" type="number" min="1" max="100" value={budgetForm.alertThreshold} onChange={(event) => setBudgetForm((current) => ({ ...current, alertThreshold: event.target.value }))} placeholder="Seuil alerte %" />
-                </div>
-                <textarea className="input min-h-24" value={budgetForm.notes} onChange={(event) => setBudgetForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes budgetaires" />
-                <button type="submit" disabled={submittingKey === "budget"} className="btn-primary justify-center px-5 py-3 text-sm font-semibold disabled:opacity-60">
-                  Enregistrer le budget
-                </button>
-              </form>
+            <SectionCard title="Arborescence budgetaire" subtitle="Les actions d'ecriture s'ouvrent dans une boite dediee, le suivi reste visible.">
+              <div className="grid gap-3">
+                <ActionNodeCard
+                  title="Nouveau budget"
+                  subtitle="Planifier une enveloppe avec departement, categorie et seuil."
+                  detail={`${budgets.length} budget(s) existant(s)`}
+                  icon={WalletCards}
+                  tone="border-cyan-400/25 bg-cyan-500/10 text-cyan-200"
+                  onClick={() => setActiveSubDialog("budget-create")}
+                />
+                <ActionNodeCard
+                  title="Dépenses liées"
+                  subtitle="Retourner vers le workflow pour relier les budgets aux sorties."
+                  detail={`${expenseStats.pending} validation(s)`}
+                  icon={ReceiptText}
+                  tone="border-red-400/25 bg-red-500/10 text-red-200"
+                  onClick={() => setActiveTab("expenses")}
+                />
+              </div>
             </SectionCard>
           )}
 
@@ -1519,32 +1649,25 @@ export function FinancialOperationsPage() {
         <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
           <div className="space-y-6">
             {canWrite && (
-              <SectionCard title="Profil salarial" subtitle="Base salariale, bonus, deductions et recovery rate pour les futurs runs.">
-                <form className="grid gap-3" onSubmit={handleCreateSalaryProfile}>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <input className="input" value={salaryForm.employeeCode} onChange={(event) => setSalaryForm((current) => ({ ...current, employeeCode: event.target.value }))} placeholder="Code employe" required />
-                    <input className="input" value={salaryForm.fullName} onChange={(event) => setSalaryForm((current) => ({ ...current, fullName: event.target.value }))} placeholder="Nom complet" required />
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <input className="input" value={salaryForm.department} onChange={(event) => setSalaryForm((current) => ({ ...current, department: event.target.value }))} placeholder="Departement" required />
-                    <input className="input" value={salaryForm.position} onChange={(event) => setSalaryForm((current) => ({ ...current, position: event.target.value }))} placeholder="Poste" required />
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <input className="input" type="number" min="0" step="0.01" value={salaryForm.baseSalary} onChange={(event) => setSalaryForm((current) => ({ ...current, baseSalary: event.target.value }))} placeholder="Salaire de base" required />
-                    <select className="input" value={salaryForm.frequency} onChange={(event) => setSalaryForm((current) => ({ ...current, frequency: event.target.value }))}>
-                      {PAYROLL_FREQUENCIES.map((frequency) => <option key={frequency} value={frequency}>{labelizeFrequency(frequency)}</option>)}
-                    </select>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <input className="input" type="number" min="0" step="0.01" value={salaryForm.defaultBonus} onChange={(event) => setSalaryForm((current) => ({ ...current, defaultBonus: event.target.value }))} placeholder="Bonus" />
-                    <input className="input" type="number" min="0" step="0.01" value={salaryForm.defaultDeduction} onChange={(event) => setSalaryForm((current) => ({ ...current, defaultDeduction: event.target.value }))} placeholder="Deductions" />
-                    <input className="input" type="number" min="0" max="100" step="0.01" value={salaryForm.debtRecoveryRate} onChange={(event) => setSalaryForm((current) => ({ ...current, debtRecoveryRate: event.target.value }))} placeholder="Recovery %" />
-                  </div>
-                  <textarea className="input min-h-24" value={salaryForm.notes} onChange={(event) => setSalaryForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes RH" />
-                  <button type="submit" disabled={submittingKey === "salary"} className="btn-primary justify-center px-5 py-3 text-sm font-semibold disabled:opacity-60">
-                    Ajouter le profil salarial
-                  </button>
-                </form>
+              <SectionCard title="Arborescence paie" subtitle="Separez les profils RH du lancement de paie pour garder la lecture claire.">
+                <div className="grid gap-3">
+                  <ActionNodeCard
+                    title="Profil salarial"
+                    subtitle="Base salariale, bonus, deductions et recovery rate."
+                    detail={`${salaryProfiles.length} profil(s) actif(s)`}
+                    icon={Users}
+                    tone="border-brand-300/25 bg-brand-500/10 text-brand-100"
+                    onClick={() => setActiveSubDialog("salary-profile-create")}
+                  />
+                  <ActionNodeCard
+                    title="Lancer une paie"
+                    subtitle="Generer un run depuis les profils salariaux actifs."
+                    detail={`${payrollRuns.length} run(s)`}
+                    icon={CircleDollarSign}
+                    tone="border-emerald-300/25 bg-emerald-500/10 text-emerald-100"
+                    onClick={() => setActiveSubDialog("payroll-run-create")}
+                  />
+                </div>
               </SectionCard>
             )}
 
@@ -1569,24 +1692,6 @@ export function FinancialOperationsPage() {
           </div>
 
           <div className="space-y-6">
-            {canWrite && (
-              <SectionCard title="Lancer une paie" subtitle="Genere un run avec calcul net et sorties de cash correspondantes.">
-                <form className="grid gap-3" onSubmit={handleCreatePayrollRun}>
-                  <input className="input" value={payrollForm.title} onChange={(event) => setPayrollForm((current) => ({ ...current, title: event.target.value }))} placeholder="Titre du run" required />
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <input className="input" value={payrollForm.department} onChange={(event) => setPayrollForm((current) => ({ ...current, department: event.target.value }))} placeholder="Departement cible (optionnel)" />
-                    <select className="input" value={payrollForm.frequency} onChange={(event) => setPayrollForm((current) => ({ ...current, frequency: event.target.value }))}>
-                      {PAYROLL_FREQUENCIES.map((frequency) => <option key={frequency} value={frequency}>{labelizeFrequency(frequency)}</option>)}
-                    </select>
-                  </div>
-                  <textarea className="input min-h-24" value={payrollForm.notes} onChange={(event) => setPayrollForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes du run" />
-                  <button type="submit" disabled={submittingKey === "payroll"} className="rounded-xl border border-brand-500/30 bg-brand-500/10 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-500/20 disabled:opacity-60">
-                    Generer la paie
-                  </button>
-                </form>
-              </SectionCard>
-            )}
-
             <SectionCard title="Historique de paie" subtitle="Runs generes, masse nette et nombre de bulletins salaries.">
               <div className="space-y-3">
                 {payrollRuns.map((run) => (
@@ -1636,6 +1741,54 @@ export function FinancialOperationsPage() {
               </div>
             </SectionCard>
           </div>
+
+          {activeSubDialog === "salary-profile-create" && canWrite && (
+            <OperationsSubDialog title="Profil salarial" subtitle="Base salariale, bonus, deductions et recovery rate pour les futurs runs." onClose={() => setActiveSubDialog(null)}>
+              <form className="grid gap-3" onSubmit={handleCreateSalaryProfile}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input className="input" value={salaryForm.employeeCode} onChange={(event) => setSalaryForm((current) => ({ ...current, employeeCode: event.target.value }))} placeholder="Code employe" required />
+                  <input className="input" value={salaryForm.fullName} onChange={(event) => setSalaryForm((current) => ({ ...current, fullName: event.target.value }))} placeholder="Nom complet" required />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input className="input" value={salaryForm.department} onChange={(event) => setSalaryForm((current) => ({ ...current, department: event.target.value }))} placeholder="Departement" required />
+                  <input className="input" value={salaryForm.position} onChange={(event) => setSalaryForm((current) => ({ ...current, position: event.target.value }))} placeholder="Poste" required />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input className="input" type="number" min="0" step="0.01" value={salaryForm.baseSalary} onChange={(event) => setSalaryForm((current) => ({ ...current, baseSalary: event.target.value }))} placeholder="Salaire de base" required />
+                  <select className="input" value={salaryForm.frequency} onChange={(event) => setSalaryForm((current) => ({ ...current, frequency: event.target.value }))}>
+                    {PAYROLL_FREQUENCIES.map((frequency) => <option key={frequency} value={frequency}>{labelizeFrequency(frequency)}</option>)}
+                  </select>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <input className="input" type="number" min="0" step="0.01" value={salaryForm.defaultBonus} onChange={(event) => setSalaryForm((current) => ({ ...current, defaultBonus: event.target.value }))} placeholder="Bonus" />
+                  <input className="input" type="number" min="0" step="0.01" value={salaryForm.defaultDeduction} onChange={(event) => setSalaryForm((current) => ({ ...current, defaultDeduction: event.target.value }))} placeholder="Deductions" />
+                  <input className="input" type="number" min="0" max="100" step="0.01" value={salaryForm.debtRecoveryRate} onChange={(event) => setSalaryForm((current) => ({ ...current, debtRecoveryRate: event.target.value }))} placeholder="Recovery %" />
+                </div>
+                <textarea className="input min-h-24" value={salaryForm.notes} onChange={(event) => setSalaryForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes RH" />
+                <button type="submit" disabled={submittingKey === "salary"} className="btn-primary justify-center px-5 py-3 text-sm font-semibold disabled:opacity-60">
+                  Ajouter le profil salarial
+                </button>
+              </form>
+            </OperationsSubDialog>
+          )}
+
+          {activeSubDialog === "payroll-run-create" && canWrite && (
+            <OperationsSubDialog title="Lancer une paie" subtitle="Genere un run avec calcul net et sorties de cash correspondantes." onClose={() => setActiveSubDialog(null)}>
+              <form className="grid gap-3" onSubmit={handleCreatePayrollRun}>
+                <input className="input" value={payrollForm.title} onChange={(event) => setPayrollForm((current) => ({ ...current, title: event.target.value }))} placeholder="Titre du run" required />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input className="input" value={payrollForm.department} onChange={(event) => setPayrollForm((current) => ({ ...current, department: event.target.value }))} placeholder="Departement cible (optionnel)" />
+                  <select className="input" value={payrollForm.frequency} onChange={(event) => setPayrollForm((current) => ({ ...current, frequency: event.target.value }))}>
+                    {PAYROLL_FREQUENCIES.map((frequency) => <option key={frequency} value={frequency}>{labelizeFrequency(frequency)}</option>)}
+                  </select>
+                </div>
+                <textarea className="input min-h-24" value={payrollForm.notes} onChange={(event) => setPayrollForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes du run" />
+                <button type="submit" disabled={submittingKey === "payroll"} className="rounded-xl border border-brand-500/30 bg-brand-500/10 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-500/20 disabled:opacity-60">
+                  Generer la paie
+                </button>
+              </form>
+            </OperationsSubDialog>
+          )}
         </div>
       )}
 
@@ -1796,6 +1949,29 @@ export function FinancialOperationsPage() {
               {!documentEntries.length && <p className="text-sm text-ink-dim">Aucune piece justificative indexee pour le moment.</p>}
             </div>
           </SectionCard>
+
+          {activeSubDialog === "budget-create" && canWrite && (
+            <OperationsSubDialog title="Nouveau budget" subtitle="Planifier les enveloppes annuelles ou departementales avec seuil d'alerte." onClose={() => setActiveSubDialog(null)}>
+              <form className="grid gap-3" onSubmit={handleCreateBudget}>
+                <input className="input" value={budgetForm.name} onChange={(event) => setBudgetForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nom du budget" required />
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <input className="input" value={budgetForm.department} onChange={(event) => setBudgetForm((current) => ({ ...current, department: event.target.value }))} placeholder="Departement" required />
+                  <input className="input" type="number" min="0" step="0.01" value={budgetForm.plannedAmount} onChange={(event) => setBudgetForm((current) => ({ ...current, plannedAmount: event.target.value }))} placeholder="Montant planifie" required />
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <select className="input" value={budgetForm.categoryId} onChange={(event) => setBudgetForm((current) => ({ ...current, categoryId: event.target.value }))}>
+                    <option value="">Categorie associee</option>
+                    {categories.filter((category) => !category.parentCategoryId).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                  </select>
+                  <input className="input" type="number" min="1" max="100" value={budgetForm.alertThreshold} onChange={(event) => setBudgetForm((current) => ({ ...current, alertThreshold: event.target.value }))} placeholder="Seuil alerte %" />
+                </div>
+                <textarea className="input min-h-24" value={budgetForm.notes} onChange={(event) => setBudgetForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes budgetaires" />
+                <button type="submit" disabled={submittingKey === "budget"} className="btn-primary justify-center px-5 py-3 text-sm font-semibold disabled:opacity-60">
+                  Enregistrer le budget
+                </button>
+              </form>
+            </OperationsSubDialog>
+          )}
         </div>
       )}
         </OperationsDialog>

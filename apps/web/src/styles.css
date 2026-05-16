@@ -315,6 +315,14 @@ body::-webkit-scrollbar-thumb:hover,
     0 0 0 1px rgba(34, 211, 238, 0.08);
 }
 
+.edupay-operations-submodal {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 28px 86px rgba(0, 0, 0, 0.74),
+    0 0 0 1px rgba(34, 211, 238, 0.1),
+    0 0 48px rgba(20, 184, 222, 0.1);
+}
+
 .edupay-parent-tracking-dialog,
 .edupay-parent-tracking-modal {
   overflow-wrap: anywhere;
