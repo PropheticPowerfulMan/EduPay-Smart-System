@@ -116,6 +116,7 @@ type FinanceCatalog = {
 };
 
 type StudentFormState = {
+  id?: string;
   fullName: string;
   classId: string;
   annualFee: string;
@@ -184,6 +185,38 @@ const SCHOOL_SECTIONS: SchoolClass[] = [
     return { id: `section-grade-${grade}`, name: `Grade ${grade}` };
   })
 ];
+
+function getCanonicalSchoolClass(entry: SchoolClass): SchoolClass | null {
+  const normalized = entry.name.trim().toLowerCase();
+  const kindergarten = normalized.match(/\bk\s*([3-5])\b/) || entry.id.toLowerCase().match(/\bk\s*([3-5])\b/);
+  if (kindergarten) return { ...entry, name: `K${kindergarten[1]}` };
+
+  const grade = normalized.match(/\b(?:grade|g)\s*([1-9]|1[0-2])\b/) || entry.id.toLowerCase().match(/\b(?:grade|g)[-\s]*([1-9]|1[0-2])\b/);
+  if (grade) return { ...entry, name: `G${Number(grade[1])}` };
+
+  return null;
+}
+
+function getSchoolClassOptions(classes: SchoolClass[]) {
+  const byName = new Map<string, SchoolClass>();
+  for (const fallbackClass of SCHOOL_SECTIONS) {
+    const canonical = getCanonicalSchoolClass(fallbackClass);
+    if (canonical) byName.set(canonical.name, canonical);
+  }
+  for (const classEntry of classes) {
+    const canonical = getCanonicalSchoolClass(classEntry);
+    if (canonical) byName.set(canonical.name, canonical);
+  }
+
+  return [...byName.values()].sort((a, b) => {
+    const rank = (name: string) => {
+      if (name.startsWith("K")) return Number(name.slice(1));
+      if (name.startsWith("G")) return 10 + Number(name.slice(1));
+      return 100;
+    };
+    return rank(a.name) - rank(b.name);
+  });
+}
 
 /* ─── Icons ──────────────────────────────────────────────────────── */
 function PlusIcon() {
@@ -318,7 +351,7 @@ function resolveGradeGroup(className?: string) {
   const normalized = (className || "").trim().toLowerCase();
   if (!normalized) return "CUSTOM";
   if (/^k\d?/.test(normalized) || normalized.includes("kindergarten")) return "K";
-  const gradeMatch = normalized.match(/grade\s*(\d{1,2})/i);
+  const gradeMatch = normalized.match(/\b(?:grade|g)\s*(\d{1,2})\b/i);
   const grade = gradeMatch ? Number(gradeMatch[1]) : Number.NaN;
   if (!Number.isNaN(grade)) {
     if (grade <= 5) return "GRADE_1_5";
@@ -574,16 +607,22 @@ function DetailModal({
   }, [financeSnapshot]);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-3 py-4 sm:px-5 sm:py-6" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div className="relative w-full max-w-5xl glass rounded-2xl p-8 space-y-6 animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-4 right-4 text-ink-dim hover:text-white transition-colors">
-          <XIcon />
-        </button>
+      <div className="edupay-parent-modal relative flex max-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col overflow-hidden glass rounded-2xl animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-slate-950/90 px-4 py-4 backdrop-blur-xl sm:px-6">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-[0.15em] text-brand-300">{t("pmParentId")}: {parent.displayId || parent.id}</p>
+            <h2 className="mt-1 truncate font-display text-xl font-bold text-white sm:text-2xl">{parent.fullName}</h2>
+          </div>
+          <button onClick={onClose} className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-ink-dim transition-colors hover:text-white">
+            <XIcon />
+          </button>
+        </div>
+        <div className="edupay-scrollbar min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.25fr)]">
           <div className="space-y-6">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.15em] text-brand-300 mb-1">{t("pmParentId")}: {parent.displayId || parent.id}</p>
               <div className="flex items-center gap-4">
                 <div className="h-16 w-16 overflow-hidden rounded-2xl border border-slate-700/60 bg-gradient-to-br from-brand-500 to-accent shrink-0">
                   {parent.photoUrl ? (
@@ -595,12 +634,11 @@ function DetailModal({
                   )}
                 </div>
                 <div>
-                  <h2 className="font-display text-2xl font-bold text-white">{parent.fullName}</h2>
                   <p className="text-xs text-ink-dim mt-1">{t("pmRegisteredOn")} {new Date(parent.createdAt).toLocaleDateString()}</p>
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="rounded-xl bg-slate-900/40 border border-slate-700/50 p-3">
                 <p className="text-xs text-ink-dim">{t("pmPhone")}</p>
                 <p className="text-sm font-semibold text-white mt-1">{parent.phone || "—"}</p>
@@ -628,15 +666,15 @@ function DetailModal({
               ) : (
                 <div className="space-y-2">
                   {parent.students.map((st) => (
-                    <div key={st.id} className="flex items-center justify-between rounded-lg bg-slate-900/40 border border-slate-700/50 px-4 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-white">{st.fullName}</p>
+                    <div key={st.id} className="flex flex-col gap-3 rounded-lg border border-slate-700/50 bg-slate-900/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <p className="break-words text-sm font-semibold text-white">{st.fullName}</p>
                         <p className="text-xs text-ink-dim">{st.className || st.classId}</p>
                         {(st.tuitionPlanName || st.paymentOptionLabel) && (
                           <p className="mt-1 text-xs text-cyan-300">{st.tuitionPlanName || st.paymentOptionLabel}</p>
                         )}
                       </div>
-                      <span className="text-sm font-bold text-emerald-300">
+                      <span className="shrink-0 text-sm font-bold text-emerald-300">
                         {formatMoney(st.annualFee)}
                       </span>
                     </div>
@@ -809,6 +847,7 @@ function DetailModal({
             </div>
           </div>
         </div>
+        </div>
       </div>
     </div>
   );
@@ -864,6 +903,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
       notifyEmail: true,
       notifySms: true,
       students: initial.students.map((s) => ({
+        id: s.id,
         fullName: s.fullName,
         classId: s.classId,
         annualFee: String(s.annualFee),
@@ -873,8 +913,9 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
   });
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const classOptions = useMemo(() => getSchoolClassOptions(classes), [classes]);
 
-  const getClassName = (classId: string) => classes.find((entry) => entry.id === classId)?.name || "";
+  const getClassName = (classId: string) => classOptions.find((entry) => entry.id === classId)?.name || "";
 
   const getMatchingPlans = (classId: string, student?: StudentFormState) => {
     if (!catalog?.plans?.length) return [];
@@ -1020,7 +1061,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
   return (
     <div className="edupay-scrollbar fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="edupay-scrollbar relative my-4 max-h-[92vh] w-full max-w-2xl overflow-y-auto glass rounded-2xl p-4 space-y-5 animate-fadeInUp sm:p-8 sm:space-y-6">
+      <div className="edupay-scrollbar relative my-4 max-h-[92vh] w-full max-w-4xl overflow-y-auto glass rounded-2xl p-4 space-y-5 animate-fadeInUp sm:p-6 sm:space-y-6">
         <button onClick={onClose} className="absolute top-4 right-4 text-ink-dim hover:text-white transition-colors">
           <XIcon />
         </button>
@@ -1162,9 +1203,9 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
             <p className="text-sm text-ink-dim italic">{t("pmNoChildrenForm")}</p>
           )}
           {form.students.map((st, idx) => (
-            <div key={idx} className="space-y-4 rounded-2xl border border-slate-700/50 bg-slate-900/30 p-3 sm:p-4">
+            <div key={idx} className="min-w-0 space-y-4 rounded-2xl border border-slate-700/50 bg-slate-900/30 p-3 sm:p-4">
               <div className="flex items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0">
                   <p className="text-sm font-bold text-white">Élève {idx + 1}</p>
                   <p className="text-xs text-ink-dim">Choisissez une classe puis un plan officiel adapté. Le montant annuel est proposé automatiquement.</p>
                 </div>
@@ -1184,18 +1225,11 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                   <select value={st.classId} onChange={(e) => updateStudentClass(idx, e.target.value)} className="w-full">
                     <option value="">{t("pmSelectClass")}</option>
                     <optgroup label="Maternelle">
-                      {classes.filter((c) => c.name.toLowerCase().startsWith("k")).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                      {classOptions.filter((c) => c.name.startsWith("K")).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </optgroup>
-                    <optgroup label="Grade 1 - Grade 12">
-                      {classes.filter((c) => c.name.toLowerCase().startsWith("grade")).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                    <optgroup label="G1 - G12">
+                      {classOptions.filter((c) => c.name.startsWith("G")).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </optgroup>
-                    {classes.some((c) => !c.name.toLowerCase().startsWith("k") && !c.name.toLowerCase().startsWith("grade")) && (
-                      <optgroup label="Autres">
-                        {classes
-                          .filter((c) => !c.name.toLowerCase().startsWith("k") && !c.name.toLowerCase().startsWith("grade"))
-                          .map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </optgroup>
-                    )}
                   </select>
                 </div>
               </div>
@@ -1252,7 +1286,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                             key={`${idx}-${plan.paymentOptionType}`}
                             type="button"
                             onClick={() => updateStudentPlan(idx, plan.paymentOptionType)}
-                            className={`rounded-2xl border p-4 text-left transition-all ${isActive ? "border-brand-300 bg-brand-500/12 shadow-[0_0_0_1px_rgba(125,232,255,0.2)]" : "border-slate-700/60 bg-slate-900/50 hover:border-brand-400/50 hover:bg-slate-900/70"}`}
+                            className={`min-w-0 rounded-2xl border p-4 text-left transition-all ${isActive ? "border-brand-300 bg-brand-500/12 shadow-[0_0_0_1px_rgba(125,232,255,0.2)]" : "border-slate-700/60 bg-slate-900/50 hover:border-brand-400/50 hover:bg-slate-900/70"}`}
                           >
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                               <div>
@@ -1288,8 +1322,8 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                                 <p className="text-[11px] font-black uppercase tracking-[0.16em] text-ink-dim">Échéancier exact</p>
                                 <div className="space-y-2">
                                   {schedule.map((row, scheduleIdx) => (
-                                    <div key={`${plan.paymentOptionType}-${scheduleIdx}`} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2">
-                                      <div>
+                                    <div key={`${plan.paymentOptionType}-${scheduleIdx}`} className="flex flex-col gap-2 rounded-xl border border-white/10 bg-slate-950/50 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                                      <div className="min-w-0">
                                         <p className="text-sm font-semibold text-white">{row.label}</p>
                                         <p className="text-[11px] text-ink-dim">{getScheduleCaption(row)}</p>
                                       </div>
@@ -1343,7 +1377,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
           ))}
         </div>
 
-        <div className="flex flex-col gap-3 pt-2 sm:flex-row">
+        <div className="sticky bottom-0 -mx-4 flex flex-col gap-3 border-t border-white/10 bg-slate-950/90 px-4 pt-4 sm:-mx-6 sm:flex-row sm:px-6">
           <button onClick={onClose} className="flex-1 py-3 rounded-lg border border-slate-600 text-ink-dim hover:text-white font-semibold text-sm transition-all">
             {t("pmCancel")}
           </button>

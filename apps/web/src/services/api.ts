@@ -203,7 +203,7 @@ type DemoPayrollRun = {
 
 const demoClasses = [
   ...Array.from({ length: 3 }, (_v, index) => ({ id: `section-k${index + 3}`, name: `K${index + 3}` })),
-  ...Array.from({ length: 12 }, (_v, index) => ({ id: `section-grade-${index + 1}`, name: `Grade ${index + 1}` }))
+  ...Array.from({ length: 12 }, (_v, index) => ({ id: `section-grade-${index + 1}`, name: `G${index + 1}` }))
 ];
 
 const seedParents: DemoParent[] = [
@@ -1708,6 +1708,52 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     } as T;
   }
 
+  if (normalizedPath === "/api/classes" && method === "GET") return demoClasses as T;
+
+  const studentMatch = normalizedPath.match(/^\/api\/students\/([^/]+)$/);
+  if (studentMatch && method === "PUT") {
+    const studentId = studentMatch[1];
+    const parents = getDemoParents();
+    const className = demoClasses.find((item) => item.id === body.classId)?.name || String(body.classId ?? "");
+    let updatedStudent: DemoStudent | null = null;
+
+    const nextParents = parents.map((parent) => {
+      const withoutStudent = parent.students.filter((student) => student.id !== studentId);
+      const currentStudent = parent.students.find((student) => student.id === studentId);
+      if (!currentStudent) return parent;
+
+      updatedStudent = {
+        ...currentStudent,
+        fullName: String(body.fullName ?? currentStudent.fullName),
+        classId: String(body.classId ?? currentStudent.classId),
+        className: className || currentStudent.className,
+        annualFee: Number(body.annualFee ?? currentStudent.annualFee)
+      };
+
+      return { ...parent, students: withoutStudent };
+    });
+
+    if (!updatedStudent) throw new Error("Eleve introuvable.");
+
+    const targetParentId = String(body.parentId ?? "");
+    const attachedParents = nextParents.map((parent) => parent.id === targetParentId
+      ? { ...parent, students: [...parent.students, updatedStudent as DemoStudent] }
+      : parent
+    );
+    writeJson(DEMO_PARENTS_KEY, attachedParents);
+    return updatedStudent as T;
+  }
+
+  if (studentMatch && method === "DELETE") {
+    const studentId = studentMatch[1];
+    const parents = getDemoParents().map((parent) => ({
+      ...parent,
+      students: parent.students.filter((student) => student.id !== studentId)
+    }));
+    writeJson(DEMO_PARENTS_KEY, parents);
+    return undefined as T;
+  }
+
   if (normalizedPath === "/api/parents" && method === "GET") return getDemoParents() as T;
   if (normalizedPath === "/api/parents" && method === "POST") {
     const existingParents = getDemoParents();
@@ -1825,6 +1871,7 @@ function canFallbackToDemo(path: string, init?: RequestInit) {
     path === "/api/ai/assistant" ||
     path.startsWith("/api/finance") ||
     path.startsWith("/api/expenses") ||
+    path.startsWith("/api/students") ||
     path.startsWith("/api/parents/me");
 }
 

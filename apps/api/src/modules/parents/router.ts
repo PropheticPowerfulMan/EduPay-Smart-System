@@ -26,6 +26,7 @@ async function generateUniqueParentAccessCode(tx: typeof prisma) {
 }
 
 const studentInputSchema = z.object({
+  id: z.string().optional(),
   fullName: z.string().min(1),
   classId: z.string().min(1),
   annualFee: z.union([z.string(), z.number()]).transform((v) => parseFloat(String(v))),
@@ -772,15 +773,95 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
   const { id } = req.params;
   const payload = parentSchema.parse(req.body);
   try {
-    const parent = await prisma.parent.update({
+    const parentExists = await prisma.parent.findFirst({
+      where: { id, schoolId: req.user!.schoolId },
+      select: { id: true }
+    });
+    if (!parentExists) return res.status(404).json({ message: "Parent non trouve" });
+
+    const classIds = payload.students.map((student) => student.classId);
+    if (classIds.length) {
+      const classCount = await prisma.class.count({
+        where: {
+          schoolId: req.user!.schoolId,
+          id: { in: classIds }
+        }
+      });
+      if (classCount !== new Set(classIds).size) {
+        return res.status(404).json({ message: "Une ou plusieurs classes sont introuvables." });
+      }
+    }
+
+    const updatedStudentAssignments: Array<{ id: string; fullName: string; annualFee: number; paymentOptionType: PaymentOptionType }> = [];
+    await prisma.$transaction(async (tx) => {
+      await tx.parent.update({
+        where: { id },
+        data: {
+          fullName: payload.fullName,
+          phone: payload.phone,
+          email: payload.email,
+          photoUrl: payload.photoUrl || null,
+          preferredLanguage: payload.preferredLanguage
+        }
+      });
+
+      const existingStudents = await tx.student.findMany({
+        where: { parentId: id, schoolId: req.user!.schoolId },
+        select: { id: true }
+      });
+      const existingStudentIds = new Set(existingStudents.map((student) => student.id));
+      const requestedExistingIds = new Set(payload.students.map((student) => student.id).filter((studentId): studentId is string => Boolean(studentId)));
+      const studentsToDelete = [...existingStudentIds].filter((studentId) => !requestedExistingIds.has(studentId));
+
+      if (studentsToDelete.length) {
+        await tx.student.deleteMany({
+          where: {
+            parentId: id,
+            schoolId: req.user!.schoolId,
+            id: { in: studentsToDelete }
+          }
+        });
+      }
+
+      for (const student of payload.students) {
+        if (student.id && existingStudentIds.has(student.id)) {
+          const updatedStudent = await tx.student.update({
+            where: { id: student.id },
+            data: {
+              fullName: student.fullName,
+              classId: student.classId,
+              annualFee: student.annualFee
+            },
+            select: { id: true, fullName: true, annualFee: true }
+          });
+          updatedStudentAssignments.push({ ...updatedStudent, paymentOptionType: student.paymentOptionType });
+          continue;
+        }
+
+        const studentId = await generateUniqueStudentId(tx as typeof prisma, req.user!.schoolId, student.fullName);
+        const createdStudent = await tx.student.create({
+          data: {
+            id: studentId,
+            fullName: student.fullName,
+            classId: student.classId,
+            annualFee: student.annualFee,
+            parentId: id,
+            schoolId: req.user!.schoolId
+          },
+          select: { id: true, fullName: true, annualFee: true }
+        });
+        updatedStudentAssignments.push({ ...createdStudent, paymentOptionType: student.paymentOptionType });
+      }
+    });
+
+    await assignOnboardingFinance({
+      schoolId: req.user!.schoolId,
+      parentId: id,
+      students: updatedStudentAssignments
+    });
+
+    const parent = await prisma.parent.findUnique({
       where: { id },
-      data: {
-        fullName: payload.fullName,
-        phone: payload.phone,
-        email: payload.email,
-        photoUrl: payload.photoUrl || null,
-        preferredLanguage: payload.preferredLanguage
-      },
       include: parentInclude
     });
     return res.json(enrichParent({ ...parent, nom: payload.nom, postnom: payload.postnom, prenom: payload.prenom }));

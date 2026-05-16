@@ -20,6 +20,13 @@ const createStudentSchema = z.object({
   }
 });
 
+const updateStudentSchema = z.object({
+  parentId: z.string().min(1),
+  classId: z.string().min(1),
+  fullName: z.string().min(3),
+  annualFee: z.number().nonnegative()
+});
+
 export const studentRouter = Router();
 studentRouter.use(authGuard);
 
@@ -56,4 +63,50 @@ studentRouter.get("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
   });
 
   res.json(students);
+});
+
+studentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
+  const payload = updateStudentSchema.parse(req.body);
+
+  const [parent, classRow] = await Promise.all([
+    prisma.parent.findFirst({ where: { id: payload.parentId, schoolId: req.user!.schoolId }, select: { id: true } }),
+    prisma.class.findFirst({ where: { id: payload.classId, schoolId: req.user!.schoolId }, select: { id: true } })
+  ]);
+
+  if (!parent) return res.status(404).json({ message: "Parent introuvable." });
+  if (!classRow) return res.status(404).json({ message: "Classe introuvable." });
+
+  const existing = await prisma.student.findFirst({
+    where: { id: req.params.id, schoolId: req.user!.schoolId },
+    select: { id: true }
+  });
+  if (!existing) return res.status(404).json({ message: "Eleve introuvable." });
+
+  const student = await prisma.student.update({
+    where: { id: req.params.id },
+    data: {
+      fullName: payload.fullName,
+      classId: payload.classId,
+      parentId: payload.parentId,
+      annualFee: payload.annualFee
+    },
+    include: {
+      class: true,
+      parent: true,
+      payments: true
+    }
+  });
+
+  return res.json(student);
+});
+
+studentRouter.delete("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
+  const existing = await prisma.student.findFirst({
+    where: { id: req.params.id, schoolId: req.user!.schoolId },
+    select: { id: true }
+  });
+  if (!existing) return res.status(404).json({ message: "Eleve introuvable." });
+
+  await prisma.student.delete({ where: { id: req.params.id } });
+  return res.status(204).end();
 });

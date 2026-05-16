@@ -254,10 +254,10 @@ const EMPTY_EXPENSE_FORM: ExpenseFormState = {
   categoryId: "",
   vendorId: "",
   budgetId: "",
-  department: "Administration",
+  department: "",
   amount: "",
-  paymentMethod: "CASH",
-  expenseDate: new Date().toISOString().slice(0, 10),
+  paymentMethod: "",
+  expenseDate: "",
   supplierName: "",
   comments: "",
   attachmentName: "",
@@ -1500,37 +1500,71 @@ export function FinancialOperationsPage() {
           {activeSubDialog === "expense-create" && canWrite && (
             <OperationsSubDialog title="Nouvelle depense" subtitle="Soumettre une sortie de cash avec categorie, budget et piece justificative." onClose={() => setActiveSubDialog(null)}>
               <form className="grid gap-3" onSubmit={handleCreateExpense}>
-                    <input className="input" value={expenseForm.title} onChange={(event) => setExpenseForm((current) => ({ ...current, title: event.target.value }))} placeholder="Titre de la depense" required />
+                    <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                      Titre
+                      <input className="input" value={expenseForm.title} onChange={(event) => setExpenseForm((current) => ({ ...current, title: event.target.value }))} placeholder="Ex: Achat de fournitures" required />
+                    </label>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <select className="input" value={expenseForm.categoryId} onChange={(event) => setExpenseForm((current) => ({ ...current, categoryId: event.target.value }))} required>
-                        <option value="">Categorie</option>
-                        {leafCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                      </select>
-                      <select className="input" value={expenseForm.budgetId} onChange={(event) => setExpenseForm((current) => ({ ...current, budgetId: event.target.value }))}>
-                        <option value="">Budget associe</option>
-                        {budgets.map((budget) => <option key={budget.id} value={budget.id}>{budget.name}</option>)}
-                      </select>
+                      <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                        Categorie
+                        <select className="input" value={expenseForm.categoryId} onChange={(event) => setExpenseForm((current) => ({ ...current, categoryId: event.target.value }))} required>
+                          <option value="">Choisir la categorie de la sortie</option>
+                          {leafCategories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                        </select>
+                      </label>
+                      <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                        Budget associe
+                        <select className="input" value={expenseForm.budgetId} onChange={(event) => setExpenseForm((current) => ({ ...current, budgetId: event.target.value }))}>
+                          <option value="">Aucun budget lie</option>
+                          {budgets.map((budget) => <option key={budget.id} value={budget.id}>{budget.name}</option>)}
+                        </select>
+                      </label>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <select className="input" value={expenseForm.vendorId} onChange={(event) => setExpenseForm((current) => ({ ...current, vendorId: event.target.value }))}>
-                        <option value="">Fournisseur</option>
-                        {vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
-                      </select>
-                      <input className="input" value={expenseForm.supplierName} onChange={(event) => setExpenseForm((current) => ({ ...current, supplierName: event.target.value }))} placeholder="Nom fournisseur libre" />
+                      <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                        Fournisseur existant
+                        <select className="input" value={expenseForm.vendorId} onChange={(event) => setExpenseForm((current) => ({ ...current, vendorId: event.target.value }))}>
+                          <option value="">Aucun fournisseur existant</option>
+                          {vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
+                        </select>
+                      </label>
+                      <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                        Fournisseur libre
+                        <input className="input" value={expenseForm.supplierName} onChange={(event) => setExpenseForm((current) => ({ ...current, supplierName: event.target.value }))} placeholder="Nom si le fournisseur n'existe pas encore" />
+                      </label>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <input className="input" value={expenseForm.department} onChange={(event) => setExpenseForm((current) => ({ ...current, department: event.target.value }))} placeholder="Departement responsable" required />
-                      <input className="input" type="number" min="0" step="0.01" value={expenseForm.amount} onChange={(event) => setExpenseForm((current) => ({ ...current, amount: event.target.value }))} placeholder="Montant" required />
+                      <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                        Departement
+                        <input className="input" value={expenseForm.department} onChange={(event) => setExpenseForm((current) => ({ ...current, department: event.target.value }))} placeholder="Ex: Administration, Transport, Academique" required />
+                      </label>
+                      <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                        Montant
+                        <input className="input" type="number" min="0" step="0.01" value={expenseForm.amount} onChange={(event) => setExpenseForm((current) => ({ ...current, amount: event.target.value }))} placeholder="Montant en USD" required />
+                      </label>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <select className="input" value={expenseForm.paymentMethod} onChange={(event) => setExpenseForm((current) => ({ ...current, paymentMethod: event.target.value }))}>
-                        {PAYMENT_METHODS.map((method) => <option key={method} value={method}>{method}</option>)}
-                      </select>
-                      <input className="input" type="date" value={expenseForm.expenseDate} onChange={(event) => setExpenseForm((current) => ({ ...current, expenseDate: event.target.value }))} required />
+                      <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                        Mode de paiement
+                        <select className="input" value={expenseForm.paymentMethod} onChange={(event) => setExpenseForm((current) => ({ ...current, paymentMethod: event.target.value }))}>
+                          <option value="">Non precise</option>
+                          {PAYMENT_METHODS.map((method) => <option key={method} value={method}>{method}</option>)}
+                        </select>
+                      </label>
+                      <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                        Date de la depense
+                        <input className="input" type="date" value={expenseForm.expenseDate} onChange={(event) => setExpenseForm((current) => ({ ...current, expenseDate: event.target.value }))} required />
+                      </label>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
-                      <input className="input" value={expenseForm.attachmentName} onChange={(event) => setExpenseForm((current) => ({ ...current, attachmentName: event.target.value }))} placeholder="Nom piece justificative" />
-                      <input className="input" value={expenseForm.attachmentUrl} onChange={(event) => setExpenseForm((current) => ({ ...current, attachmentUrl: event.target.value }))} placeholder="URL ou reference document" />
+                      <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                        Nom de la piece
+                        <input className="input" value={expenseForm.attachmentName} onChange={(event) => setExpenseForm((current) => ({ ...current, attachmentName: event.target.value }))} placeholder="Ex: Facture, bon de livraison" />
+                      </label>
+                      <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                        Reference document
+                        <input className="input" value={expenseForm.attachmentUrl} onChange={(event) => setExpenseForm((current) => ({ ...current, attachmentUrl: event.target.value }))} placeholder="URL, numero ou reference interne" />
+                      </label>
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                       <label className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-dim">Depot documentaire</label>
@@ -1556,7 +1590,10 @@ export function FinancialOperationsPage() {
                         </div>
                       )}
                     </div>
-                    <textarea className="input min-h-24" value={expenseForm.comments} onChange={(event) => setExpenseForm((current) => ({ ...current, comments: event.target.value }))} placeholder="Commentaires, notes, periode, justification..." />
+                    <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                      Commentaires
+                      <textarea className="input min-h-24" value={expenseForm.comments} onChange={(event) => setExpenseForm((current) => ({ ...current, comments: event.target.value }))} placeholder="Motif, periode concernee, validation attendue..." />
+                    </label>
                     <button type="submit" disabled={submittingKey === "expense"} className="btn-primary justify-center px-5 py-3 text-sm font-semibold disabled:opacity-60">
                       Soumettre la depense
                     </button>
@@ -1568,10 +1605,7 @@ export function FinancialOperationsPage() {
             <OperationsSubDialog title="Nouveau fournisseur" subtitle="Creer un tiers payable pour les achats, abonnements et utilities." onClose={() => setActiveSubDialog(null)}>
               <form className="grid gap-3" onSubmit={handleCreateVendor}>
                     <input className="input" value={vendorForm.name} onChange={(event) => setVendorForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nom fournisseur" required />
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <input className="input" value={vendorForm.contactName} onChange={(event) => setVendorForm((current) => ({ ...current, contactName: event.target.value }))} placeholder="Contact" />
-                      <input className="input" value={vendorForm.phone} onChange={(event) => setVendorForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Telephone" />
-                    </div>
+                    <input className="input" value={vendorForm.phone} onChange={(event) => setVendorForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Telephone" />
                     <input className="input" value={vendorForm.email} onChange={(event) => setVendorForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" />
                     <input className="input" value={vendorForm.address} onChange={(event) => setVendorForm((current) => ({ ...current, address: event.target.value }))} placeholder="Adresse" />
                     <textarea className="input min-h-20" value={vendorForm.notes} onChange={(event) => setVendorForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes fournisseur" />
