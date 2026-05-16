@@ -83,7 +83,29 @@ type FinanceSnapshot = {
     status: string;
     createdAt: string;
     receiptNumber?: string | null;
+    allocationTrace?: AllocationTrace | null;
     students: Array<{ id: string; fullName: string }>;
+  }>;
+};
+
+type AllocationTrace = {
+  mode?: string;
+  totalReceived: number;
+  allocatedTotal: number;
+  advanceBalance: number;
+  perChild: Array<{
+    studentId: string | null;
+    studentName: string;
+    allocated: number;
+    remaining: number;
+    lines: Array<{
+      allocationId: string;
+      label: string;
+      dueDate: string;
+      allocated: number;
+      outstandingAfter: number;
+      status: string;
+    }>;
   }>;
 };
 
@@ -532,6 +554,36 @@ function AdminParentDialog({
           {children}
         </div>
       </section>
+    </div>
+  );
+}
+
+function AllocationTraceBlock({ trace, money, lang }: { trace?: AllocationTrace | null; money: Intl.NumberFormat; lang: string }) {
+  if (!trace) return null;
+  return (
+    <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-3">
+      <div className="flex flex-wrap justify-between gap-2 text-xs">
+        <p className="font-black uppercase tracking-[0.16em] text-emerald-100">Repartition tracee par EduPay {trace.mode ? `(${trace.mode})` : ""}</p>
+        <p className="font-mono font-bold text-emerald-200">{money.format(trace.allocatedTotal)} / {money.format(trace.totalReceived)}</p>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {trace.perChild.map((child) => (
+          <div key={`${child.studentId ?? child.studentName}-${child.allocated}`} className="rounded-xl border border-white/10 bg-slate-950/35 p-3">
+            <div className="flex flex-wrap justify-between gap-2 text-sm">
+              <p className="font-semibold text-white">{child.studentName}</p>
+              <p className="font-mono text-emerald-200">{money.format(child.allocated)} applique · reste {money.format(child.remaining)}</p>
+            </div>
+            <div className="mt-2 space-y-1 text-xs text-ink-dim">
+              {child.lines.map((line) => (
+                <p key={line.allocationId}>
+                  {line.label} ({new Date(line.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}): {money.format(line.allocated)} applique, solde {money.format(line.outstandingAfter)} · {line.status}
+                </p>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      {trace.advanceBalance > 0 && <p className="mt-2 text-xs text-emerald-100">Avance conservee: {money.format(trace.advanceBalance)}</p>}
     </div>
   );
 }
@@ -1150,6 +1202,7 @@ export function FinanceParentAdminPage() {
                               <span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${tone(payment.status)}`}>{statusLabel(payment.status, copy)}</span>
                             </div>
                           </div>
+                          <AllocationTraceBlock trace={payment.allocationTrace} money={money} lang={lang} />
                         </article>
                       ))}
                     </div>

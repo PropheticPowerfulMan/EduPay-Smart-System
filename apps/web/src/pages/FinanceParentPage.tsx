@@ -127,12 +127,14 @@ type FinanceSnapshot = {
     status: string;
     createdAt: string;
     receiptNumber?: string | null;
+    allocationTrace?: AllocationTrace | null;
     students: Array<{ id: string; fullName: string }>;
   }>;
   historicalReceipts: Array<{
     id: string;
     receiptNumber: string;
     transactionNumber: string;
+    allocationTrace?: AllocationTrace | null;
     createdAt: string;
   }>;
   notificationHistory?: Array<{
@@ -142,6 +144,30 @@ type FinanceSnapshot = {
     content: string;
     status: string;
     createdAt: string;
+  }>;
+};
+
+type AllocationTrace = {
+  mode?: string;
+  traceSource: string;
+  totalReceived: number;
+  allocatedTotal: number;
+  advanceBalance: number;
+  perChild: Array<{
+    studentId: string | null;
+    studentName: string;
+    allocated: number;
+    remaining: number;
+    lines: Array<{
+      allocationId: string;
+      installmentId: string;
+      label: string;
+      dueDate: string;
+      amountDue: number;
+      allocated: number;
+      outstandingAfter: number;
+      status: string;
+    }>;
   }>;
 };
 
@@ -251,6 +277,36 @@ function ParentInsightCard({
       <p className="text-xs font-bold uppercase tracking-[0.14em] text-ink-dim">{label}</p>
       <p className={`mt-2 break-words font-display text-xl font-bold ${tone}`}>{value}</p>
       <p className="mt-1 text-xs leading-relaxed text-ink-dim">{detail}</p>
+    </div>
+  );
+}
+
+function AllocationTraceBlock({ trace, money, lang }: { trace?: AllocationTrace | null; money: Intl.NumberFormat; lang: string }) {
+  if (!trace) return null;
+  return (
+    <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+        <p className="font-black uppercase tracking-[0.16em] text-emerald-100">Repartition tracee {trace.mode ? `(${trace.mode})` : ""}</p>
+        <p className="font-mono font-bold text-emerald-200">{money.format(trace.allocatedTotal)} applique / {money.format(trace.totalReceived)} recu</p>
+      </div>
+      {trace.advanceBalance > 0 && <p className="mt-1 text-xs text-emerald-100">Avance conservee: {money.format(trace.advanceBalance)}</p>}
+      <div className="mt-3 grid gap-2">
+        {trace.perChild.map((child) => (
+          <div key={`${child.studentId ?? child.studentName}-${child.allocated}`} className="rounded-xl border border-white/10 bg-slate-950/35 p-3">
+            <div className="flex flex-wrap justify-between gap-2 text-sm">
+              <p className="font-semibold text-white">{child.studentName}</p>
+              <p className="font-mono text-emerald-200">{money.format(child.allocated)} applique · reste {money.format(child.remaining)}</p>
+            </div>
+            <div className="mt-2 space-y-1 text-xs text-ink-dim">
+              {child.lines.map((line) => (
+                <p key={line.allocationId}>
+                  {line.label} ({new Date(line.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}): {money.format(line.allocated)} applique, solde {money.format(line.outstandingAfter)} · {line.status}
+                </p>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -815,6 +871,7 @@ export function FinanceParentPage() {
                   <div key={payment.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-semibold text-white">{payment.reason}</p><p className="mt-1 text-xs text-ink-dim">{payment.transactionNumber} - {new Date(payment.createdAt).toLocaleString(lang === "fr" ? "fr-FR" : "en-US")}</p></div><div className="text-right"><p className="font-mono text-lg font-bold text-emerald-300">{money.format(payment.amount)}</p><span className={`inline-flex rounded-full border px-3 py-1 text-xs font-semibold ${statusTone(payment.status)}`}>{payment.status}</span></div></div>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs"><span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-ink-dim">{payment.method}</span>{payment.receiptNumber && <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-cyan-200">{payment.receiptNumber}</span>}{payment.students.map((student) => <span key={student.id} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-ink-dim">{student.fullName}</span>)}</div>
+                    <AllocationTraceBlock trace={payment.allocationTrace} money={moneyInstallment} lang={lang} />
                   </div>
                 ))}
               </section>
@@ -822,7 +879,7 @@ export function FinanceParentPage() {
                 <h3 className="font-display text-xl font-bold text-white">Historical receipts</h3>
                 {snapshot.historicalReceipts.length === 0 && <p className="text-sm text-ink-dim">Aucun recu archive.</p>}
                 {snapshot.historicalReceipts.map((receipt) => (
-                  <div key={receipt.id} className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm"><div className="flex items-center justify-between gap-3"><div><p className="font-semibold text-white">{receipt.receiptNumber}</p><p className="text-xs text-ink-dim">{receipt.transactionNumber}</p></div><p className="text-xs text-ink-dim">{new Date(receipt.createdAt).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}</p></div></div>
+                  <div key={receipt.id} className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm"><div className="flex items-center justify-between gap-3"><div><p className="font-semibold text-white">{receipt.receiptNumber}</p><p className="text-xs text-ink-dim">{receipt.transactionNumber}</p></div><p className="text-xs text-ink-dim">{new Date(receipt.createdAt).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}</p></div><AllocationTraceBlock trace={receipt.allocationTrace} money={moneyInstallment} lang={lang} /></div>
                 ))}
               </section>
             </div>
@@ -1101,6 +1158,7 @@ export function FinanceParentPage() {
                       <span key={student.id} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-ink-dim">{student.fullName}</span>
                     ))}
                   </div>
+                  <AllocationTraceBlock trace={payment.allocationTrace} money={moneyInstallment} lang={lang} />
                 </div>
               ))}
             </div>
@@ -1125,6 +1183,7 @@ export function FinanceParentPage() {
                     </div>
                     <p className="text-xs text-ink-dim">{new Date(receipt.createdAt).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}</p>
                   </div>
+                  <AllocationTraceBlock trace={receipt.allocationTrace} money={moneyInstallment} lang={lang} />
                 </div>
               ))}
             </div>

@@ -1,5 +1,7 @@
 import { schoolBranding } from "../config/branding";
 
+const DEFAULT_RECEIPT_VERIFICATION_BASE_URL = "https://edupay-web.onrender.com/EduPay-Smart-System/";
+
 export type PaymentMethodCode = "CASH" | "AIRTEL_MONEY" | "MPESA" | "ORANGE_MONEY";
 export type PaymentStatusCode = "COMPLETED" | "PENDING" | "FAILED";
 
@@ -166,7 +168,11 @@ export function buildReceiptVerificationUrl(
   const security = buildReceiptSecurity(input);
   const tx = encodeURIComponent(input.transactionNumber);
   const code = encodeURIComponent(security.verificationCode);
-  return `${locationLike.origin}${locationLike.pathname}#/receipt/verify?tx=${tx}&c=${code}`;
+  const configuredBaseUrl = import.meta.env.VITE_RECEIPT_VERIFICATION_BASE_URL || import.meta.env.VITE_PUBLIC_APP_URL || DEFAULT_RECEIPT_VERIFICATION_BASE_URL;
+  const fallbackBaseUrl = `${locationLike.origin}${locationLike.pathname}`;
+  const rawBaseUrl = configuredBaseUrl.trim() || fallbackBaseUrl;
+  const baseUrl = rawBaseUrl.endsWith("/") ? rawBaseUrl : `${rawBaseUrl}/`;
+  return `${baseUrl}#/receipt/verify?tx=${tx}&c=${code}`;
 }
 
 export function parseReceiptVerificationToken(token: string | null) {

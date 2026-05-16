@@ -908,7 +908,15 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
     }),
     prisma.payment.findMany({
       where: { parentId: input.parentId, schoolId: input.schoolId },
-      include: { receipt: true, students: true, allocations: true },
+      include: {
+        receipt: true,
+        students: true,
+        allocations: {
+          include: {
+            installment: { include: { student: true } }
+          }
+        }
+      },
       orderBy: { createdAt: "asc" }
     }),
     prisma.notificationLog.findMany({
@@ -1155,6 +1163,75 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
 
   const overdueInstallmentRows = finalizedInstallments.filter((installment) => installment.isOverdue);
 
+  const getReceiptAllocationMode = (payment: typeof payments[number]) => {
+    if (!payment.receipt?.pdfBase64) return null;
+    try {
+      const parsed = JSON.parse(Buffer.from(payment.receipt.pdfBase64, "base64").toString("utf8")) as { allocation?: { mode?: string } };
+      return parsed.allocation?.mode ?? null;
+    } catch {
+      return null;
+    }
+  };
+
+  const summarizePersistedPaymentAllocation = (payment: typeof payments[number]) => {
+    if (!payment.allocations.length) return null;
+    const lines = payment.allocations
+      .slice()
+      .sort((left, right) => left.installment.dueDate.getTime() - right.installment.dueDate.getTime())
+      .map((allocation) => {
+        const installment = allocation.installment;
+        const amountDue = roundCurrency(Number(installment.amountDue || 0));
+        const amountPaid = roundCurrency(Number(installment.amountPaid || 0));
+        const allocated = roundCurrency(Number(allocation.amount || 0));
+        return {
+          allocationId: allocation.id,
+          installmentId: installment.id,
+          studentId: installment.studentId,
+          studentName: installment.student?.fullName ?? "Parent account",
+          label: installment.label,
+          periodKey: installment.periodKey,
+          dueDate: installment.dueDate.toISOString(),
+          amountDue,
+          allocated,
+          amountPaidAfterAllocation: amountPaid,
+          outstandingAfter: roundCurrency(Math.max(amountDue - amountPaid, 0)),
+          status: installment.status,
+          createdAt: allocation.createdAt.toISOString()
+        };
+      });
+    const perChild = Object.values(lines.reduce<Record<string, {
+      studentId: string | null;
+      studentName: string;
+      allocated: number;
+      remaining: number;
+      lines: typeof lines;
+    }>>((acc, line) => {
+      const key = line.studentId ?? line.studentName;
+      const current = acc[key] ?? {
+        studentId: line.studentId,
+        studentName: line.studentName,
+        allocated: 0,
+        remaining: 0,
+        lines: []
+      };
+      current.allocated = roundCurrency(current.allocated + line.allocated);
+      current.remaining = roundCurrency(current.remaining + line.outstandingAfter);
+      current.lines.push(line);
+      acc[key] = current;
+      return acc;
+    }, {}));
+    const allocatedTotal = roundCurrency(lines.reduce((sum, line) => sum + line.allocated, 0));
+    return {
+      mode: getReceiptAllocationMode(payment) ?? "LEDGER_AUTO",
+      traceSource: "PaymentAllocation",
+      totalReceived: roundCurrency(Number(payment.amount || 0)),
+      allocatedTotal,
+      advanceBalance: roundCurrency(Math.max(Number(payment.amount || 0) - allocatedTotal, 0)),
+      perChild,
+      lines
+    };
+  };
+
   const derivedAlerts = [] as Array<{
     id: string;
     type: string;
@@ -1276,18 +1353,22 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
     paymentHistory: payments
       .slice()
       .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
-      .map((payment) => ({
-        id: payment.id,
-        transactionNumber: payment.transactionNumber,
-        amount: roundCurrency(Number(payment.amount || 0)),
-        reason: payment.reason,
-        method: payment.method,
-        status: payment.status,
-        createdAt: payment.createdAt.toISOString(),
-        receiptId: payment.receipt?.id ?? null,
-        receiptNumber: payment.receipt?.receiptNumber ?? null,
-        students: payment.students.map((student) => ({ id: student.id, fullName: student.fullName }))
-      })),
+      .map((payment) => {
+        const allocationTrace = summarizePersistedPaymentAllocation(payment);
+        return {
+          id: payment.id,
+          transactionNumber: payment.transactionNumber,
+          amount: roundCurrency(Number(payment.amount || 0)),
+          reason: payment.reason,
+          method: payment.method,
+          status: payment.status,
+          createdAt: payment.createdAt.toISOString(),
+          receiptId: payment.receipt?.id ?? null,
+          receiptNumber: payment.receipt?.receiptNumber ?? null,
+          allocationTrace,
+          students: payment.students.map((student) => ({ id: student.id, fullName: student.fullName }))
+        };
+      }),
     historicalReceipts: payments
       .filter((payment) => payment.receipt)
       .map((payment) => ({
@@ -1295,6 +1376,7 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
         receiptNumber: payment.receipt!.receiptNumber,
         paymentId: payment.id,
         transactionNumber: payment.transactionNumber,
+        allocationTrace: summarizePersistedPaymentAllocation(payment),
         createdAt: payment.receipt!.createdAt.toISOString()
       })),
     notificationHistory: notificationLogs.map((log) => ({

@@ -1659,7 +1659,7 @@ export function PaymentsPage() {
       setApiError("Choisissez un parent et entrez un montant avant de confirmer.");
       return;
     }
-    if (!tuitionPreview) {
+    if (allocationMode === "MANUAL" && !tuitionPreview) {
       setApiError("Previsualisez d'abord la repartition automatique ou manuelle avant de confirmer le paiement tuition.");
       return;
     }
@@ -1702,8 +1702,8 @@ export function PaymentsPage() {
       setCurrentReceipt(record);
       setTuitionPreview(result);
       setNotificationStatus("Tuition allocation saved, alerts/audit log generated when required.");
+      setPaymentDetailsDialogOpen(false);
       setView("receipt");
-      setForm(EMPTY_FORM);
       setFieldErrors({});
     } catch (error) {
       setApiError(error instanceof Error ? error.message : "Impossible d'enregistrer le paiement tuition.");
@@ -1713,10 +1713,21 @@ export function PaymentsPage() {
     }
   };
 
+  const shouldUseTuitionEngineForFamilyPayment = Boolean(
+    form.parentId
+    && selectedParent
+    && (selectedParent.students?.length ?? 0) > 0
+    && form.status === "COMPLETED"
+    && (
+      form.reason.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").includes("paiement scolaire")
+      || getProductSearchTags(form.reason).some((tag) => ["frais scolaires", "arrieres"].includes(tag))
+    )
+  );
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    if (tuitionPreview) {
+    if (tuitionPreview || (allocationMode === "AUTO" && shouldUseTuitionEngineForFamilyPayment)) {
       await confirmTuitionPayment();
       return;
     }
@@ -1778,8 +1789,8 @@ export function PaymentsPage() {
     setPayments((prev) => [record, ...prev]);
     setSaving(false);
     setCurrentReceipt(record);
+    setPaymentDetailsDialogOpen(false);
     setView("receipt");
-    setForm(EMPTY_FORM);
     setFieldErrors({});
   };
 
@@ -1940,7 +1951,13 @@ export function PaymentsPage() {
             <p className="text-ink-dim mt-1 text-sm">{t("receiptSuccess")}</p>
           </div>
           <button
-            onClick={() => setView("form")}
+            onClick={() => {
+              setForm(EMPTY_FORM);
+              setCurrentReceipt(null);
+              setTuitionPreview(null);
+              setPaymentDetailsDialogOpen(true);
+              setView("form");
+            }}
             className="flex items-center gap-2 px-4 py-2 rounded-lg border border-slate-600 text-ink-dim hover:text-white hover:border-slate-400 transition-all text-sm font-semibold"
           >
             + {t("newPaymentBtn")}

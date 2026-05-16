@@ -32,6 +32,9 @@ services:
           type: web
           property: url
 
+      - key: VITE_RECEIPT_VERIFICATION_BASE_URL
+        value: https://edupay-web.onrender.com/EduPay-Smart-System/
+
       - key: VITE_ENVIRONMENT
         value: production
 

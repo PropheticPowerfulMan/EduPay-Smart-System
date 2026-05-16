@@ -50,19 +50,83 @@ function buildPaymentSubjectName(students: Array<{ fullName: string }>, fallback
   return `${students[0].fullName} + ${students.length - 1} autres`;
 }
 
+function parseTuitionAllocationSummary(
+  receipt: { pdfBase64?: string | null } | null | undefined,
+  fallbackAmount: number
+) {
+  if (!receipt?.pdfBase64) return null;
+  try {
+    const decoded = Buffer.from(receipt.pdfBase64, "base64").toString("utf8");
+    const parsed = JSON.parse(decoded) as {
+      allocation?: {
+        mode?: string;
+        message?: string;
+        totalReceived?: number;
+        allocatedTotal?: number;
+        missingAmount?: number;
+        advanceBalance?: number;
+        lines?: Array<{
+          studentName: string;
+          label: string;
+          dueBucket: string;
+          outstandingBefore?: number;
+          allocated: number;
+          outstandingAfter: number;
+        }>;
+      };
+    };
+
+    if (!parsed.allocation?.lines) return null;
+
+    const perChild = parsed.allocation.lines.reduce<Record<string, {
+      studentName: string;
+      allocated: number;
+      remaining: number;
+      lines: Array<{ label: string; dueBucket: string; outstandingBefore: number; allocated: number; outstandingAfter: number }>;
+    }>>((acc, line) => {
+      const current = acc[line.studentName] ?? { studentName: line.studentName, allocated: 0, remaining: 0, lines: [] };
+      current.allocated += Number(line.allocated || 0);
+      current.remaining += Number(line.outstandingAfter || 0);
+      current.lines.push({
+        label: line.label,
+        dueBucket: line.dueBucket,
+        outstandingBefore: Number(line.outstandingBefore || 0),
+        allocated: Number(line.allocated || 0),
+        outstandingAfter: Number(line.outstandingAfter || 0)
+      });
+      acc[line.studentName] = current;
+      return acc;
+    }, {});
+
+    return {
+      mode: parsed.allocation.mode ?? "AUTO",
+      message: parsed.allocation.message ?? "",
+      totalReceived: parsed.allocation.totalReceived ?? fallbackAmount,
+      allocatedTotal: parsed.allocation.allocatedTotal ?? fallbackAmount,
+      missingAmount: parsed.allocation.missingAmount ?? 0,
+      advanceBalance: parsed.allocation.advanceBalance ?? 0,
+      perChild: Object.values(perChild)
+    };
+  } catch {
+    return null;
+  }
+}
+
 function serializePayment(
-  payment: { parent?: { fullName: string } | null; students: Array<{ fullName: string }> } & Record<string, unknown>,
+  payment: { parent?: { fullName: string } | null; students: Array<{ fullName: string }>; receipt?: { pdfBase64?: string | null } | null; amount?: number } & Record<string, unknown>,
   options: { fallbackParentName?: string; requestedStudentDisplayName?: string } = {}
 ) {
   const parentFullName = payment.parent?.fullName ?? options.fallbackParentName ?? "";
   const studentNames = payment.students.map((student) => student.fullName);
   const paymentSubjectName = options.requestedStudentDisplayName?.trim() || buildPaymentSubjectName(payment.students, parentFullName);
+  const tuitionAllocationSummary = parseTuitionAllocationSummary(payment.receipt, Number(payment.amount || 0));
 
   return {
     ...payment,
     parentFullName,
     studentNames,
     paymentSubjectName,
+    tuitionAllocationSummary,
   };
 }
 
@@ -87,62 +151,7 @@ function serializePublicVerificationPayment(
   const serialized = serializePayment(payment, {
     fallbackParentName: payment.parent?.fullName ?? ""
   });
-  let tuitionAllocationSummary = null as null | unknown;
-  if (payment.receipt?.pdfBase64) {
-    try {
-      const decoded = Buffer.from(payment.receipt.pdfBase64, "base64").toString("utf8");
-      const parsed = JSON.parse(decoded) as {
-        allocation?: {
-          mode?: string;
-          message?: string;
-          totalReceived?: number;
-          allocatedTotal?: number;
-          missingAmount?: number;
-          advanceBalance?: number;
-          lines?: Array<{
-            studentName: string;
-            label: string;
-            dueBucket: string;
-            outstandingBefore?: number;
-            allocated: number;
-            outstandingAfter: number;
-          }>;
-        };
-      };
-      if (parsed.allocation?.lines) {
-        const perChild = parsed.allocation.lines.reduce<Record<string, {
-          studentName: string;
-          allocated: number;
-          remaining: number;
-          lines: Array<{ label: string; dueBucket: string; outstandingBefore: number; allocated: number; outstandingAfter: number }>;
-        }>>((acc, line) => {
-          const current = acc[line.studentName] ?? { studentName: line.studentName, allocated: 0, remaining: 0, lines: [] };
-          current.allocated += Number(line.allocated || 0);
-          current.remaining += Number(line.outstandingAfter || 0);
-          current.lines.push({
-            label: line.label,
-            dueBucket: line.dueBucket,
-            outstandingBefore: Number(line.outstandingBefore || 0),
-            allocated: Number(line.allocated || 0),
-            outstandingAfter: Number(line.outstandingAfter || 0)
-          });
-          acc[line.studentName] = current;
-          return acc;
-        }, {});
-        tuitionAllocationSummary = {
-          mode: parsed.allocation.mode ?? "AUTO",
-          message: parsed.allocation.message ?? "",
-          totalReceived: parsed.allocation.totalReceived ?? payment.amount,
-          allocatedTotal: parsed.allocation.allocatedTotal ?? payment.amount,
-          missingAmount: parsed.allocation.missingAmount ?? 0,
-          advanceBalance: parsed.allocation.advanceBalance ?? 0,
-          perChild: Object.values(perChild)
-        };
-      }
-    } catch {
-      tuitionAllocationSummary = null;
-    }
-  }
+  const tuitionAllocationSummary = parseTuitionAllocationSummary(payment.receipt, payment.amount);
 
   return {
     id: payment.id,
