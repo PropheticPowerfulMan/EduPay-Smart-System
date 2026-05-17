@@ -37,7 +37,7 @@ const LOCAL_API_FALLBACK_ENABLED =
     /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(API_BASE_URL)
   );
 
-type DemoStudent = { id: string; fullName: string; classId: string; className: string; annualFee: number; payments?: DemoPayment[] };
+type DemoStudent = { id: string; fullName: string; classId: string; className: string; annualFee: number; createdAt?: string; payments?: DemoPayment[] };
 type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
 type DemoTuitionAllocationLine = {
   installmentId: string;
@@ -236,8 +236,8 @@ const seedParents: DemoParent[] = [
     email: "rachel.kabongo@kcs.local",
     createdAt: new Date().toISOString(),
     students: [
-      { id: "STU-KCS-ELISE-KABONGO", fullName: "Elise Kabongo", classId: "section-grade-11", className: "Grade 11A", annualFee: 2200 },
-      { id: "STU-KCS-DAVID-KABONGO", fullName: "David Kabongo", classId: "section-grade-8", className: "Grade 8B", annualFee: 1800 }
+      { id: "STU-KCS-ELISE-KABONGO", fullName: "Elise Kabongo", classId: "section-grade-11", className: "Grade 11A", annualFee: 2200, createdAt: "2026-01-12T08:15:00.000Z" },
+      { id: "STU-KCS-DAVID-KABONGO", fullName: "David Kabongo", classId: "section-grade-8", className: "Grade 8B", annualFee: 1800, createdAt: "2026-01-12T08:18:00.000Z" }
     ]
   },
   {
@@ -250,7 +250,7 @@ const seedParents: DemoParent[] = [
     email: "mireille.mbuyi@kcs.local",
     createdAt: new Date().toISOString(),
     students: [
-      { id: "STU-KCS-AMANI-MBUYI", fullName: "Amani Mbuyi", classId: "section-grade-10", className: "Grade 10A", annualFee: 2400 }
+      { id: "STU-KCS-AMANI-MBUYI", fullName: "Amani Mbuyi", classId: "section-grade-10", className: "Grade 10A", annualFee: 2400, createdAt: "2026-02-03T09:42:00.000Z" }
     ]
   }
 ];
@@ -318,7 +318,13 @@ function buildUniqueDemoEntityId(prefix: "PAR" | "STU", fullName: string, existi
 }
 
 function getDemoParents() {
-  const parents = readJson<DemoParent[]>(DEMO_PARENTS_KEY, seedParents);
+  const parents = readJson<DemoParent[]>(DEMO_PARENTS_KEY, seedParents).map((parent) => ({
+    ...parent,
+    students: parent.students.map((student) => ({
+      ...student,
+      createdAt: student.createdAt || parent.createdAt || new Date().toISOString(),
+    }))
+  }));
   writeJson(DEMO_PARENTS_KEY, parents);
   return parents;
 }
@@ -1699,18 +1705,31 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
   if (normalizedPath === "/api/shared-directory" && method === "GET") {
     const parents = getDemoParents();
     const teachers = getDemoEmployees();
+    const payments = getDemoPayments();
+    const financeProfilesByParentId = new Map(
+      parents.map((parent) => [parent.id, buildDemoParentFinanceProfile(parent.id, parents, payments)])
+    );
     const students = parents.flatMap((parent) =>
-      parent.students.map((student) => ({
-        id: student.id,
-        displayId: student.id,
-        studentNumber: student.id,
-        externalStudentId: student.id,
-        fullName: student.fullName,
-        classId: student.classId,
-        className: student.className,
-        parentId: parent.id,
-        annualFee: student.annualFee,
-      }))
+      parent.students.map((student) => {
+        const financeStudent = financeProfilesByParentId.get(parent.id)?.students.find((entry) => entry.id === student.id);
+        return {
+          id: student.id,
+          displayId: student.id,
+          studentNumber: student.id,
+          externalStudentId: student.id,
+          fullName: student.fullName,
+          classId: student.classId,
+          className: student.className,
+          createdAt: student.createdAt,
+          parentId: parent.id,
+          annualFee: student.annualFee,
+          annualFeeDisplay: financeStudent?.expectedTotal ?? student.annualFee,
+          originalAnnualFee: financeStudent?.originalAmount ?? student.annualFee,
+          reductionTotal: financeStudent?.reductionTotal ?? 0,
+          paymentOptionType: financeStudent?.paymentOptionType ?? null,
+          tuitionPlanName: financeStudent?.planName ?? "",
+        };
+      })
     );
 
     return {
@@ -1737,17 +1756,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
         fullName: parent.fullName,
         phone: parent.phone,
         email: parent.email,
-        students: parent.students.map((student) => ({
-          id: student.id,
-          displayId: student.id,
-          studentNumber: student.id,
-          externalStudentId: student.id,
-          fullName: student.fullName,
-          classId: student.classId,
-          className: student.className,
-          parentId: parent.id,
-          annualFee: student.annualFee,
-        })),
+        students: students.filter((student) => student.parentId === parent.id),
       })),
       students,
       teachers,
@@ -1847,6 +1856,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
         ? (body.students as Array<DemoStudent & { paymentOptionType?: DemoPaymentOptionType }>).map((student) => ({
             ...student,
             id: buildUniqueDemoEntityId("STU", student.fullName || "Student", existingStudentIds),
+            createdAt: student.createdAt || new Date().toISOString(),
             paymentOptionType: student.paymentOptionType ?? "STANDARD_MONTHLY"
           }))
         : []

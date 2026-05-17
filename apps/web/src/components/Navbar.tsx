@@ -125,6 +125,8 @@ function ChangePasswordModal({ onClose, onChanged, required = false }: { onClose
 export function Navbar() {
   const { t } = useI18n();
   const { fullName, role, photoUrl, mustChangePassword, setPhotoUrl, setMustChangePassword, logout } = useAuthStore();
+  const requiresImmediatePasswordChange = mustChangePassword && role !== "PARENT";
+  const hasDeferredPasswordReminder = mustChangePassword && role === "PARENT";
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [photoError, setPhotoError] = useState("");
@@ -152,8 +154,8 @@ export function Navbar() {
   }, [isUserMenuOpen]);
 
   useEffect(() => {
-    if (mustChangePassword) setShowPasswordModal(true);
-  }, [mustChangePassword]);
+    if (requiresImmediatePasswordChange) setShowPasswordModal(true);
+  }, [requiresImmediatePasswordChange]);
 
   const updatePhoto = async (file?: File) => {
     if (!file) return;
@@ -189,11 +191,11 @@ export function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-brand-300/20 bg-slate-950/70 shadow-[0_18px_60px_rgba(0,0,0,0.22)] backdrop-blur-2xl">
-      {showPasswordModal && <ChangePasswordModal required={mustChangePassword} onChanged={() => {
+      {showPasswordModal && <ChangePasswordModal required={requiresImmediatePasswordChange} onChanged={() => {
         setMustChangePassword(false);
         setShowPasswordModal(false);
       }} onClose={() => {
-        if (mustChangePassword) return;
+        if (requiresImmediatePasswordChange) return;
         setShowPasswordModal(false);
       }} />}
       <div className="mx-auto max-w-[1440px] px-3 py-2.5 sm:px-6 sm:py-3 lg:px-8">
@@ -236,6 +238,7 @@ export function Navbar() {
                 aria-haspopup="menu"
                 className="flex items-center gap-2 rounded-full border border-brand-300/20 bg-white/[0.07] px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition-all duration-200 hover:border-brand-300/40 hover:bg-brand-500/10 sm:gap-3 sm:px-3"
               >
+                {hasDeferredPasswordReminder && <span className="h-2.5 w-2.5 rounded-full bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.9)]" aria-hidden="true" />}
                 <div className="hidden sm:block text-right">
                   <p className="text-sm font-semibold text-white">{fullName || t("user")}</p>
                   <p className="text-xs text-ink-dim capitalize">{role || t("guest")}</p>
@@ -266,6 +269,11 @@ export function Navbar() {
                         <p className="text-xs text-ink-dim">{role || t("guest")}</p>
                       </div>
                     </div>
+                    {hasDeferredPasswordReminder && (
+                      <p className="mt-3 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-medium text-amber-100">
+                        Mot de passe temporaire détecté. Vous pouvez le changer maintenant ou plus tard depuis ce menu.
+                      </p>
+                    )}
                     {photoError && <p className="mt-2 text-xs text-danger">{photoError}</p>}
                   </div>
                   <label className="block w-full cursor-pointer px-4 py-2 text-sm text-ink-dim transition-all duration-200 hover:bg-brand-500/10 hover:text-white">
@@ -287,7 +295,7 @@ export function Navbar() {
                     }}
                     className="w-full text-left px-4 py-2 text-sm text-ink-dim transition-all duration-200 hover:bg-brand-500/10 hover:text-white"
                   >
-                    {t("changePassword")}
+                    {t("changePassword")}{hasDeferredPasswordReminder ? " · recommandé" : ""}
                   </button>
                   <button
                     onClick={() => {

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useI18n } from "../i18n";
 import { SearchField } from "../components/SearchField";
+import { schoolBranding } from "../config/branding";
 import { api } from "../services/api";
+import { exportWorkbook } from "../utils/financeExcel";
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 type Student = {
@@ -11,6 +13,7 @@ type Student = {
   classId: string;
   className: string;
   annualFee: number;
+  createdAt?: string;
   paymentOptionType?: string;
   paymentOptionLabel?: string;
   tuitionPlanName?: string;
@@ -265,6 +268,26 @@ function KeyIcon() {
     </svg>
   );
 }
+function PrintIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M6 9V4h12v5" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" />
+      <path d="M6 14h12v6H6z" />
+    </svg>
+  );
+}
+function ExcelIcon() {
+  return (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+      <path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z" />
+      <path d="M14 3v6h6" />
+      <path d="M9 13l4 6" />
+      <path d="M13 13l-4 6" />
+      <path d="M8 13h6" />
+    </svg>
+  );
+}
 function MailIcon() {
   return (
     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -308,6 +331,20 @@ function formatDateLabel(value?: string | null) {
   return parsed.toLocaleDateString();
 }
 
+function formatDateTimeLabel(value?: string | null) {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString("fr-FR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
 function getDebtStatusLabel(status: string) {
   switch (status) {
     case "OPEN":
@@ -345,6 +382,461 @@ function getDebtReferenceYear(debt: ParentFinanceDebt) {
     || debt.academicYearName
     || debt.academicYearId
     || "Année non renseignée";
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function slugify(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "rapport-parent";
+}
+
+function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSnapshot | null) {
+  const brand = schoolBranding;
+  const logoSrc = escapeHtml(new URL(brand.logoSrc, window.location.href).toString());
+  const studentRows = parent.students.map((student) => {
+    const financeRow = financeSnapshot?.students.find((entry) => entry.id === student.id);
+    return `
+      <tr>
+        <td>${escapeHtml(student.fullName)}</td>
+        <td>${escapeHtml(student.className || student.classId)}</td>
+        <td>${escapeHtml(student.tuitionPlanName || student.paymentOptionLabel || "-")}</td>
+        <td>${escapeHtml(formatDateTimeLabel(student.createdAt))}</td>
+        <td>$ ${student.annualFee.toFixed(2)}</td>
+        <td>${financeRow ? `$ ${financeRow.expectedTotal.toFixed(2)}` : "-"}</td>
+        <td>${financeRow ? `$ ${financeRow.paid.toFixed(2)}` : "-"}</td>
+        <td>${financeRow ? `$ ${financeRow.balance.toFixed(2)}` : "-"}</td>
+      </tr>`;
+  }).join("");
+
+  const debtRows = financeSnapshot?.debts.length
+    ? financeSnapshot.debts.map((debt) => `
+      <tr>
+        <td>${escapeHtml(debt.title)}</td>
+        <td>${escapeHtml(getDebtReferenceYear(debt))}</td>
+        <td>$ ${debt.originalAmount.toFixed(2)}</td>
+        <td>$ ${debt.amountRemaining.toFixed(2)}</td>
+        <td>${escapeHtml(getDebtStatusLabel(debt.status))}</td>
+        <td>${escapeHtml(formatDateLabel(debt.dueDate))}</td>
+      </tr>`).join("")
+    : `<tr><td colspan="6">Aucune dette détaillée enregistrée.</td></tr>`;
+
+  const summarySection = financeSnapshot ? `
+    <section class="panel">
+      <h2>Synthèse financière</h2>
+      <div class="summary-grid">
+        <div><span>Année académique</span><strong>${escapeHtml(financeSnapshot.academicYear.name)}</strong></div>
+        <div><span>Total payé</span><strong>$ ${financeSnapshot.profile.totalPaid.toFixed(2)}</strong></div>
+        <div><span>Dette totale</span><strong>$ ${financeSnapshot.profile.totalDebt.toFixed(2)}</strong></div>
+        <div><span>Réductions</span><strong>$ ${financeSnapshot.profile.totalReduction.toFixed(2)}</strong></div>
+        <div><span>Dette reportée</span><strong>$ ${financeSnapshot.profile.carriedOverDebt.toFixed(2)}</strong></div>
+        <div><span>Taux de couverture</span><strong>${financeSnapshot.profile.completionRate.toFixed(1)}%</strong></div>
+      </div>
+    </section>` : "";
+
+  return `<!DOCTYPE html>
+  <html lang="fr">
+    <head>
+      <meta charset="utf-8" />
+      <title>${escapeHtml(brand.schoolName)} - Rapport parent - ${escapeHtml(parent.fullName)}</title>
+      <style>
+        :root {
+          --brand-primary: ${brand.colors.primary};
+          --brand-secondary: ${brand.colors.secondary};
+          --brand-accent: ${brand.colors.accent};
+          --brand-surface: ${brand.colors.surface};
+          --ink: #0f172a;
+          --muted: #64748b;
+          --line: #cbd5e1;
+        }
+        * { box-sizing: border-box; }
+        body {
+          position: relative;
+          font-family: "Segoe UI", Arial, sans-serif;
+          margin: 0;
+          padding: 28px;
+          color: var(--ink);
+          background:
+            radial-gradient(circle at top right, rgba(143, 183, 232, 0.32), transparent 24%),
+            linear-gradient(180deg, #ffffff, var(--brand-surface));
+        }
+        body::before {
+          content: "";
+          position: fixed;
+          inset: 0;
+          background: linear-gradient(135deg, rgba(11, 46, 89, 0.03), rgba(31, 79, 143, 0.01));
+          pointer-events: none;
+        }
+        .watermark {
+          position: fixed;
+          right: 18px;
+          bottom: 28px;
+          width: 220px;
+          opacity: 0.06;
+          filter: grayscale(100%);
+          pointer-events: none;
+        }
+        h1, h2, h3, p { margin: 0; }
+        .header {
+          position: relative;
+          display: flex;
+          justify-content: space-between;
+          gap: 24px;
+          align-items: flex-start;
+          padding: 20px 22px;
+          border-radius: 20px;
+          background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
+          color: white;
+          box-shadow: 0 20px 45px rgba(11, 46, 89, 0.18);
+          overflow: hidden;
+        }
+        .header::after {
+          content: "";
+          position: absolute;
+          inset: auto -40px -60px auto;
+          width: 200px;
+          height: 200px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.08);
+        }
+        .header-brand {
+          display: flex;
+          gap: 16px;
+          align-items: center;
+          position: relative;
+          z-index: 1;
+        }
+        .header-logo {
+          width: 76px;
+          height: 76px;
+          object-fit: contain;
+          border-radius: 22px;
+          background: white;
+          padding: 8px;
+          border: 1px solid rgba(255,255,255,0.25);
+          box-shadow: 0 8px 22px rgba(0,0,0,0.16);
+        }
+        .eyebrow {
+          font-size: 11px;
+          text-transform: uppercase;
+          letter-spacing: 0.22em;
+          color: rgba(255,255,255,0.72);
+          margin-bottom: 6px;
+        }
+        .school-name { font-size: 28px; font-weight: 800; line-height: 1.1; }
+        .school-meta { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,0.86); }
+        .report-box {
+          min-width: 220px;
+          position: relative;
+          z-index: 1;
+          padding: 14px 16px;
+          border-radius: 16px;
+          background: rgba(255,255,255,0.1);
+          border: 1px solid rgba(255,255,255,0.16);
+          backdrop-filter: blur(10px);
+        }
+        .report-box strong { display: block; font-size: 20px; margin-top: 8px; }
+        .meta-grid {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 16px;
+          margin-top: 18px;
+        }
+        .panel {
+          position: relative;
+          border: 1px solid rgba(148, 163, 184, 0.28);
+          border-radius: 18px;
+          padding: 18px;
+          margin-top: 18px;
+          background: rgba(255,255,255,0.92);
+          box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+        }
+        .panel h2 {
+          font-size: 15px;
+          font-weight: 800;
+          text-transform: uppercase;
+          letter-spacing: 0.14em;
+          color: var(--brand-primary);
+          margin-bottom: 12px;
+        }
+        .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+        .summary-grid div {
+          border: 1px solid rgba(143, 183, 232, 0.42);
+          border-radius: 14px;
+          padding: 12px;
+          background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(232, 241, 252, 0.88));
+        }
+        .summary-grid span { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; }
+        .summary-grid strong { display: block; margin-top: 6px; font-size: 16px; }
+        .muted { color: var(--muted); font-size: 12px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th, td { border: 1px solid var(--line); padding: 9px; text-align: left; font-size: 12px; vertical-align: top; }
+        th {
+          background: linear-gradient(180deg, rgba(11, 46, 89, 0.08), rgba(31, 79, 143, 0.04));
+          color: var(--brand-primary);
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+          font-size: 11px;
+        }
+        .footer {
+          margin-top: 18px;
+          display: flex;
+          justify-content: space-between;
+          gap: 12px;
+          font-size: 11px;
+          color: var(--muted);
+        }
+        @media print {
+          body { padding: 12px; }
+          .panel, .header { break-inside: avoid; }
+        }
+      </style>
+    </head>
+    <body>
+      <img class="watermark" src="${logoSrc}" alt="" />
+      <div class="header">
+        <div class="header-brand">
+          <img class="header-logo" src="${logoSrc}" alt="Logo ${escapeHtml(brand.schoolName)}" />
+          <div>
+            <p class="eyebrow">Rapport administratif parent</p>
+            <h1 class="school-name">${escapeHtml(brand.schoolName)}</h1>
+            <p class="school-meta">${escapeHtml(brand.tagline)} · ${escapeHtml(brand.appName)} · ${escapeHtml(brand.shortName)}</p>
+          </div>
+        </div>
+        <div class="report-box">
+          <span class="eyebrow">Dossier parent</span>
+          <strong>${escapeHtml(parent.fullName)}</strong>
+          <p class="school-meta">ID ${escapeHtml(parent.displayId || parent.id)}</p>
+          <p class="school-meta">Émis le ${escapeHtml(new Date().toLocaleString("fr-FR"))}</p>
+        </div>
+      </div>
+      <section class="panel">
+        <h2>Identité parent</h2>
+        <div class="meta-grid">
+          <div>
+            <p class="muted">Téléphone</p>
+            <strong>${escapeHtml(parent.phone || "-")}</strong>
+          </div>
+          <div>
+            <p class="muted">Email</p>
+            <strong>${escapeHtml(parent.email || "-")}</strong>
+          </div>
+          <div>
+            <p class="muted">Inscription</p>
+            <strong>${escapeHtml(formatDateTimeLabel(parent.createdAt))}</strong>
+          </div>
+          <div>
+            <p class="muted">Nombre d'enfants liés</p>
+            <strong>${parent.students.length}</strong>
+          </div>
+        </div>
+      </section>
+      ${summarySection}
+      <section class="panel">
+        <h2>Enfants rattachés</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Élève</th>
+              <th>Classe</th>
+              <th>Plan</th>
+              <th>Inscrit le</th>
+              <th>Frais saisis</th>
+              <th>Total attendu</th>
+              <th>Payé</th>
+              <th>Solde</th>
+            </tr>
+          </thead>
+          <tbody>${studentRows || `<tr><td colspan="8">Aucun enfant rattaché.</td></tr>`}</tbody>
+        </table>
+      </section>
+      <section class="panel">
+        <h2>Dettes et reports</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Ligne</th>
+              <th>Année</th>
+              <th>Montant initial</th>
+              <th>Reste à payer</th>
+              <th>Statut</th>
+              <th>Échéance</th>
+            </tr>
+          </thead>
+          <tbody>${debtRows}</tbody>
+        </table>
+      </section>
+      <div class="footer">
+        <span>Document officiel ${escapeHtml(brand.appName)} généré pour ${escapeHtml(brand.schoolName)}.</span>
+        <span>Charte ${escapeHtml(brand.shortName)} · ${escapeHtml(new Date().toLocaleString("fr-FR"))}</span>
+      </div>
+    </body>
+  </html>`;
+}
+
+function mountParentReportFrame(parent: Parent, financeSnapshot: ParentFinanceSnapshot | null) {
+  const frame = document.createElement("iframe");
+  frame.style.position = "fixed";
+  frame.style.right = "0";
+  frame.style.bottom = "0";
+  frame.style.width = "1024px";
+  frame.style.height = "1px";
+  frame.style.opacity = "0";
+  frame.style.pointerEvents = "none";
+  frame.style.border = "0";
+  document.body.appendChild(frame);
+
+  return new Promise<HTMLIFrameElement>((resolve, reject) => {
+    frame.onload = () => resolve(frame);
+    frame.onerror = () => {
+      frame.remove();
+      reject(new Error("Impossible de préparer le document PDF."));
+    };
+    frame.srcdoc = buildParentReportHtml(parent, financeSnapshot);
+  });
+}
+
+async function exportParentReportPdf(parent: Parent, financeSnapshot: ParentFinanceSnapshot | null) {
+  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+    import("html2canvas"),
+    import("jspdf")
+  ]);
+
+  const frame = await mountParentReportFrame(parent, financeSnapshot);
+
+  try {
+    await frame.contentDocument?.fonts?.ready?.catch(() => undefined);
+    const body = frame.contentDocument?.body;
+    if (!body) {
+      throw new Error("Document PDF introuvable.");
+    }
+
+    const canvas = await html2canvas(body, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#ffffff",
+      width: Math.max(body.scrollWidth, 1024),
+      height: body.scrollHeight,
+      windowWidth: Math.max(body.scrollWidth, 1024),
+      windowHeight: body.scrollHeight,
+    });
+
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const imageData = canvas.toDataURL("image/png");
+    const imageWidth = pageWidth;
+    const imageHeight = (canvas.height * imageWidth) / canvas.width;
+    let heightLeft = imageHeight;
+    let position = 0;
+
+    pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight, undefined, "FAST");
+    heightLeft -= pageHeight;
+
+    while (heightLeft > 0) {
+      position = heightLeft - imageHeight;
+      pdf.addPage();
+      pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight, undefined, "FAST");
+      heightLeft -= pageHeight;
+    }
+
+    pdf.save(`rapport-parent-${slugify(parent.fullName)}-${new Date().toISOString().slice(0, 10)}.pdf`);
+  } finally {
+    frame.remove();
+  }
+}
+
+function printParentReport(parent: Parent, financeSnapshot: ParentFinanceSnapshot | null) {
+  const popup = window.open("", "_blank", "width=1080,height=900");
+  if (!popup) return;
+  popup.document.open();
+  popup.document.write(buildParentReportHtml(parent, financeSnapshot));
+  popup.document.close();
+
+  const triggerPrint = () => {
+    popup.focus();
+    popup.print();
+  };
+
+  const fontsReady = popup.document.fonts?.ready;
+  if (fontsReady) {
+    fontsReady
+      .catch(() => undefined)
+      .finally(() => window.setTimeout(triggerPrint, 200));
+    return;
+  }
+
+  window.setTimeout(triggerPrint, 300);
+}
+
+function exportParentReportExcel(parent: Parent, financeSnapshot: ParentFinanceSnapshot | null) {
+  const financeStudents = new Map((financeSnapshot?.students ?? []).map((student) => [student.id, student]));
+  exportWorkbook(`rapport-parent-${slugify(parent.fullName)}-${new Date().toISOString().slice(0, 10)}`, [
+    {
+      name: "Parent",
+      rows: [{
+        "ID Parent": parent.displayId || parent.id,
+        "Nom complet": parent.fullName,
+        "Nom": parent.nom,
+        "Postnom": parent.postnom,
+        "Prenom": parent.prenom,
+        "Téléphone": parent.phone,
+        "Email": parent.email,
+        "Date inscription exacte": formatDateTimeLabel(parent.createdAt),
+        "Enfants liés": parent.students.length,
+        "Année académique": financeSnapshot?.academicYear.name ?? "-",
+        "Total payé": financeSnapshot?.profile.totalPaid ?? null,
+        "Dette totale": financeSnapshot?.profile.totalDebt ?? null,
+        "Réductions": financeSnapshot?.profile.totalReduction ?? null,
+        "Dette reportée": financeSnapshot?.profile.carriedOverDebt ?? null,
+      }]
+    },
+    {
+      name: "Enfants",
+      rows: parent.students.map((student) => {
+        const financeRow = financeStudents.get(student.id);
+        return {
+          "ID Élève": student.displayId || student.id,
+          "Nom complet": student.fullName,
+          "Classe": student.className || student.classId,
+          "Plan": student.tuitionPlanName || student.paymentOptionLabel || "-",
+          "Date inscription exacte": formatDateTimeLabel(student.createdAt),
+          "Frais annuels": student.annualFee,
+          "Total attendu": financeRow?.expectedTotal ?? null,
+          "Payé": financeRow?.paid ?? null,
+          "Solde": financeRow?.balance ?? null,
+          "Échéances en retard": financeRow?.overdueInstallments ?? null,
+          "Taux de completion": financeRow?.completionRate ?? null,
+        };
+      })
+    },
+    {
+      name: "Dettes",
+      rows: (financeSnapshot?.debts ?? []).map((debt) => ({
+        "Ligne": debt.title,
+        "Motif": debt.reason || "-",
+        "Année de référence": getDebtReferenceYear(debt),
+        "Imputée sur": debt.academicYearName || debt.academicYearId,
+        "Reportée depuis": debt.carriedOverFromYearName || debt.carriedOverFromYearId || "-",
+        "Montant initial": debt.originalAmount,
+        "Reste à payer": debt.amountRemaining,
+        "Statut": getDebtStatusLabel(debt.status),
+        "Échéance": formatDateLabel(debt.dueDate),
+        "Créée le": formatDateLabel(debt.createdAt),
+      }))
+    }
+  ]);
 }
 
 function resolveGradeGroup(className?: string) {
@@ -590,6 +1082,7 @@ function DetailModal({
   onClose: () => void;
   t: (k: string) => string;
 }) {
+  const [pdfExporting, setPdfExporting] = useState(false);
   const debtHistory = useMemo(() => {
     if (!financeSnapshot) return [] as Array<{ year: string; amountRemaining: number; originalAmount: number; count: number }>;
 
@@ -606,6 +1099,8 @@ function DetailModal({
     return Array.from(grouped.values()).sort((left, right) => right.year.localeCompare(left.year));
   }, [financeSnapshot]);
 
+  const exportDisabled = financeLoading || Boolean(financeError) || pdfExporting;
+
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-3 py-4 sm:px-5 sm:py-6" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
@@ -615,9 +1110,42 @@ function DetailModal({
             <p className="text-xs font-bold uppercase tracking-[0.15em] text-brand-300">{t("pmParentId")}: {parent.displayId || parent.id}</p>
             <h2 className="mt-1 truncate font-display text-xl font-bold text-white sm:text-2xl">{parent.fullName}</h2>
           </div>
-          <button onClick={onClose} className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-ink-dim transition-colors hover:text-white">
-            <XIcon />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setPdfExporting(true);
+                void exportParentReportPdf(parent, financeSnapshot)
+                  .finally(() => setPdfExporting(false));
+              }}
+              disabled={exportDisabled}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-3 text-xs font-semibold text-cyan-100 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Télécharger le rapport en PDF"
+            >
+              <PrintIcon /> {pdfExporting ? "PDF..." : "PDF"}
+            </button>
+            <button
+              type="button"
+              onClick={() => printParentReport(parent, financeSnapshot)}
+              disabled={exportDisabled}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 text-xs font-semibold text-sky-100 transition-colors hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Imprimer le rapport"
+            >
+              <PrintIcon /> Impression
+            </button>
+            <button
+              type="button"
+              onClick={() => exportParentReportExcel(parent, financeSnapshot)}
+              disabled={exportDisabled}
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              title="Exporter le rapport en Excel"
+            >
+              <ExcelIcon /> Excel
+            </button>
+            <button onClick={onClose} className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-ink-dim transition-colors hover:text-white">
+              <XIcon />
+            </button>
+          </div>
         </div>
         <div className="edupay-scrollbar min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="grid gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.25fr)]">
@@ -634,7 +1162,7 @@ function DetailModal({
                   )}
                 </div>
                 <div>
-                  <p className="text-xs text-ink-dim mt-1">{t("pmRegisteredOn")} {new Date(parent.createdAt).toLocaleDateString()}</p>
+                  <p className="text-xs text-ink-dim mt-1">{t("pmRegisteredOn")} {formatDateTimeLabel(parent.createdAt)}</p>
                 </div>
               </div>
             </div>
@@ -670,6 +1198,7 @@ function DetailModal({
                       <div className="min-w-0">
                         <p className="break-words text-sm font-semibold text-white">{st.fullName}</p>
                         <p className="text-xs text-ink-dim">{st.className || st.classId}</p>
+                        <p className="mt-1 text-xs text-ink-dim">Inscrit le {formatDateTimeLabel(st.createdAt)}</p>
                         {(st.tuitionPlanName || st.paymentOptionLabel) && (
                           <p className="mt-1 text-xs text-cyan-300">{st.tuitionPlanName || st.paymentOptionLabel}</p>
                         )}

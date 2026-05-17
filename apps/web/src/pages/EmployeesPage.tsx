@@ -243,131 +243,142 @@ export function EmployeesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="glass relative overflow-hidden rounded-3xl border border-white/10 p-6 sm:p-8">
-        <div className="absolute -right-12 top-0 h-40 w-40 rounded-full bg-brand-500/15 blur-3xl" />
-        <div className="relative flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-          <div className="max-w-3xl space-y-3">
-            <p className="text-xs font-bold uppercase tracking-[0.22em] text-brand-300">Ressources humaines connectées</p>
-            <h1 className="font-display text-3xl font-bold text-white sm:text-4xl">Employés synchronisés depuis SAVANEX</h1>
-            <p className="max-w-2xl text-sm leading-6 text-ink-dim sm:text-base">
-              Cette vue centralise les employés de l'école enregistrés dans l'écosystème. Vous pouvez consulter leurs informations, corriger leur profil et supprimer un employé devenu obsolète.
-            </p>
+    <div className="space-y-6 pb-8">
+      <div className="flex flex-wrap items-start justify-between gap-4 animate-fadeInDown">
+        <div className="min-w-0">
+          <h1 className="font-display text-3xl font-bold text-white">Répertoire des employés</h1>
+          <p className="mt-1 text-ink-dim">
+            Liste centralisée du personnel synchronisé depuis SAVANEX, avec une lecture plus proche des surfaces Élèves et Gestion parents.
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="rounded-2xl border border-cyan-500/30 bg-cyan-500/10 px-4 py-3 text-right">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">Source</p>
+            <p className="mt-1 text-sm font-semibold text-white">SAVANEX</p>
           </div>
           <button
             onClick={() => void loadEmployees()}
-            className="inline-flex items-center justify-center rounded-2xl border border-brand-300/25 bg-white/[0.05] px-4 py-3 text-sm font-semibold text-white transition hover:border-brand-300/45 hover:bg-brand-500/12"
+            className="inline-flex h-[52px] items-center justify-center rounded-xl border border-brand-300/25 bg-white/[0.05] px-4 text-sm font-semibold text-white transition hover:border-brand-300/45 hover:bg-brand-500/12"
           >
             Actualiser la liste
           </button>
         </div>
-      </section>
+      </div>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <div className="glass rounded-3xl border border-white/10 p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">Total employés</p>
-          <p className="mt-3 font-display text-3xl font-bold text-white">{stats.total}</p>
+      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 animate-fadeInUp">
+        <div className="card">
+          <p className="text-xs uppercase tracking-[0.1em] text-ink-dim">Employés</p>
+          <p className="mt-1 font-display text-3xl font-bold text-cyan-300">{stats.total}</p>
         </div>
-        <div className="glass rounded-3xl border border-white/10 p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">Départements couverts</p>
-          <p className="mt-3 font-display text-3xl font-bold text-white">{stats.departments}</p>
+        <div className="card">
+          <p className="text-xs uppercase tracking-[0.1em] text-ink-dim">Départements</p>
+          <p className="mt-1 font-display text-3xl font-bold text-brand-300">{stats.departments}</p>
         </div>
-        <div className="glass rounded-3xl border border-white/10 p-5">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">Codes d'accès présents</p>
-          <p className="mt-3 font-display text-3xl font-bold text-white">{stats.withAccessCode}</p>
+        <div className="card">
+          <p className="text-xs uppercase tracking-[0.1em] text-ink-dim">Codes d'accès</p>
+          <p className="mt-1 font-display text-3xl font-bold text-emerald-300">{stats.withAccessCode}</p>
         </div>
-      </section>
+        <div className="card">
+          <p className="text-xs uppercase tracking-[0.1em] text-ink-dim">Résultats</p>
+          <p className="mt-1 font-display text-3xl font-bold text-white">{filteredEmployees.length}</p>
+        </div>
+      </div>
 
-      <section className="glass rounded-3xl border border-white/10 p-5 sm:p-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <h2 className="font-display text-2xl font-bold text-white">Répertoire du personnel</h2>
-            <p className="mt-1 text-sm text-ink-dim">Recherche par nom, matricule, département, poste, email ou téléphone.</p>
-          </div>
-          <SearchField
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Rechercher un employé..."
-            wrapperClassName="w-full lg:w-[380px]"
-          />
+      <SearchField
+        value={search}
+        onChange={(event) => setSearch(event.target.value)}
+        placeholder="Rechercher un employé, un matricule, un département, un poste ou un contact..."
+        wrapperClassName="animate-fadeInUp"
+      />
+
+      {error ? (
+        <div className="rounded-lg border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger animate-fadeInUp">
+          {error}
         </div>
+      ) : null}
 
-        {error ? (
-          <div className="mt-5 rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
-            {error}
-          </div>
-        ) : null}
-
+      <div className="card !p-0 overflow-hidden animate-fadeInUp">
         {loading ? (
-          <div className="mt-6 rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-10 text-center text-sm text-ink-dim">
-            Chargement des employés...
+          <div className="p-12 text-center">
+            <div className="mx-auto h-10 w-10 animate-spin rounded-full border-2 border-brand-500/30 border-t-brand-500" />
           </div>
         ) : filteredEmployees.length === 0 ? (
-          <div className="mt-6 rounded-2xl border border-dashed border-white/10 bg-slate-950/40 px-4 py-10 text-center text-sm text-ink-dim">
-            Aucun employé ne correspond à votre recherche.
-          </div>
+          <div className="p-12 text-center text-ink-dim">Aucun employé ne correspond à votre recherche.</div>
         ) : (
-          <div className="mt-6 overflow-hidden rounded-3xl border border-white/10">
-            <div className="hidden grid-cols-[1.35fr_0.8fr_0.9fr_1fr_180px] gap-4 border-b border-white/10 bg-white/[0.03] px-5 py-4 text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim md:grid">
-              <span>Employé</span>
-              <span>Département</span>
-              <span>Type</span>
-              <span>Contact</span>
-              <span>Actions</span>
-            </div>
-            <div className="divide-y divide-white/10">
-              {filteredEmployees.map((employee) => (
-                <div key={employee.id} className="grid gap-4 px-5 py-5 md:grid-cols-[1.35fr_0.8fr_0.9fr_1fr_180px] md:items-center">
-                  <div>
-                    <p className="font-semibold text-white">{employee.fullName}</p>
-                    <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                      <span className="rounded-full border border-brand-300/30 bg-brand-500/10 px-2.5 py-1 text-brand-100">
+          <div className="edupay-scrollbar overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-700/50 bg-slate-900/40">
+                  <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-[0.1em] text-ink-dim">ID employé</th>
+                  <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-[0.1em] text-ink-dim">Nom complet</th>
+                  <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-[0.1em] text-ink-dim">Département</th>
+                  <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-[0.1em] text-ink-dim">Profil</th>
+                  <th className="px-5 py-4 text-left text-xs font-bold uppercase tracking-[0.1em] text-ink-dim">Contact</th>
+                  <th className="px-5 py-4 text-center text-xs font-bold uppercase tracking-[0.1em] text-ink-dim">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredEmployees.map((employee, index) => (
+                  <tr key={employee.id} className="border-b border-slate-700/30 transition-colors hover:bg-slate-800/30" style={{ animationDelay: `${index * 0.03}s` }}>
+                    <td className="px-5 py-4">
+                      <span className="rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-1 font-mono text-xs font-bold text-cyan-200">
                         {employee.displayId || employee.employeeId || employee.id}
                       </span>
-                      <span className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-ink-dim">
-                        {infoValue(employee.jobTitle)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-sm text-ink-dim">{infoValue(employee.department)}</div>
-                  <div className="text-sm text-ink-dim">{infoValue(employee.employeeType)}</div>
-                  <div className="space-y-1 text-sm text-ink-dim">
-                    <p>{infoValue(employee.email)}</p>
-                    <p>{infoValue(employee.phone)}</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2 md:justify-end">
-                    <button
-                      onClick={() => setSelectedEmployee(employee)}
-                      className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm font-medium text-white transition hover:bg-white/[0.08]"
-                    >
-                      <EyeIcon />
-                      Voir
-                    </button>
-                    {canManageEmployees ? (
-                      <>
+                    </td>
+                    <td className="px-5 py-4">
+                      <p className="font-semibold text-white">{employee.fullName}</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <span className="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs text-ink-dim">{infoValue(employee.jobTitle)}</span>
+                        {employee.accessCode?.trim() ? (
+                          <span className="rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-200">Code d'accès actif</span>
+                        ) : null}
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-ink-dim">{infoValue(employee.department)}</td>
+                    <td className="px-5 py-4">
+                      <p className="font-medium text-white">{infoValue(employee.employeeType)}</p>
+                      <p className="mt-1 text-xs text-ink-dim">{infoValue(employee.subject)}</p>
+                    </td>
+                    <td className="px-5 py-4">
+                      <p className="font-medium text-white">{infoValue(employee.email)}</p>
+                      <p className="mt-1 text-xs text-ink-dim">{infoValue(employee.phone)}</p>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center justify-center gap-2">
                         <button
-                          onClick={() => openEditModal(employee)}
-                          className="inline-flex items-center gap-2 rounded-xl border border-brand-300/25 bg-brand-500/12 px-3 py-2 text-sm font-medium text-brand-100 transition hover:border-brand-300/40 hover:bg-brand-500/18"
+                          onClick={() => setSelectedEmployee(employee)}
+                          className="rounded-lg bg-slate-700/50 p-2 text-ink-dim transition-all hover:bg-slate-600/50 hover:text-white"
+                          title="Voir"
                         >
-                          <EditIcon />
-                          Modifier
+                          <EyeIcon />
                         </button>
-                        <button
-                          onClick={() => setDeleteTarget(employee)}
-                          className="inline-flex items-center gap-2 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm font-medium text-red-100 transition hover:bg-red-500/18"
-                        >
-                          <TrashIcon />
-                          Supprimer
-                        </button>
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
-            </div>
+                        {canManageEmployees ? (
+                          <>
+                            <button
+                              onClick={() => openEditModal(employee)}
+                              className="rounded-lg bg-brand-500/20 p-2 text-brand-300 transition-all hover:bg-brand-500/30"
+                              title="Modifier"
+                            >
+                              <EditIcon />
+                            </button>
+                            <button
+                              onClick={() => setDeleteTarget(employee)}
+                              className="rounded-lg bg-danger/20 p-2 text-danger transition-all hover:bg-danger/30"
+                              title="Supprimer"
+                            >
+                              <TrashIcon />
+                            </button>
+                          </>
+                        ) : null}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
-      </section>
+      </div>
 
       {selectedEmployee ? (
         <ModalShell title={selectedEmployee.fullName} subtitle="Fiche détaillée de l'employé dans le registre partagé." onClose={() => setSelectedEmployee(null)}>
