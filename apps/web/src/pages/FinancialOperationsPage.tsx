@@ -15,6 +15,7 @@ import {
   WalletCards,
   X
 } from "lucide-react";
+import { schoolBranding } from "../config/branding";
 import { SearchField } from "../components/SearchField";
 import { api } from "../services/api";
 import { useI18n } from "../i18n";
@@ -275,23 +276,23 @@ const EMPTY_VENDOR_FORM: VendorFormState = {
 
 const EMPTY_BUDGET_FORM: BudgetFormState = {
   name: "",
-  department: "Administration",
+  department: "",
   plannedAmount: "",
   categoryId: "",
-  alertThreshold: "80",
+  alertThreshold: "",
   notes: ""
 };
 
 const EMPTY_SALARY_FORM: SalaryFormState = {
   employeeCode: "",
   fullName: "",
-  department: "Administration",
+  department: "",
   position: "",
   baseSalary: "",
-  frequency: "MONTHLY",
-  defaultBonus: "0",
-  defaultDeduction: "0",
-  debtRecoveryRate: "0",
+  frequency: "",
+  defaultBonus: "",
+  defaultDeduction: "",
+  debtRecoveryRate: "",
   notes: ""
 };
 
@@ -449,6 +450,24 @@ function labelizeFrequency(value: string) {
   return map[value] ?? value;
 }
 
+function escapeHtml(value: string | number | null | undefined) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatPercent(value: number) {
+  return `${Number.isFinite(value) ? value.toFixed(1) : "0.0"}%`;
+}
+
+function ratioPercent(part: number, total: number) {
+  if (!total) return 0;
+  return (part / total) * 100;
+}
+
 export function FinancialOperationsPage() {
   const { lang } = useI18n();
   const role = useAuthStore((state) => state.role);
@@ -474,6 +493,10 @@ export function FinancialOperationsPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [accountingSearch, setAccountingSearch] = useState("");
+  const [accountingDepartmentFilter, setAccountingDepartmentFilter] = useState("ALL");
+  const [cashflowSearch, setCashflowSearch] = useState("");
+  const [cashflowSourceFilter, setCashflowSourceFilter] = useState("ALL");
   const [submittingKey, setSubmittingKey] = useState<string | null>(null);
   const [expenseForm, setExpenseForm] = useState<ExpenseFormState>(EMPTY_EXPENSE_FORM);
   const [pendingAttachments, setPendingAttachments] = useState<ExpenseAttachment[]>([]);
@@ -481,6 +504,7 @@ export function FinancialOperationsPage() {
   const [budgetForm, setBudgetForm] = useState<BudgetFormState>(EMPTY_BUDGET_FORM);
   const [salaryForm, setSalaryForm] = useState<SalaryFormState>(EMPTY_SALARY_FORM);
   const [payrollForm, setPayrollForm] = useState<PayrollFormState>(EMPTY_PAYROLL_FORM);
+  const availableCash = overview?.cashflow.availableCash ?? 0;
 
   useEffect(() => {
     let active = true;
@@ -532,6 +556,143 @@ export function FinancialOperationsPage() {
     rejected: expenses.filter((expense) => expense.status === "REJECTED").length
   }), [expenses]);
 
+  const accountingMetrics = useMemo(() => {
+    const totalVolume = accountingEntries.reduce((sum, entry) => sum + entry.amount, 0);
+    const expenseVolume = accountingEntries.filter((entry) => entry.entryType === "EXPENSE").reduce((sum, entry) => sum + entry.amount, 0);
+    const payrollVolume = accountingEntries.filter((entry) => entry.entryType === "PAYROLL").reduce((sum, entry) => sum + entry.amount, 0);
+    const averageEntry = accountingEntries.length ? totalVolume / accountingEntries.length : 0;
+    const departmentTotals = accountingEntries.reduce<Record<string, number>>((acc, entry) => {
+      const key = entry.department || "Non renseigne";
+      acc[key] = (acc[key] ?? 0) + entry.amount;
+      return acc;
+    }, {});
+    const topDepartment = Object.entries(departmentTotals).sort((left, right) => right[1] - left[1])[0];
+    const documentedExpenses = expenses.filter((expense) => (expense.attachments?.length ?? 0) > 0).length;
+    const documentationCoverage = ratioPercent(documentedExpenses, expenses.length);
+    const approvalCoverage = ratioPercent(expenseStats.approved, expenses.length);
+
+    return {
+      totalVolume,
+      expenseVolume,
+      payrollVolume,
+      averageEntry,
+      payrollWeight: ratioPercent(payrollVolume, totalVolume),
+      expenseWeight: ratioPercent(expenseVolume, totalVolume),
+      topDepartmentName: topDepartment?.[0] ?? "N/A",
+      topDepartmentWeight: ratioPercent(topDepartment?.[1] ?? 0, totalVolume),
+      documentationCoverage,
+      approvalCoverage
+    };
+  }, [accountingEntries, expenseStats.approved, expenses]);
+
+  const cashflowMetrics = useMemo(() => {
+    const totalOutflow = cashflowEntries.filter((entry) => entry.direction === "OUTFLOW").reduce((sum, entry) => sum + entry.amount, 0);
+    const totalInflow = cashflowEntries.filter((entry) => entry.direction === "INFLOW").reduce((sum, entry) => sum + entry.amount, 0);
+    const outflowCount = cashflowEntries.filter((entry) => entry.direction === "OUTFLOW").length;
+    const averageOutflow = outflowCount ? totalOutflow / outflowCount : 0;
+    const payrollOutflow = cashflowEntries.filter((entry) => entry.sourceType === "PAYROLL").reduce((sum, entry) => sum + entry.amount, 0);
+    const expenseOutflow = cashflowEntries.filter((entry) => entry.sourceType === "EXPENSE").reduce((sum, entry) => sum + entry.amount, 0);
+    const sourceTotals = cashflowEntries.reduce<Record<string, number>>((acc, entry) => {
+      acc[entry.sourceType] = (acc[entry.sourceType] ?? 0) + entry.amount;
+      return acc;
+    }, {});
+    const dominantSource = Object.entries(sourceTotals).sort((left, right) => right[1] - left[1])[0];
+
+    return {
+      totalOutflow,
+      totalInflow,
+      averageOutflow,
+      payrollOutflow,
+      expenseOutflow,
+      payrollShare: ratioPercent(payrollOutflow, totalOutflow),
+      expenseShare: ratioPercent(expenseOutflow, totalOutflow),
+      coverageRatio: totalOutflow ? availableCash / totalOutflow : 0,
+      netMovement: totalInflow - totalOutflow,
+      dominantSourceName: dominantSource?.[0] ?? "N/A",
+      dominantSourceWeight: ratioPercent(dominantSource?.[1] ?? 0, totalOutflow || totalInflow)
+    };
+  }, [availableCash, cashflowEntries]);
+
+  const accountingDepartmentOptions = useMemo(
+    () => Array.from(new Set(accountingEntries.map((entry) => entry.department || "Non renseigne"))).sort((left, right) => left.localeCompare(right)),
+    [accountingEntries]
+  );
+
+  const filteredAccountingEntries = useMemo(() => {
+    const needle = accountingSearch.trim().toLowerCase();
+    return accountingEntries.filter((entry) => {
+      const department = entry.department || "Non renseigne";
+      const matchesDepartment = accountingDepartmentFilter === "ALL" || department === accountingDepartmentFilter;
+      const matchesSearch = !needle
+        || entry.title.toLowerCase().includes(needle)
+        || department.toLowerCase().includes(needle)
+        || entry.entryType.toLowerCase().includes(needle)
+        || (entry.expense?.title || entry.payrollRun?.title || entry.payrollItem?.salarySlipNumber || "").toLowerCase().includes(needle);
+      return matchesDepartment && matchesSearch;
+    });
+  }, [accountingDepartmentFilter, accountingEntries, accountingSearch]);
+
+  const accountingBreakdown = useMemo(() => {
+    const grouped = filteredAccountingEntries.reduce<Record<string, { count: number; volume: number }>>((acc, entry) => {
+      const key = entry.department || "Non renseigne";
+      const current = acc[key] ?? { count: 0, volume: 0 };
+      current.count += 1;
+      current.volume += entry.amount;
+      acc[key] = current;
+      return acc;
+    }, {});
+
+    return Object.entries(grouped)
+      .map(([department, data]) => ({
+        department,
+        count: data.count,
+        volume: data.volume,
+        average: data.count ? data.volume / data.count : 0,
+        weight: ratioPercent(data.volume, accountingMetrics.totalVolume)
+      }))
+      .sort((left, right) => right.volume - left.volume);
+  }, [accountingMetrics.totalVolume, filteredAccountingEntries]);
+
+  const cashflowSourceOptions = useMemo(
+    () => Array.from(new Set(cashflowEntries.map((entry) => entry.sourceType))).sort((left, right) => left.localeCompare(right)),
+    [cashflowEntries]
+  );
+
+  const filteredCashflowEntries = useMemo(() => {
+    const needle = cashflowSearch.trim().toLowerCase();
+    return cashflowEntries.filter((entry) => {
+      const reference = entry.expense?.title || entry.payrollRun?.title || entry.payrollItem?.salarySlipNumber || "";
+      const matchesSource = cashflowSourceFilter === "ALL" || entry.sourceType === cashflowSourceFilter;
+      const matchesSearch = !needle
+        || entry.sourceType.toLowerCase().includes(needle)
+        || entry.direction.toLowerCase().includes(needle)
+        || (entry.method || "").toLowerCase().includes(needle)
+        || reference.toLowerCase().includes(needle)
+        || (entry.notes || "").toLowerCase().includes(needle);
+      return matchesSource && matchesSearch;
+    });
+  }, [cashflowEntries, cashflowSearch, cashflowSourceFilter]);
+
+  const cashflowBreakdown = useMemo(() => {
+    const grouped = filteredCashflowEntries.reduce<Record<string, { count: number; volume: number }>>((acc, entry) => {
+      const current = acc[entry.sourceType] ?? { count: 0, volume: 0 };
+      current.count += 1;
+      current.volume += entry.amount;
+      acc[entry.sourceType] = current;
+      return acc;
+    }, {});
+
+    return Object.entries(grouped)
+      .map(([sourceType, data]) => ({
+        sourceType,
+        count: data.count,
+        volume: data.volume,
+        average: data.count ? data.volume / data.count : 0,
+        weight: ratioPercent(data.volume, cashflowMetrics.totalOutflow || data.volume)
+      }))
+      .sort((left, right) => right.volume - left.volume);
+  }, [cashflowMetrics.totalOutflow, filteredCashflowEntries]);
+
   const filteredExpenses = useMemo(() => {
     return expenses.filter((expense) => {
       const matchesStatus = statusFilter === "ALL" || expense.status === statusFilter;
@@ -574,13 +735,58 @@ export function FinancialOperationsPage() {
     setCashflowEntries(nextCashflowEntries);
   }
 
-  function printSalarySlip(run: PayrollRun, item: PayrollRun["items"][number]) {
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=920,height=720");
-    if (!printWindow) {
-      setActionError("Impossible d'ouvrir la fenetre d'impression.");
+  function printHtmlDocument(html: string) {
+    setActionError(null);
+
+    const iframe = document.createElement("iframe");
+    iframe.setAttribute("aria-hidden", "true");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.opacity = "0";
+    iframe.style.pointerEvents = "none";
+
+    document.body.appendChild(iframe);
+
+    const cleanup = () => {
+      window.setTimeout(() => {
+        iframe.remove();
+      }, 300);
+    };
+
+    const frameWindow = iframe.contentWindow;
+    const frameDocument = iframe.contentDocument ?? frameWindow?.document;
+    if (!frameWindow || !frameDocument) {
+      cleanup();
       return;
     }
 
+    frameDocument.open();
+    frameDocument.write(html);
+    frameDocument.close();
+
+    const triggerPrint = () => {
+      frameWindow.focus();
+      frameWindow.print();
+      frameWindow.addEventListener("afterprint", cleanup, { once: true });
+      window.setTimeout(cleanup, 2000);
+    };
+
+    const fontsReady = frameDocument.fonts?.ready;
+    if (fontsReady) {
+      fontsReady.catch(() => undefined).finally(() => {
+        window.setTimeout(triggerPrint, 220);
+      });
+      return;
+    }
+
+    window.setTimeout(triggerPrint, 320);
+  }
+
+  function printSalarySlip(run: PayrollRun, item: PayrollRun["items"][number]) {
     const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -639,11 +845,7 @@ export function FinancialOperationsPage() {
 </body>
 </html>`;
 
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
+  printHtmlDocument(html);
   }
 
   function exportSalarySlipExcel(run: PayrollRun, item: PayrollRun["items"][number]) {
@@ -742,15 +944,27 @@ export function FinancialOperationsPage() {
     window.URL.revokeObjectURL(url);
   }
 
-  function printLedgerReport(title: string, subtitle: string, headers: string[], rows: Array<Array<string | number | null | undefined>>) {
-    const printWindow = window.open("", "_blank", "noopener,noreferrer,width=1080,height=780");
-    if (!printWindow) {
-      setActionError("Impossible d'ouvrir la fenetre d'impression.");
-      return;
-    }
-
-    const headHtml = headers.map((header) => `<th>${header}</th>`).join("");
-    const rowsHtml = rows.map((row) => `<tr>${row.map((cell) => `<td>${String(cell ?? "")}</td>`).join("")}</tr>`).join("");
+  function printLedgerReport(
+    title: string,
+    subtitle: string,
+    headers: string[],
+    rows: Array<Array<string | number | null | undefined>>,
+    metrics: Array<{ label: string; value: string; detail: string }>
+  ) {
+    const brand = schoolBranding;
+    const primary = brand.colors.primary;
+    const secondary = brand.colors.secondary;
+    const accent = brand.colors.accent;
+    const surface = brand.colors.surface;
+    const headHtml = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
+    const rowsHtml = rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("");
+    const metricHtml = metrics.map((metric) => `
+      <div class="metric-card">
+        <div class="metric-label">${escapeHtml(metric.label)}</div>
+        <div class="metric-value">${escapeHtml(metric.value)}</div>
+        <div class="metric-detail">${escapeHtml(metric.detail)}</div>
+      </div>
+    `).join("");
     const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -758,47 +972,70 @@ export function FinancialOperationsPage() {
   <title>${title}</title>
   <style>
     @page { size: landscape; margin: 12mm; }
-    body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; padding: 24px; background: #f8fafc; }
-    .sheet { background: white; border: 1px solid #cbd5e1; border-radius: 18px; overflow: hidden; }
-    .hero { background: linear-gradient(135deg, #082f49, #0f172a); color: white; padding: 24px 28px; }
-    .hero h1 { margin: 0; font-size: 26px; }
-    .hero p { margin: 8px 0 0; color: #cbd5e1; }
-    .table-wrap { padding: 24px 28px 16px; }
+    body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; padding: 24px; background: ${surface}; }
+    .watermark-text { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 112px; font-weight: 900; letter-spacing: 16px; color: rgba(11,46,89,0.05); transform: rotate(-22deg); pointer-events: none; user-select: none; }
+    .watermark-logo { position: fixed; left: 50%; top: 50%; width: 360px; height: 360px; opacity: 0.08; transform: translate(-50%, -50%); object-fit: contain; filter: grayscale(100%) contrast(1.05); pointer-events: none; user-select: none; }
+    .sheet { position: relative; z-index: 2; background: white; border: 1px solid #cbd5e1; border-radius: 18px; overflow: hidden; box-shadow: 0 20px 60px rgba(15,23,42,0.08); }
+    .hero { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; background: linear-gradient(135deg, ${primary}, ${secondary}); color: white; padding: 24px 28px; }
+    .hero-main { display:flex; align-items:center; gap:16px; }
+    .hero-logo { width: 62px; height: 62px; object-fit: contain; border-radius: 999px; background: white; padding: 5px; border: 1px solid rgba(255,255,255,0.18); }
+    .hero h1 { margin: 4px 0 0; font-size: 28px; }
+    .hero p { margin: 8px 0 0; color: rgba(255,255,255,0.82); }
+    .hero-meta { text-align:right; font-size:12px; color: rgba(255,255,255,0.86); }
+    .metrics { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; padding: 22px 28px 8px; }
+    .metric-card { border: 1px solid #dbeafe; border-radius: 16px; background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%); padding: 14px; }
+    .metric-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.12em; color: #64748b; font-weight: 700; }
+    .metric-value { margin-top: 8px; color: ${primary}; font-size: 18px; font-weight: 800; }
+    .metric-detail { margin-top: 6px; font-size: 11px; color: #475569; }
+    .table-wrap { padding: 18px 28px 16px; }
     table { width: 100%; border-collapse: collapse; }
     th, td { border-bottom: 1px solid #e2e8f0; padding: 10px 12px; text-align: left; font-size: 12px; }
-    th { background: #f8fafc; color: #334155; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px; }
-    .foot { padding: 0 28px 24px; color: #475569; font-size: 12px; }
+    th { background: #eff6ff; color: ${primary}; text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; }
+    tr:nth-child(even) td { background: #fbfdff; }
+    .foot { padding: 0 28px 24px; color: #475569; font-size: 12px; border-top: 1px solid #e2e8f0; margin-top: 4px; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   </style>
 </head>
 <body>
+  <div class="watermark-text">${escapeHtml(brand.shortName)}</div>
+  <img class="watermark-logo" src="${brand.logoSrc}" alt="" />
   <div class="sheet">
     <div class="hero">
-      <h1>${title}</h1>
-      <p>${subtitle}</p>
+      <div class="hero-main">
+        <img class="hero-logo" src="${brand.logoSrc}" alt="Logo ${escapeHtml(brand.schoolName)}" />
+        <div>
+          <div style="font-size:12px;font-weight:800;letter-spacing:0.18em;text-transform:uppercase;color:${accent};">${escapeHtml(brand.shortName)} Financial Report</div>
+          <h1>${escapeHtml(title)}</h1>
+          <p>${escapeHtml(subtitle)}</p>
+        </div>
+      </div>
+      <div class="hero-meta">
+        <div style="font-weight:700;">${escapeHtml(brand.schoolName)}</div>
+        <div style="margin-top:4px;">${escapeHtml(brand.tagline)}</div>
+        <div style="margin-top:10px;">${new Date().toLocaleDateString("fr-FR")}</div>
+        <div>${new Date().toLocaleTimeString("fr-FR")}</div>
+      </div>
     </div>
+    <div class="metrics">${metricHtml}</div>
     <div class="table-wrap">
       <table>
         <thead><tr>${headHtml}</tr></thead>
         <tbody>${rowsHtml}</tbody>
       </table>
     </div>
-    <div class="foot">Document genere le ${new Date().toLocaleDateString("fr-FR")} par EduPay Financial ERP.</div>
+    <div class="foot">Document officiel ${escapeHtml(brand.appName)} genere pour ${escapeHtml(brand.schoolName)} le ${new Date().toLocaleString("fr-FR")}. Palette imprimee selon la charte ${escapeHtml(brand.shortName)}.</div>
   </div>
 </body>
 </html>`;
 
-    printWindow.document.open();
-    printWindow.document.write(html);
-    printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
+    printHtmlDocument(html);
   }
 
   function exportAccountingCsv() {
     downloadCsv(
       `journal-comptable-${new Date().toISOString().slice(0, 10)}.csv`,
       ["Date", "Type", "Direction", "Titre", "Departement", "Montant", "Devise", "Source"],
-      accountingEntries.map((entry) => [
+      filteredAccountingEntries.map((entry) => [
         new Date(entry.entryDate).toLocaleDateString("fr-FR"),
         entry.entryType,
         entry.direction,
@@ -814,8 +1051,29 @@ export function FinancialOperationsPage() {
   function exportAccountingExcel() {
     exportWorkbook(`journal-comptable-${new Date().toISOString().slice(0, 10)}`, [
       {
+        name: "Synthese",
+        rows: [{
+          "Ecritures filtrées": filteredAccountingEntries.length,
+          "Volume comptabilisé": accountingMetrics.totalVolume,
+          "Ticket moyen": Number(accountingMetrics.averageEntry.toFixed(2)),
+          "Part paie %": Number(accountingMetrics.payrollWeight.toFixed(2)),
+          "Couverture documentaire %": Number(accountingMetrics.documentationCoverage.toFixed(2)),
+          "Taux approbation %": Number(accountingMetrics.approvalCoverage.toFixed(2))
+        }]
+      },
+      {
+        name: "Repartition departements",
+        rows: accountingBreakdown.map((entry) => ({
+          "Departement": entry.department,
+          "Ecritures": entry.count,
+          "Volume": entry.volume,
+          "Moyenne": entry.average,
+          "Poids %": Number(entry.weight.toFixed(2))
+        }))
+      },
+      {
         name: "Journal comptable",
-        rows: accountingEntries.map((entry) => ({
+        rows: filteredAccountingEntries.map((entry) => ({
           "Date": new Date(entry.entryDate).toLocaleDateString("fr-FR"),
           "Type": entry.entryType,
           "Direction": entry.direction,
@@ -833,7 +1091,7 @@ export function FinancialOperationsPage() {
     downloadCsv(
       `journal-tresorerie-${new Date().toISOString().slice(0, 10)}.csv`,
       ["Date", "Source", "Direction", "Methode", "Montant", "Devise", "Reference", "Notes"],
-      cashflowEntries.map((entry) => [
+      filteredCashflowEntries.map((entry) => [
         new Date(entry.referenceDate).toLocaleDateString("fr-FR"),
         entry.sourceType,
         entry.direction,
@@ -849,8 +1107,29 @@ export function FinancialOperationsPage() {
   function exportCashflowExcel() {
     exportWorkbook(`journal-tresorerie-${new Date().toISOString().slice(0, 10)}`, [
       {
+        name: "Synthese",
+        rows: [{
+          "Lignes filtrées": filteredCashflowEntries.length,
+          "Sorties cumulées": cashflowMetrics.totalOutflow,
+          "Ticket moyen sortie": Number(cashflowMetrics.averageOutflow.toFixed(2)),
+          "Part paie %": Number(cashflowMetrics.payrollShare.toFixed(2)),
+          "Couverture cash": Number(cashflowMetrics.coverageRatio.toFixed(2)),
+          "Variation nette": cashflowMetrics.netMovement
+        }]
+      },
+      {
+        name: "Repartition sources",
+        rows: cashflowBreakdown.map((entry) => ({
+          "Source": entry.sourceType,
+          "Lignes": entry.count,
+          "Volume": entry.volume,
+          "Moyenne": entry.average,
+          "Poids %": Number(entry.weight.toFixed(2))
+        }))
+      },
+      {
         name: "Journal tresorerie",
-        rows: cashflowEntries.map((entry) => ({
+        rows: filteredCashflowEntries.map((entry) => ({
           "Date": new Date(entry.referenceDate).toLocaleDateString("fr-FR"),
           "Source": entry.sourceType,
           "Direction": entry.direction,
@@ -877,7 +1156,13 @@ export function FinancialOperationsPage() {
         entry.department || "",
         currency.format(entry.amount),
         entry.expense?.title || entry.payrollRun?.title || entry.payrollItem?.salarySlipNumber || ""
-      ])
+      ]),
+      [
+        { label: "Volume comptabilisé", value: currency.format(accountingMetrics.totalVolume), detail: "Somme totale des écritures reconnues" },
+        { label: "Ticket moyen", value: currency.format(accountingMetrics.averageEntry), detail: "Moyenne = volume / nombre d'écritures" },
+        { label: "Part paie", value: formatPercent(accountingMetrics.payrollWeight), detail: `Paie ${currency.format(accountingMetrics.payrollVolume)}` },
+        { label: "Couverture documentaire", value: formatPercent(accountingMetrics.documentationCoverage), detail: `Dépenses documentées et traçables` }
+      ]
     );
   }
 
@@ -894,7 +1179,13 @@ export function FinancialOperationsPage() {
         currency.format(entry.amount),
         entry.expense?.title || entry.payrollRun?.title || entry.payrollItem?.salarySlipNumber || "",
         entry.notes || ""
-      ])
+      ]),
+      [
+        { label: "Sorties cumulées", value: currency.format(cashflowMetrics.totalOutflow), detail: "Somme des flux sortants enregistrés" },
+        { label: "Ticket moyen sortie", value: currency.format(cashflowMetrics.averageOutflow), detail: "Moyenne des lignes OUTFLOW" },
+        { label: "Part paie", value: formatPercent(cashflowMetrics.payrollShare), detail: `Paie ${currency.format(cashflowMetrics.payrollOutflow)}` },
+        { label: "Couverture cash", value: `${cashflowMetrics.coverageRatio.toFixed(2)}x`, detail: "Cash disponible / sorties journalisées" }
+      ]
     );
   }
 
@@ -1037,6 +1328,11 @@ export function FinancialOperationsPage() {
     }
   }
 
+  function openBudgetDialog() {
+    setBudgetForm(EMPTY_BUDGET_FORM);
+    setActiveSubDialog("budget-create");
+  }
+
   async function handleCreateExpense(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setActionError(null);
@@ -1118,10 +1414,10 @@ export function FinancialOperationsPage() {
           department: salaryForm.department,
           position: salaryForm.position,
           baseSalary: Number(salaryForm.baseSalary || 0),
-          frequency: salaryForm.frequency,
-          defaultBonus: Number(salaryForm.defaultBonus || 0),
-          defaultDeduction: Number(salaryForm.defaultDeduction || 0),
-          debtRecoveryRate: Number(salaryForm.debtRecoveryRate || 0),
+          frequency: salaryForm.frequency || undefined,
+          defaultBonus: salaryForm.defaultBonus === "" ? undefined : Number(salaryForm.defaultBonus),
+          defaultDeduction: salaryForm.defaultDeduction === "" ? undefined : Number(salaryForm.defaultDeduction),
+          debtRecoveryRate: salaryForm.debtRecoveryRate === "" ? undefined : Number(salaryForm.debtRecoveryRate),
           notes: salaryForm.notes
         })
       });
@@ -1136,6 +1432,11 @@ export function FinancialOperationsPage() {
     } finally {
       setSubmittingKey(null);
     }
+  }
+
+  function openSalaryProfileDialog() {
+    setSalaryForm(EMPTY_SALARY_FORM);
+    setActiveSubDialog("salary-profile-create");
   }
 
   async function handleCreatePayrollRun(event: React.FormEvent<HTMLFormElement>) {
@@ -1249,6 +1550,18 @@ export function FinancialOperationsPage() {
     }
   ];
   const activeModule = operationModules.find((module) => module.value === activeDialog);
+  const handleCloseOperationsDialog = () => {
+    setActiveSubDialog(null);
+
+    // When supporting documents are opened from the Expenses branch,
+    // closing should return to Expenses instead of leaving Operations entirely.
+    if (activeDialog === "expenses" && activeTab === "documents") {
+      setActiveTab("expenses");
+      return;
+    }
+
+    setActiveDialog(null);
+  };
 
   return (
     <div className="edupay-operations space-y-6 pb-10 animate-fadeInUp">
@@ -1368,10 +1681,7 @@ export function FinancialOperationsPage() {
       {success && <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">{success}</div>}
 
       {activeDialog && activeModule && (
-        <OperationsDialog title={activeModule.title} subtitle={activeModule.description} onClose={() => {
-          setActiveSubDialog(null);
-          setActiveDialog(null);
-        }}>
+        <OperationsDialog title={activeModule.title} subtitle={activeModule.description} onClose={handleCloseOperationsDialog}>
       {activeTab === "expenses" && (
         <div className="space-y-6">
           <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
@@ -1629,7 +1939,7 @@ export function FinancialOperationsPage() {
                   detail={`${budgets.length} budget(s) existant(s)`}
                   icon={WalletCards}
                   tone="border-cyan-400/25 bg-cyan-500/10 text-cyan-200"
-                  onClick={() => setActiveSubDialog("budget-create")}
+                  onClick={openBudgetDialog}
                 />
                 <ActionNodeCard
                   title="Dépenses liées"
@@ -1691,7 +2001,7 @@ export function FinancialOperationsPage() {
                     detail={`${salaryProfiles.length} profil(s) actif(s)`}
                     icon={Users}
                     tone="border-brand-300/25 bg-brand-500/10 text-brand-100"
-                    onClick={() => setActiveSubDialog("salary-profile-create")}
+                    onClick={openSalaryProfileDialog}
                   />
                   <ActionNodeCard
                     title="Lancer une paie"
@@ -1777,31 +2087,77 @@ export function FinancialOperationsPage() {
           </div>
 
           {activeSubDialog === "salary-profile-create" && canWrite && (
-            <OperationsSubDialog title="Profil salarial" subtitle="Base salariale, bonus, deductions et recovery rate pour les futurs runs." onClose={() => setActiveSubDialog(null)}>
-              <form className="grid gap-3" onSubmit={handleCreateSalaryProfile}>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input className="input" value={salaryForm.employeeCode} onChange={(event) => setSalaryForm((current) => ({ ...current, employeeCode: event.target.value }))} placeholder="Code employe" required />
-                  <input className="input" value={salaryForm.fullName} onChange={(event) => setSalaryForm((current) => ({ ...current, fullName: event.target.value }))} placeholder="Nom complet" required />
+            <OperationsSubDialog title="Profil salarial" subtitle="Créer un profil de paie clair, sans valeurs injectées d'avance, pour les futurs runs." onClose={() => setActiveSubDialog(null)}>
+              <form className="grid gap-5" onSubmit={handleCreateSalaryProfile}>
+                <div className="rounded-2xl border border-brand-300/15 bg-brand-500/10 p-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-200">Profil de rémunération</p>
+                  <p className="mt-2 text-sm text-ink-dim">Renseignez explicitement les champs utiles. Les éléments optionnels laissés vides seront gérés par défaut côté système.</p>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input className="input" value={salaryForm.department} onChange={(event) => setSalaryForm((current) => ({ ...current, department: event.target.value }))} placeholder="Departement" required />
-                  <input className="input" value={salaryForm.position} onChange={(event) => setSalaryForm((current) => ({ ...current, position: event.target.value }))} placeholder="Poste" required />
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                    Code employé
+                    <input className="input" value={salaryForm.employeeCode} onChange={(event) => setSalaryForm((current) => ({ ...current, employeeCode: event.target.value }))} placeholder="Ex: EMP-ACAD-004" required />
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                    Nom complet
+                    <input className="input" value={salaryForm.fullName} onChange={(event) => setSalaryForm((current) => ({ ...current, fullName: event.target.value }))} placeholder="Ex: Grâce Mukendi" required />
+                  </label>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input className="input" type="number" min="0" step="0.01" value={salaryForm.baseSalary} onChange={(event) => setSalaryForm((current) => ({ ...current, baseSalary: event.target.value }))} placeholder="Salaire de base" required />
-                  <select className="input" value={salaryForm.frequency} onChange={(event) => setSalaryForm((current) => ({ ...current, frequency: event.target.value }))}>
-                    {PAYROLL_FREQUENCIES.map((frequency) => <option key={frequency} value={frequency}>{labelizeFrequency(frequency)}</option>)}
-                  </select>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                    Département
+                    <input className="input" value={salaryForm.department} onChange={(event) => setSalaryForm((current) => ({ ...current, department: event.target.value }))} placeholder="Ex: Académique" required />
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                    Poste
+                    <input className="input" value={salaryForm.position} onChange={(event) => setSalaryForm((current) => ({ ...current, position: event.target.value }))} placeholder="Ex: Enseignant de mathématiques" required />
+                  </label>
                 </div>
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <input className="input" type="number" min="0" step="0.01" value={salaryForm.defaultBonus} onChange={(event) => setSalaryForm((current) => ({ ...current, defaultBonus: event.target.value }))} placeholder="Bonus" />
-                  <input className="input" type="number" min="0" step="0.01" value={salaryForm.defaultDeduction} onChange={(event) => setSalaryForm((current) => ({ ...current, defaultDeduction: event.target.value }))} placeholder="Deductions" />
-                  <input className="input" type="number" min="0" max="100" step="0.01" value={salaryForm.debtRecoveryRate} onChange={(event) => setSalaryForm((current) => ({ ...current, debtRecoveryRate: event.target.value }))} placeholder="Recovery %" />
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                    Salaire de base
+                    <input className="input" type="number" min="0" step="0.01" value={salaryForm.baseSalary} onChange={(event) => setSalaryForm((current) => ({ ...current, baseSalary: event.target.value }))} placeholder="Ex: 450" required />
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                    Fréquence de paie
+                    <select className="input" value={salaryForm.frequency} onChange={(event) => setSalaryForm((current) => ({ ...current, frequency: event.target.value }))}>
+                      <option value="">Laisser le système appliquer le mensuel par défaut</option>
+                      {PAYROLL_FREQUENCIES.map((frequency) => <option key={frequency} value={frequency}>{labelizeFrequency(frequency)}</option>)}
+                    </select>
+                  </label>
                 </div>
-                <textarea className="input min-h-24" value={salaryForm.notes} onChange={(event) => setSalaryForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes RH" />
-                <button type="submit" disabled={submittingKey === "salary"} className="btn-primary justify-center px-5 py-3 text-sm font-semibold disabled:opacity-60">
-                  Ajouter le profil salarial
-                </button>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                    Bonus par défaut
+                    <input className="input" type="number" min="0" step="0.01" value={salaryForm.defaultBonus} onChange={(event) => setSalaryForm((current) => ({ ...current, defaultBonus: event.target.value }))} placeholder="Ex: 25" />
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                    Déduction par défaut
+                    <input className="input" type="number" min="0" step="0.01" value={salaryForm.defaultDeduction} onChange={(event) => setSalaryForm((current) => ({ ...current, defaultDeduction: event.target.value }))} placeholder="Ex: 15" />
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                    Taux de recouvrement (%)
+                    <input className="input" type="number" min="0" max="100" step="0.01" value={salaryForm.debtRecoveryRate} onChange={(event) => setSalaryForm((current) => ({ ...current, debtRecoveryRate: event.target.value }))} placeholder="Ex: 5" />
+                  </label>
+                </div>
+
+                <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                  Notes RH
+                  <textarea className="input min-h-24" value={salaryForm.notes} onChange={(event) => setSalaryForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Informations utiles sur ce profil salarial" />
+                </label>
+
+                <div className="flex flex-wrap justify-end gap-3">
+                  <button type="button" onClick={() => setActiveSubDialog(null)} className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white hover:border-brand-300/30 hover:bg-brand-500/10">
+                    Annuler
+                  </button>
+                  <button type="submit" disabled={submittingKey === "salary"} className="btn-primary justify-center px-5 py-3 text-sm font-semibold disabled:opacity-60">
+                    Ajouter le profil salarial
+                  </button>
+                </div>
               </form>
             </OperationsSubDialog>
           )}
@@ -1833,32 +2189,85 @@ export function FinancialOperationsPage() {
               <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Total ecritures</p>
                 <p className="mt-2 text-2xl font-bold text-white">{accountingEntries.length}</p>
+                <p className="mt-2 text-xs text-ink-dim">Cardinal du journal comptable actif.</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Charges comptabilisees</p>
-                <p className="mt-2 text-2xl font-bold text-red-300">{currency.format(accountingEntries.reduce((sum, entry) => sum + entry.amount, 0))}</p>
+              <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Volume comptabilisé</p>
+                <p className="mt-2 text-2xl font-bold text-red-300">{currency.format(accountingMetrics.totalVolume)}</p>
+                <p className="mt-2 text-xs text-red-100/80">Somme scientifique de toutes les écritures enregistrées.</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Source principale</p>
-                <p className="mt-2 text-sm font-semibold text-white">Depenses approuvees et runs de paie</p>
+              <div className="rounded-2xl border border-brand-400/20 bg-brand-500/10 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Ticket moyen</p>
+                <p className="mt-2 text-2xl font-bold text-white">{currency.format(accountingMetrics.averageEntry)}</p>
+                <p className="mt-2 text-xs text-brand-100/80">Moyenne = volume comptabilisé / nombre d'écritures.</p>
+              </div>
+              <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Part paie</p>
+                <p className="mt-2 text-2xl font-bold text-cyan-100">{formatPercent(accountingMetrics.payrollWeight)}</p>
+                <p className="mt-2 text-xs text-cyan-100/80">{currency.format(accountingMetrics.payrollVolume)} imputés à la masse salariale.</p>
+              </div>
+              <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Département dominant</p>
+                <p className="mt-2 text-lg font-bold text-white">{accountingMetrics.topDepartmentName}</p>
+                <p className="mt-2 text-xs text-amber-100/80">{formatPercent(accountingMetrics.topDepartmentWeight)} du volume comptable total.</p>
+              </div>
+              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Couverture documentaire</p>
+                <p className="mt-2 text-2xl font-bold text-emerald-200">{formatPercent(accountingMetrics.documentationCoverage)}</p>
+                <p className="mt-2 text-xs text-emerald-100/80">Pièces jointes présentes sur les dépenses source.</p>
+              </div>
+              <div className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Taux d'approbation</p>
+                <p className="mt-2 text-2xl font-bold text-violet-100">{formatPercent(accountingMetrics.approvalCoverage)}</p>
+                <p className="mt-2 text-xs text-violet-100/80">Dépenses approuvées sur l'ensemble du pipeline.</p>
               </div>
             </div>
           </SectionCard>
 
           <SectionCard title="Journal general" subtitle="Chaque ligne relie la comptabilisation a son objet source.">
             <div className="mb-4 flex flex-wrap gap-3">
-              <button onClick={exportAccountingCsv} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white hover:border-brand-300/30 hover:bg-brand-500/10">
-                <Download className="h-4 w-4" /> Export CSV
-              </button>
-              <button onClick={exportAccountingExcel} className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20">
-                <Download className="h-4 w-4" /> Export Excel
-              </button>
-              <button onClick={printAccountingReport} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white hover:border-brand-300/30 hover:bg-brand-500/10">
-                <Printer className="h-4 w-4" /> Imprimer
-              </button>
+              <SearchField value={accountingSearch} onChange={(event) => setAccountingSearch(event.target.value)} placeholder="Rechercher une écriture, un département ou une source..." />
+              <select value={accountingDepartmentFilter} onChange={(event) => setAccountingDepartmentFilter(event.target.value)} className="input min-w-[220px]">
+                <option value="ALL">Tous les départements</option>
+                {accountingDepartmentOptions.map((department) => <option key={department} value={department}>{department}</option>)}
+              </select>
+            </div>
+            <div className="mb-4 grid gap-3 xl:grid-cols-[1.15fr_0.85fr]">
+              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-200">Répartition par département</p>
+                <div className="mt-3 space-y-2">
+                  {accountingBreakdown.slice(0, 5).map((entry) => (
+                    <div key={entry.department} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
+                      <div>
+                        <p className="font-semibold text-white">{entry.department}</p>
+                        <p className="text-xs text-ink-dim">{entry.count} écriture(s) • moyenne {currency.format(entry.average)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-mono font-bold text-white">{currency.format(entry.volume)}</p>
+                        <p className="text-xs text-brand-100">{formatPercent(entry.weight)}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {!accountingBreakdown.length && <p className="text-sm text-ink-dim">Aucune écriture pour le filtre actuel.</p>}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-200">Actions du journal</p>
+                <div className="mt-3 flex flex-wrap gap-2 xl:flex-col xl:items-stretch">
+                  <button onClick={printAccountingReport} className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-300/25 bg-brand-500/10 px-4 py-2.5 text-sm font-semibold text-white hover:border-brand-200/40 hover:bg-brand-500/20">
+                    <Printer className="h-4 w-4" /> Imprimer le journal
+                  </button>
+                  <button onClick={exportAccountingExcel} className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20">
+                    <Download className="h-4 w-4" /> Export Excel
+                  </button>
+                  <button onClick={exportAccountingCsv} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-ink-dim hover:border-brand-300/25 hover:text-white hover:bg-brand-500/10">
+                    <Download className="h-3.5 w-3.5" /> CSV
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="space-y-3">
-              {accountingEntries.map((entry) => (
+              {filteredAccountingEntries.map((entry) => (
                 <article key={entry.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -1877,7 +2286,7 @@ export function FinancialOperationsPage() {
                   </div>
                 </article>
               ))}
-              {!accountingEntries.length && <p className="text-sm text-ink-dim">Aucune ecriture comptable disponible.</p>}
+              {!filteredAccountingEntries.length && <p className="text-sm text-ink-dim">Aucune ecriture comptable disponible pour le filtre actuel.</p>}
             </div>
           </SectionCard>
         </div>
@@ -1890,32 +2299,85 @@ export function FinancialOperationsPage() {
               <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Lignes de tresorerie</p>
                 <p className="mt-2 text-2xl font-bold text-white">{cashflowEntries.length}</p>
+                <p className="mt-2 text-xs text-ink-dim">Nombre d'enregistrements utilisés pour la lecture de cashflow.</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+              <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Sorties cumulees</p>
-                <p className="mt-2 text-2xl font-bold text-red-300">{currency.format(cashflowEntries.reduce((sum, entry) => sum + entry.amount, 0))}</p>
+                <p className="mt-2 text-2xl font-bold text-red-300">{currency.format(cashflowMetrics.totalOutflow)}</p>
+                <p className="mt-2 text-xs text-red-100/80">Flux sortants consolidés du journal de trésorerie.</p>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Balance disponible</p>
                 <p className="mt-2 text-2xl font-bold text-emerald-300">{currency.format(overview.cashflow.availableCash)}</p>
+                <p className="mt-2 text-xs text-emerald-100/80">Encaisse encore disponible après les sorties enregistrées.</p>
+              </div>
+              <div className="rounded-2xl border border-brand-400/20 bg-brand-500/10 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Ticket moyen sortie</p>
+                <p className="mt-2 text-2xl font-bold text-white">{currency.format(cashflowMetrics.averageOutflow)}</p>
+                <p className="mt-2 text-xs text-brand-100/80">Moyenne des opérations classées OUTFLOW.</p>
+              </div>
+              <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Part paie</p>
+                <p className="mt-2 text-2xl font-bold text-cyan-100">{formatPercent(cashflowMetrics.payrollShare)}</p>
+                <p className="mt-2 text-xs text-cyan-100/80">{currency.format(cashflowMetrics.payrollOutflow)} sortis pour la paie.</p>
+              </div>
+              <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Couverture cash</p>
+                <p className="mt-2 text-2xl font-bold text-amber-100">{cashflowMetrics.coverageRatio.toFixed(2)}x</p>
+                <p className="mt-2 text-xs text-amber-100/80">Ratio = cash disponible / sorties consolidées.</p>
+              </div>
+              <div className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Source dominante</p>
+                <p className="mt-2 text-lg font-bold text-white">{cashflowMetrics.dominantSourceName}</p>
+                <p className="mt-2 text-xs text-violet-100/80">{formatPercent(cashflowMetrics.dominantSourceWeight)} du volume de trésorerie.</p>
               </div>
             </div>
           </SectionCard>
 
           <SectionCard title="Journal de cashflow" subtitle="Reference, source, moyen de paiement et notes operationnelles.">
             <div className="mb-4 flex flex-wrap gap-3">
-              <button onClick={exportCashflowCsv} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white hover:border-brand-300/30 hover:bg-brand-500/10">
-                <Download className="h-4 w-4" /> Export CSV
-              </button>
-              <button onClick={exportCashflowExcel} className="inline-flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20">
-                <Download className="h-4 w-4" /> Export Excel
-              </button>
-              <button onClick={printCashflowReport} className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white hover:border-brand-300/30 hover:bg-brand-500/10">
-                <Printer className="h-4 w-4" /> Imprimer
-              </button>
+              <SearchField value={cashflowSearch} onChange={(event) => setCashflowSearch(event.target.value)} placeholder="Rechercher une source, une méthode, une référence ou une note..." />
+              <select value={cashflowSourceFilter} onChange={(event) => setCashflowSourceFilter(event.target.value)} className="input min-w-[220px]">
+                <option value="ALL">Toutes les sources</option>
+                {cashflowSourceOptions.map((source) => <option key={source} value={source}>{source}</option>)}
+              </select>
+            </div>
+            <div className="mb-4 grid gap-3 xl:grid-cols-[1.15fr_0.85fr]">
+              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100">Répartition par source</p>
+                <div className="mt-3 space-y-2">
+                  {cashflowBreakdown.slice(0, 5).map((entry) => (
+                    <div key={entry.sourceType} className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
+                      <div>
+                        <p className="font-semibold text-white">{entry.sourceType}</p>
+                        <p className="text-xs text-ink-dim">{entry.count} ligne(s) • moyenne {currency.format(entry.average)}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-mono font-bold text-white">{currency.format(entry.volume)}</p>
+                        <p className="text-xs text-cyan-100">{formatPercent(entry.weight)}</p>
+                      </div>
+                    </div>
+                  ))}
+                  {!cashflowBreakdown.length && <p className="text-sm text-ink-dim">Aucun flux pour le filtre actuel.</p>}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100">Actions trésorerie</p>
+                <div className="mt-3 flex flex-wrap gap-2 xl:flex-col xl:items-stretch">
+                  <button onClick={printCashflowReport} className="inline-flex items-center justify-center gap-2 rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-4 py-2.5 text-sm font-semibold text-white hover:border-cyan-200/40 hover:bg-cyan-500/20">
+                    <Printer className="h-4 w-4" /> Imprimer le journal
+                  </button>
+                  <button onClick={exportCashflowExcel} className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20">
+                    <Download className="h-4 w-4" /> Export Excel
+                  </button>
+                  <button onClick={exportCashflowCsv} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-ink-dim hover:border-brand-300/25 hover:text-white hover:bg-brand-500/10">
+                    <Download className="h-3.5 w-3.5" /> CSV
+                  </button>
+                </div>
+              </div>
             </div>
             <div className="space-y-3">
-              {cashflowEntries.map((entry) => (
+              {filteredCashflowEntries.map((entry) => (
                 <article key={entry.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -1935,7 +2397,7 @@ export function FinancialOperationsPage() {
                   {entry.notes && <p className="mt-3 text-sm text-ink-dim">{entry.notes}</p>}
                 </article>
               ))}
-              {!cashflowEntries.length && <p className="text-sm text-ink-dim">Aucun mouvement de tresorerie disponible.</p>}
+              {!filteredCashflowEntries.length && <p className="text-sm text-ink-dim">Aucun mouvement de tresorerie disponible pour le filtre actuel.</p>}
             </div>
           </SectionCard>
         </div>
@@ -1984,29 +2446,153 @@ export function FinancialOperationsPage() {
             </div>
           </SectionCard>
 
-          {activeSubDialog === "budget-create" && canWrite && (
-            <OperationsSubDialog title="Nouveau budget" subtitle="Planifier les enveloppes annuelles ou departementales avec seuil d'alerte." onClose={() => setActiveSubDialog(null)}>
-              <form className="grid gap-3" onSubmit={handleCreateBudget}>
-                <input className="input" value={budgetForm.name} onChange={(event) => setBudgetForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nom du budget" required />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input className="input" value={budgetForm.department} onChange={(event) => setBudgetForm((current) => ({ ...current, department: event.target.value }))} placeholder="Departement" required />
-                  <input className="input" type="number" min="0" step="0.01" value={budgetForm.plannedAmount} onChange={(event) => setBudgetForm((current) => ({ ...current, plannedAmount: event.target.value }))} placeholder="Montant planifie" required />
-                </div>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <select className="input" value={budgetForm.categoryId} onChange={(event) => setBudgetForm((current) => ({ ...current, categoryId: event.target.value }))}>
-                    <option value="">Categorie associee</option>
-                    {categories.filter((category) => !category.parentCategoryId).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
-                  </select>
-                  <input className="input" type="number" min="1" max="100" value={budgetForm.alertThreshold} onChange={(event) => setBudgetForm((current) => ({ ...current, alertThreshold: event.target.value }))} placeholder="Seuil alerte %" />
-                </div>
-                <textarea className="input min-h-24" value={budgetForm.notes} onChange={(event) => setBudgetForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes budgetaires" />
-                <button type="submit" disabled={submittingKey === "budget"} className="btn-primary justify-center px-5 py-3 text-sm font-semibold disabled:opacity-60">
-                  Enregistrer le budget
-                </button>
-              </form>
-            </OperationsSubDialog>
-          )}
         </div>
+      )}
+
+      {activeSubDialog === "budget-create" && canWrite && (
+        <OperationsSubDialog
+          title="Nouveau budget"
+          subtitle="Créer une enveloppe budgétaire claire, avec un département, une catégorie, un montant planifié et un seuil d'alerte." 
+          onClose={() => setActiveSubDialog(null)}
+        >
+          <form className="grid gap-6" onSubmit={handleCreateBudget}>
+            <div className="overflow-hidden rounded-3xl border border-cyan-300/20 bg-gradient-to-br from-cyan-400/14 via-slate-950 to-slate-950 shadow-xl">
+              <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase tracking-[0.2em] text-cyan-100">Budget workspace</p>
+                  <h4 className="mt-2 font-display text-2xl font-bold text-white">Créer une enveloppe budgétaire propre et traçable</h4>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-dim">
+                    Renseignez manuellement chaque champ important pour éviter les budgets implicites, mal catégorisés ou mal ventilés.
+                  </p>
+                </div>
+                <div className="grid gap-2 text-xs sm:min-w-[220px]">
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-white">
+                    <p className="font-black uppercase tracking-[0.16em] text-cyan-100">Champs clés</p>
+                    <p className="mt-1 text-ink-dim">Nom, département, montant, catégorie, seuil d'alerte.</p>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-white">
+                    <p className="font-black uppercase tracking-[0.16em] text-cyan-100">Résultat attendu</p>
+                    <p className="mt-1 text-ink-dim">Un budget exploitable immédiatement dans le suivi des dépenses.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+              <section className="rounded-3xl border border-white/10 bg-slate-950/45 p-5 shadow-lg">
+                <div className="mb-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-200">Identité du budget</p>
+                  <h4 className="mt-2 text-lg font-bold text-white">Informations principales</h4>
+                  <p className="mt-1 text-sm text-ink-dim">Définissez clairement le nom, le département et le volume financier prévu.</p>
+                </div>
+
+                <div className="grid gap-4">
+                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                    Nom du budget
+                    <input
+                      className="input"
+                      value={budgetForm.name}
+                      onChange={(event) => setBudgetForm((current) => ({ ...current, name: event.target.value }))}
+                      placeholder="Ex: Budget transport T3 2026"
+                      required
+                    />
+                    <span className="text-[11px] normal-case tracking-normal text-ink-dim">Nom lisible dans les journaux, les tableaux et les exports.</span>
+                  </label>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                      Département concerné
+                      <input
+                        className="input"
+                        value={budgetForm.department}
+                        onChange={(event) => setBudgetForm((current) => ({ ...current, department: event.target.value }))}
+                        placeholder="Ex: Administration, Académique, Transport"
+                        required
+                      />
+                      <span className="text-[11px] normal-case tracking-normal text-ink-dim">Service ou unité qui consommera ce budget.</span>
+                    </label>
+
+                    <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                      Montant planifié
+                      <input
+                        className="input"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={budgetForm.plannedAmount}
+                        onChange={(event) => setBudgetForm((current) => ({ ...current, plannedAmount: event.target.value }))}
+                        placeholder="Ex: 2500"
+                        required
+                      />
+                      <span className="text-[11px] normal-case tracking-normal text-ink-dim">Montant total prévu pour l'enveloppe, en USD.</span>
+                    </label>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-3xl border border-white/10 bg-slate-950/45 p-5 shadow-lg">
+                <div className="mb-4">
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-200">Pilotage</p>
+                  <h4 className="mt-2 text-lg font-bold text-white">Catégorisation et suivi</h4>
+                  <p className="mt-1 text-sm text-ink-dim">Préparez le budget pour le suivi analytique et les alertes de consommation.</p>
+                </div>
+
+                <div className="grid gap-4">
+                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                    Catégorie associée
+                    <select
+                      className="input"
+                      value={budgetForm.categoryId}
+                      onChange={(event) => setBudgetForm((current) => ({ ...current, categoryId: event.target.value }))}
+                    >
+                      <option value="">Choisir une catégorie principale</option>
+                      {categories.filter((category) => !category.parentCategoryId).map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                    </select>
+                    <span className="text-[11px] normal-case tracking-normal text-ink-dim">Permet d'ancrer le budget dans une famille de dépenses.</span>
+                  </label>
+
+                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                    Seuil d'alerte (%)
+                    <input
+                      className="input"
+                      type="number"
+                      min="1"
+                      max="100"
+                      value={budgetForm.alertThreshold}
+                      onChange={(event) => setBudgetForm((current) => ({ ...current, alertThreshold: event.target.value }))}
+                      placeholder="Ex: 80"
+                    />
+                    <span className="text-[11px] normal-case tracking-normal text-ink-dim">Déclenche une alerte visuelle lorsque la consommation approche la limite.</span>
+                  </label>
+
+                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                    Notes budgétaires
+                    <textarea
+                      className="input min-h-32"
+                      value={budgetForm.notes}
+                      onChange={(event) => setBudgetForm((current) => ({ ...current, notes: event.target.value }))}
+                      placeholder="Contexte, période couverte, justification, limites ou remarques de gestion"
+                    />
+                    <span className="text-[11px] normal-case tracking-normal text-ink-dim">Visible pour garder une trace de la logique budgétaire choisie.</span>
+                  </label>
+                </div>
+              </section>
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-3 border-t border-white/10 pt-2">
+              <button
+                type="button"
+                onClick={() => setActiveSubDialog(null)}
+                className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white hover:border-brand-300/30 hover:bg-brand-500/10"
+              >
+                Annuler
+              </button>
+              <button type="submit" disabled={submittingKey === "budget"} className="btn-primary justify-center px-5 py-3 text-sm font-semibold disabled:opacity-60">
+                Enregistrer le budget
+              </button>
+            </div>
+          </form>
+        </OperationsSubDialog>
       )}
         </OperationsDialog>
       )}

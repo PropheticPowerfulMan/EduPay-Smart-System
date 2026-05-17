@@ -23,6 +23,9 @@ const envSchema = z.object({
   DEFAULT_LANG: z.enum(["fr", "en"]).default("fr"),
   ENABLE_DEMO_AUTH_FALLBACK: z.enum(["true", "false"]).default("false"),
   ENABLE_DEMO_DATA_FALLBACK: z.enum(["true", "false"]).default("false"),
+  SAVANEX_API_URL: z.string().default(""),
+  SAVANEX_LOGIN_PATH: z.string().default("/api/auth/login/"),
+  SAVANEX_TIMEOUT_SECONDS: z.coerce.number().default(5),
   ADMIN_RECOVERY_CODE: z.string().default("")
 });
 

@@ -6,6 +6,7 @@ import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { prisma } from "../../prisma";
 import { env } from "../../config/env";
+import { syncOrbitRegistryMirror, type SharedParentOption } from "../../integrations/orbitRegistry";
 import { authGuard, AuthenticatedRequest } from "../../middlewares/auth";
 import { sendEmail } from "../../utils/messaging";
 
@@ -14,6 +15,14 @@ type StaffRole = "SUPER_ADMIN" | "OWNER" | "ADMIN" | "FINANCIAL_MANAGER" | "ACCO
 function generateAccessCode(role: StaffRole) {
   const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
   return `ACC-${role.slice(0, 3)}-${suffix}`;
+}
+
+function normalizeAccessCode(value?: string | null) {
+  return (value || "").trim().toUpperCase();
+}
+
+function savanexAuthIsEnabled() {
+  return Boolean(env.SAVANEX_API_URL);
 }
 
 async function generateUniqueAccessCode(role: StaffRole) {
@@ -35,8 +44,12 @@ const registerSchema = z.object({
 });
 
 const loginSchema = z.object({
-  email: z.string().min(1),
+  identifier: z.string().min(1).optional(),
+  email: z.string().min(1).optional(),
   password: z.string().min(8)
+}).refine((value) => Boolean(value.identifier?.trim() || value.email?.trim()), {
+  message: "Email ou code d'acces requis",
+  path: ["identifier"]
 });
 
 const forgotPasswordSchema = z.object({
@@ -85,6 +98,151 @@ function normalizeIdentifier(identifier: string) {
   return identifier.trim();
 }
 
+function matchesSharedParent(sharedParent: SharedParentOption, identifier: string, email: string, accessCode: string) {
+  const normalizedIdentifier = identifier.trim();
+  return Boolean(
+    (accessCode && sharedParent.accessCode === accessCode)
+    || (email && sharedParent.email.trim().toLowerCase() === email)
+    || sharedParent.id === normalizedIdentifier
+    || sharedParent.displayId === normalizedIdentifier
+    || sharedParent.orbitId === normalizedIdentifier
+    || sharedParent.fullName.trim().toLowerCase() === email
+  );
+}
+
+async function authenticateWithSavanex(identifier: string, password: string) {
+  if (!savanexAuthIsEnabled()) {
+    return null;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${env.SAVANEX_API_URL.replace(/\/$/, "")}${env.SAVANEX_LOGIN_PATH}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: identifier, password }),
+      signal: AbortSignal.timeout(env.SAVANEX_TIMEOUT_SECONDS * 1000)
+    });
+  } catch {
+    return null;
+  }
+
+  if ([400, 401, 403, 404].includes(response.status)) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error("Shared parent authentication is temporarily unavailable.");
+  }
+
+  const payload = await response.json().catch(() => ({} as Record<string, any>));
+  const user = payload.user || {};
+  const role = typeof user.role === "string" ? user.role.trim().toLowerCase() : "";
+  if (role !== "parent") {
+    return null;
+  }
+
+  const accessCode = normalizeAccessCode(typeof user.access_code === "string" ? user.access_code : identifier);
+  const email = typeof user.email === "string" && user.email.trim()
+    ? user.email.trim().toLowerCase()
+    : `${accessCode.toLowerCase()}@savanex.local`;
+
+  return {
+    fullName: typeof user.full_name === "string" && user.full_name.trim() ? user.full_name.trim() : "Parent SAVANEX",
+    email,
+    accessCode,
+    mustChangePassword: Boolean(user.must_change_password)
+  };
+}
+
+async function resolveEduPaySchoolId() {
+  const school = await prisma.school.findFirst({
+    orderBy: { createdAt: "asc" },
+    select: { id: true }
+  });
+  return school?.id || null;
+}
+
+async function ensureExternalParentUser(options: {
+  identifier: string;
+  password: string;
+  fullName: string;
+  email: string;
+  accessCode: string;
+  mustChangePassword: boolean;
+}) {
+  const schoolId = await resolveEduPaySchoolId();
+  if (!schoolId) {
+    throw new Error("EduPay school bootstrap is missing.");
+  }
+
+  const mirrored = await syncOrbitRegistryMirror(schoolId);
+  const sharedParent = mirrored.parents.find((entry) => matchesSharedParent(
+    entry,
+    options.identifier,
+    options.email,
+    options.accessCode
+  ));
+
+  if (!sharedParent) {
+    throw new Error("Parent shared profile not found in Orbit mirror.");
+  }
+
+  const parent = await prisma.parent.findFirst({
+    where: { id: sharedParent.id, schoolId },
+    include: { user: true }
+  });
+
+  if (!parent) {
+    throw new Error("Parent mirror not found after Orbit synchronization.");
+  }
+
+  const passwordHash = await bcrypt.hash(options.password, 10);
+  const candidateUser = parent.user || await prisma.user.findFirst({
+    where: {
+      schoolId,
+      OR: [
+        { email: options.email },
+        { accessCode: options.accessCode }
+      ]
+    }
+  });
+
+  const user = candidateUser
+    ? await prisma.user.update({
+      where: { id: candidateUser.id },
+      data: {
+        fullName: options.fullName,
+        email: options.email,
+        accessCode: options.accessCode,
+        passwordHash,
+        mustChangePassword: options.mustChangePassword,
+        role: "PARENT",
+        schoolId
+      }
+    })
+    : await prisma.user.create({
+      data: {
+        fullName: options.fullName,
+        email: options.email,
+        accessCode: options.accessCode,
+        passwordHash,
+        mustChangePassword: options.mustChangePassword,
+        role: "PARENT",
+        schoolId
+      }
+    });
+
+  if (parent.userId !== user.id) {
+    await prisma.parent.update({
+      where: { id: parent.id },
+      data: { userId: user.id }
+    });
+  }
+
+  return { user, parent };
+}
+
 export const authRouter = Router();
 
 const loginLimiter = rateLimit({
@@ -104,7 +262,15 @@ const recoveryLimiter = rateLimit({
 });
 
 authRouter.post("/register", async (req, res) => {
-  const payload = registerSchema.parse(req.body);
+    const parsed = registerSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: "Donnees d'inscription invalides",
+        issues: parsed.error.flatten()
+      });
+    }
+
+    const payload = parsed.data;
   const hash = await bcrypt.hash(payload.password, 10);
 
   const user = await prisma.user.create({
@@ -122,8 +288,16 @@ authRouter.post("/register", async (req, res) => {
 });
 
 authRouter.post("/login", loginLimiter, async (req, res) => {
-  const payload = loginSchema.parse(req.body);
-  const identifier = payload.email.trim();
+  const parsed = loginSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({
+      message: "Identifiants invalides",
+      issues: parsed.error.flatten()
+    });
+  }
+
+  const payload = parsed.data;
+  const identifier = normalizeIdentifier(payload.identifier || payload.email || "");
   const normalizedIdentifier = identifier.toLowerCase();
 
   try {
@@ -153,6 +327,28 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
           mustChangePassword: user.mustChangePassword
         });
       }
+    }
+
+    const externalUser = await authenticateWithSavanex(identifier, payload.password);
+    if (externalUser) {
+      const resolved = await ensureExternalParentUser({
+        identifier,
+        password: payload.password,
+        fullName: externalUser.fullName,
+        email: externalUser.email,
+        accessCode: externalUser.accessCode,
+        mustChangePassword: externalUser.mustChangePassword
+      });
+      const token = buildToken({ id: resolved.user.id, role: resolved.user.role, schoolId: resolved.user.schoolId });
+      return res.json({
+        token,
+        role: resolved.user.role,
+        fullName: resolved.user.fullName,
+        parentId: resolved.parent.id,
+        photoUrl: resolved.parent.photoUrl,
+        accessCode: resolved.user.accessCode,
+        mustChangePassword: resolved.user.mustChangePassword
+      });
     }
   } catch (error) {
     console.error("Database unavailable on login", error);

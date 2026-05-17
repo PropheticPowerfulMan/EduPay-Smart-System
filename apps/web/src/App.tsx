@@ -4,6 +4,7 @@ import { Sidebar } from "./components/Sidebar";
 import { AIAssistantPage } from "./pages/AIAssistantPage";
 import { FinanceDashboardPage } from "./pages/FinanceDashboardPage";
 import { FinancialOperationsPage } from "./pages/FinancialOperationsPage";
+import { EmployeesPage } from "./pages/EmployeesPage";
 import { FinanceParentAdminPage } from "./pages/FinanceParentAdminPage";
 import { FinanceParentPage } from "./pages/FinanceParentPage";
 import { LoginPage } from "./pages/LoginPage";
@@ -98,6 +99,7 @@ export function App() {
             <Route path="payments" element={<PaymentsPage />} />
             <Route path="parent-payments" element={<FinanceParentAdminPage />} />
             <Route path="students" element={<StudentsDirectoryPage />} />
+            <Route path="employees" element={<EmployeesPage />} />
             <Route path="ai" element={<AIAssistantPage />} />
             <Route path="parents" element={<ParentsManagementPage />} />
           </Route>

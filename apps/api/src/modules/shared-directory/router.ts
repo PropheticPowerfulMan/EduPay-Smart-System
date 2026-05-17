@@ -1,9 +1,30 @@
 import { Router } from "express";
-import { authGuard, AuthenticatedRequest } from "../../middlewares/auth";
-import { orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
+import { z } from "zod";
+import { authGuard, AuthenticatedRequest, authorize } from "../../middlewares/auth";
+import { deleteOrbitTeacher, orbitRegistryIsEnabled, syncOrbitRegistryMirror, updateOrbitTeacher } from "../../integrations/orbitRegistry";
 import { prisma } from "../../prisma";
 
 export const sharedDirectoryRouter = Router();
+
+const employeeWriteRoles = ["SUPER_ADMIN", "OWNER", "ADMIN", "HR_MANAGER"] as const;
+
+const updateEmployeeSchema = z.object({
+  fullName: z.string().trim().min(1).optional(),
+  firstName: z.string().trim().min(1).nullable().optional(),
+  middleName: z.string().trim().min(1).nullable().optional(),
+  lastName: z.string().trim().min(1).nullable().optional(),
+  phone: z.string().trim().min(1).nullable().optional(),
+  email: z.string().trim().email().nullable().optional(),
+  accessCode: z.string().trim().min(6).max(24).nullable().optional(),
+  subject: z.string().trim().min(1).nullable().optional(),
+  employeeId: z.string().trim().min(1).nullable().optional(),
+  employeeType: z.string().trim().min(1).nullable().optional(),
+  department: z.string().trim().min(1).nullable().optional(),
+  jobTitle: z.string().trim().min(1).nullable().optional(),
+  mustChangePassword: z.boolean().optional(),
+}).refine((value) => Object.values(value).some((item) => item !== undefined), {
+  message: "Au moins un champ doit etre fourni.",
+});
 
 function splitFullName(fullName: string) {
   const normalized = fullName.trim().replace(/\s+/g, " ");
@@ -48,7 +69,7 @@ sharedDirectoryRouter.get("/", async (req: AuthenticatedRequest, res) => {
       })),
       parents: mirrored.parents,
       students,
-      teachers: [],
+      teachers: mirrored.teachers,
     });
   }
 
@@ -123,4 +144,32 @@ sharedDirectoryRouter.get("/", async (req: AuthenticatedRequest, res) => {
     })),
     teachers: [],
   });
+});
+
+sharedDirectoryRouter.get("/teachers", async (req: AuthenticatedRequest, res) => {
+  if (!orbitRegistryIsEnabled()) {
+    return res.json([]);
+  }
+
+  const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);
+  return res.json(mirrored.teachers);
+});
+
+sharedDirectoryRouter.put("/teachers/:id", authorize(...employeeWriteRoles), async (req: AuthenticatedRequest, res) => {
+  if (!orbitRegistryIsEnabled()) {
+    return res.status(400).json({ message: "La synchronisation des employes n'est pas activee sur cet environnement." });
+  }
+
+  const payload = updateEmployeeSchema.parse(req.body);
+  const result = await updateOrbitTeacher(req.params.id, payload);
+  return res.json(result);
+});
+
+sharedDirectoryRouter.delete("/teachers/:id", authorize(...employeeWriteRoles), async (req: AuthenticatedRequest, res) => {
+  if (!orbitRegistryIsEnabled()) {
+    return res.status(400).json({ message: "La synchronisation des employes n'est pas activee sur cet environnement." });
+  }
+
+  const result = await deleteOrbitTeacher(req.params.id);
+  return res.json(result);
 });

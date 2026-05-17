@@ -16,6 +16,7 @@ export function Sidebar() {
         { to: "/payments", label: t("navPayments"), icon: "$" },
         { to: "/parent-payments", label: t("navParentPayments"), icon: "S" },
         { to: "/students", label: t("navStudents"), icon: "E" },
+        { to: "/employees", label: t("navEmployees"), icon: "M" },
         { to: "/parents", label: t("navParents"), icon: "G" },
         { to: "/ai", label: t("navAI"), icon: "AI" }
       ];

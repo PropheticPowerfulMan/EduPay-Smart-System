@@ -104,6 +104,27 @@ export type SharedParentOption = {
   students: SharedStudentOption[];
 };
 
+export type SharedTeacherOption = {
+  id: string;
+  orbitId: string;
+  displayId: string;
+  fullName: string;
+  firstName?: string;
+  middleName?: string | null;
+  lastName?: string;
+  phone?: string | null;
+  email?: string | null;
+  accessCode?: string | null;
+  subject?: string | null;
+  employeeId?: string | null;
+  employeeType?: string | null;
+  department?: string | null;
+  jobTitle?: string | null;
+  mustChangePassword?: boolean;
+  organizationId?: string | null;
+  externalIds: Array<{ appSlug: string; externalId: string }>;
+};
+
 export function orbitRegistryIsEnabled() {
   return Boolean(process.env.KCS_ORBIT_API_URL && process.env.KCS_ORBIT_API_KEY && process.env.KCS_ORBIT_ORGANIZATION_ID);
 }
@@ -135,6 +156,16 @@ function pickSharedStudentId(student: OrbitSharedDirectory["students"][number]) 
   }
 
   return student.studentNumber?.trim() || student.id;
+}
+
+function pickSharedTeacherId(teacher: OrbitSharedDirectory["teachers"][number]) {
+  const priority = ["SAVANEX", "KCS_NEXUS", "EDUSYNCAI", "EDUPAY"];
+  for (const appSlug of priority) {
+    const match = teacher.externalIds.find((item) => item.appSlug === appSlug)?.externalId;
+    if (match?.trim()) return match.trim();
+  }
+
+  return teacher.employeeId?.trim() || teacher.id;
 }
 
 export function mapOrbitDirectoryToSharedOptions(directory: OrbitSharedDirectory) {
@@ -189,10 +220,31 @@ export function mapOrbitDirectoryToSharedOptions(directory: OrbitSharedDirectory
   });
 
   const classes = Array.from(classNames).sort((left, right) => left.localeCompare(right));
+  const teachers = directory.teachers.map((teacher) => ({
+    id: teacher.id,
+    orbitId: teacher.id,
+    displayId: pickSharedTeacherId(teacher),
+    fullName: teacher.fullName,
+    firstName: teacher.firstName,
+    middleName: teacher.middleName,
+    lastName: teacher.lastName,
+    phone: teacher.phone,
+    email: teacher.email,
+    accessCode: teacher.accessCode,
+    subject: teacher.subject,
+    employeeId: teacher.employeeId,
+    employeeType: teacher.employeeType,
+    department: teacher.department,
+    jobTitle: teacher.jobTitle,
+    mustChangePassword: teacher.mustChangePassword,
+    organizationId: teacher.organizationId,
+    externalIds: teacher.externalIds,
+  }));
 
   return {
     parents,
     classes,
+    teachers,
     counts: directory.counts ?? {
       families: directory.families?.length ?? parents.length,
       parents: directory.parents.length,
@@ -310,15 +362,47 @@ export async function updateOrbitParent(identifier: string, payload: { fullName?
   });
 }
 
+export async function updateOrbitTeacher(identifier: string, payload: {
+  fullName?: string;
+  firstName?: string | null;
+  middleName?: string | null;
+  lastName?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  accessCode?: string | null;
+  subject?: string | null;
+  employeeId?: string | null;
+  employeeType?: string | null;
+  department?: string | null;
+  jobTitle?: string | null;
+  mustChangePassword?: boolean;
+}) {
+  return orbitRegistryRequest<{ orbitId: string; updated: boolean }>(`/api/integration/registry/teacher/${encodeURIComponent(identifier)}?identifierType=orbitId`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function deleteOrbitParent(identifier: string) {
   return orbitRegistryRequest<{ orbitId: string; deleted: boolean }>(`/api/integration/registry/parent/${encodeURIComponent(identifier)}?identifierType=orbitId`, {
     method: "DELETE",
   });
 }
 
+export async function deleteOrbitTeacher(identifier: string) {
+  return orbitRegistryRequest<{ orbitId: string; deleted: boolean }>(`/api/integration/registry/teacher/${encodeURIComponent(identifier)}?identifierType=orbitId`, {
+    method: "DELETE",
+  });
+}
+
 export async function syncOrbitRegistryMirror(schoolId: string) {
   if (!orbitRegistryIsEnabled()) {
-    return { parents: [] as SharedParentOption[], classes: [] as Array<{ id: string; name: string; level: string }>, counts: { families: 0, parents: 0, students: 0, teachers: 0 } };
+    return {
+      parents: [] as SharedParentOption[],
+      classes: [] as Array<{ id: string; name: string; level: string }>,
+      teachers: [] as SharedTeacherOption[],
+      counts: { families: 0, parents: 0, students: 0, teachers: 0 },
+    };
   }
 
   const directory = await fetchOrbitSharedDirectory();
@@ -533,6 +617,7 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
       })),
     })),
     classes,
+    teachers: mapped.teachers,
     counts: {
       families: orderedParents.length,
       parents: orderedParents.length,

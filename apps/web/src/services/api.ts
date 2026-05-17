@@ -24,6 +24,7 @@ const DEMO_EXPENSE_BUDGETS_KEY = "edupay_demo_expense_budgets_v1";
 const DEMO_EXPENSE_ITEMS_KEY = "edupay_demo_expense_items_v1";
 const DEMO_SALARY_PROFILES_KEY = "edupay_demo_salary_profiles_v1";
 const DEMO_PAYROLL_RUNS_KEY = "edupay_demo_payroll_runs_v1";
+const DEMO_EMPLOYEES_KEY = "edupay_demo_employees_v1";
 const DEMO_FALLBACK_ENABLED = (import.meta.env.VITE_ENABLE_DEMO_FALLBACK ?? "").trim().toLowerCase() === "true";
 const STATIC_APP_FALLBACK_ENABLED = ["demo", "github-pages", "pages"].includes((import.meta.env.VITE_ENVIRONMENT ?? "").trim().toLowerCase());
 const PLACEHOLDER_API_URL = /MON-BACKEND|example\.com/i.test(API_BASE_URL);
@@ -199,6 +200,24 @@ type DemoPayrollRun = {
     salarySlipNumber: string;
     salaryProfile: DemoSalaryProfile;
   }>;
+};
+
+type DemoEmployee = {
+  id: string;
+  orbitId: string;
+  displayId: string;
+  fullName: string;
+  phone?: string | null;
+  email?: string | null;
+  accessCode?: string | null;
+  subject?: string | null;
+  employeeId?: string | null;
+  employeeType?: string | null;
+  department?: string | null;
+  jobTitle?: string | null;
+  mustChangePassword?: boolean;
+  organizationId?: string | null;
+  externalIds: Array<{ appSlug: string; externalId: string }>;
 };
 
 const demoClasses = [
@@ -885,6 +904,32 @@ function getDemoSalaryProfiles() {
   ]);
   writeJson(DEMO_SALARY_PROFILES_KEY, profiles);
   return profiles;
+}
+
+function getDemoEmployees() {
+  const employees = readJson<DemoEmployee[]>(DEMO_EMPLOYEES_KEY, getDemoSalaryProfiles().map((profile) => ({
+    id: profile.id,
+    orbitId: profile.id,
+    displayId: profile.employeeCode,
+    fullName: profile.fullName,
+    phone: "",
+    email: "",
+    accessCode: `ACC-${profile.employeeCode}`,
+    subject: profile.position === "Teacher" ? "General" : "",
+    employeeId: profile.employeeCode,
+    employeeType: profile.position === "Teacher" ? "TEACHING" : "STAFF",
+    department: profile.department,
+    jobTitle: profile.position,
+    mustChangePassword: false,
+    organizationId: "demo-school",
+    externalIds: [{ appSlug: "SAVANEX", externalId: profile.employeeCode }],
+  })));
+  writeJson(DEMO_EMPLOYEES_KEY, employees);
+  return employees;
+}
+
+function saveDemoEmployees(employees: DemoEmployee[]) {
+  writeJson(DEMO_EMPLOYEES_KEY, employees);
 }
 
 function getDemoPayrollRuns() {
@@ -1653,6 +1698,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (normalizedPath === "/api/shared-directory" && method === "GET") {
     const parents = getDemoParents();
+    const teachers = getDemoEmployees();
     const students = parents.flatMap((parent) =>
       parent.students.map((student) => ({
         id: student.id,
@@ -1674,7 +1720,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
         families: parents.length,
         parents: parents.length,
         students: students.length,
-        teachers: 0,
+        teachers: teachers.length,
       },
       families: parents.map((parent) => ({
         id: parent.id,
@@ -1704,8 +1750,34 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
         })),
       })),
       students,
-      teachers: [],
+      teachers,
     } as T;
+  }
+
+  if (normalizedPath === "/api/shared-directory/teachers" && method === "GET") {
+    return getDemoEmployees() as T;
+  }
+
+  const demoTeacherMatch = normalizedPath.match(/^\/api\/shared-directory\/teachers\/([^/]+)$/);
+  if (demoTeacherMatch && method === "PUT") {
+    const teacherId = demoTeacherMatch[1];
+    const employees = getDemoEmployees();
+    const nextEmployees = employees.map((employee) => employee.id === teacherId || employee.orbitId === teacherId
+      ? {
+          ...employee,
+          ...body,
+          id: employee.id,
+          orbitId: employee.orbitId,
+          displayId: String(body.employeeId ?? employee.displayId ?? employee.employeeId ?? employee.id),
+        }
+      : employee);
+    saveDemoEmployees(nextEmployees);
+    return { orbitId: teacherId, updated: true } as T;
+  }
+
+  if (demoTeacherMatch && method === "DELETE") {
+    saveDemoEmployees(getDemoEmployees().filter((employee) => employee.id !== demoTeacherMatch[1] && employee.orbitId !== demoTeacherMatch[1]));
+    return { orbitId: demoTeacherMatch[1], deleted: true } as T;
   }
 
   if (normalizedPath === "/api/classes" && method === "GET") return demoClasses as T;

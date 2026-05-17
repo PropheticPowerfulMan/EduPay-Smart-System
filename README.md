@@ -65,8 +65,20 @@ docker exec -it edupay-api npx prisma migrate dev
 ```bash
 pnpm install
 cp apps/api/.env.example apps/api/.env
-# configurer DATABASE_URL dans apps/api/.env
+# pour le lancement local de l'ecosysteme, utilisez PostgreSQL local en postgres/postgres
+# DATABASE_URL=postgresql://postgres:postgres@localhost:5432/edupay?schema=public
 cd apps/api && npx prisma generate && npx prisma migrate dev
+```
+
+Si vous lancez tout l'ecosysteme localement, gardez aussi ces valeurs dans `apps/api/.env` :
+
+```env
+KCS_ORBIT_API_URL=http://localhost:4500
+KCS_ORBIT_API_KEY=edupay-dev-key
+KCS_ORBIT_ORGANIZATION_ID=cmosn5f2e0000wu1s8xano5e7
+SAVANEX_API_URL=http://localhost:8001
+SAVANEX_LOGIN_PATH=/api/auth/login/
+SAVANEX_TIMEOUT_SECONDS=15
 ```
 
 ### Démarrer les services
@@ -84,6 +96,8 @@ python -m venv .venv && source .venv/bin/activate  # Windows: .venv\Scripts\acti
 pip install -r requirements.txt
 uvicorn app.main:app --reload --port 8000
 ```
+
+Validation locale vérifiée : un parent créé dans SAVANEX peut se connecter à EduPay avec son `access_code`, et un enseignant créé dans SAVANEX peut se connecter à KCS Nexus et EduSync AI avec le même identifiant partagé.
 
 ---
 

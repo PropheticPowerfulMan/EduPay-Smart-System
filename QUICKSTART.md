@@ -1,34 +1,29 @@
 # Démarrer EduPay en Local – Guide Rapide
 
 ## ✅ Prérequis faits :
-- ✓ npm install apps/web
-- ✓ npm install apps/api
-- ✓ Créé server-simple.ts (mode test sans DB)
+- ✓ pnpm install
+- ✓ PostgreSQL local disponible sur localhost:5432
+- ✓ apps/api/.env configuré
 
-## 🚀 Lancer l'appli (une fois que npm install finit)
+## 🚀 Lancer l'appli
 
 ### Terminal 1 – Backend (API)
 ```powershell
 cd apps/api
-npm run build
-npx tsx server-simple.ts
-```
-
-ou plus rapidement avec tsx :
-```powershell
-cd apps/api && npx tsx server-simple.ts
+copy .env.example .env
+# pour le mode ecosysteme local, gardez DATABASE_URL=postgresql://postgres:postgres@localhost:5432/edupay?schema=public
+pnpm dev
 ```
 
 Vous verrez :
 ```
-✓ API server running on http://localhost:4000
-✓ Default login: admin@school.com / password123
+API running on port 4000
 ```
 
 ### Terminal 2 – Frontend (Web)
 ```powershell
 cd apps/web
-npm run dev
+pnpm dev
 ```
 
 Vous verrez :
@@ -51,10 +46,11 @@ uvicorn app.main:app --reload --port 8000
 
 1. Ouvrir http://localhost:5173
 2. Login: **admin@school.com** / **password123**
-3. Explorer Dashboard, Paiements, Suivi Parent, Assistant IA
+3. Login parent partagé possible via **access_code** SAVANEX dans EduPay
+4. Explorer Dashboard, Paiements, Suivi Parent, Assistant IA
 
 ## Notes
 
-- **server-simple.ts** = mock data en mémoire (pas de PostgreSQL requis)
-- Une fois que vous voulez une DB réelle, configurer PostgreSQL + .env + `pnpm prisma migrate dev`
+- Mode réel validé avec PostgreSQL local et Prisma
+- Une fois que vous voulez une DB réelle, configurer PostgreSQL + `.env` + `pnpm prisma migrate dev`
 - AI service est optionnel pour une démo basique
