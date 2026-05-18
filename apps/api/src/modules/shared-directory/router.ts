@@ -18,7 +18,6 @@ const updateEmployeeSchema = z.object({
   email: z.string().trim().email().nullable().optional(),
   accessCode: z.string().trim().min(6).max(24).nullable().optional(),
   subject: z.string().trim().min(1).nullable().optional(),
-  employeeId: z.string().trim().min(1).nullable().optional(),
   employeeType: z.string().trim().min(1).nullable().optional(),
   department: z.string().trim().min(1).nullable().optional(),
   jobTitle: z.string().trim().min(1).nullable().optional(),

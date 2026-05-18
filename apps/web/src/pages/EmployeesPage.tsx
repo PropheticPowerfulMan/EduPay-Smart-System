@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { SearchField } from "../components/SearchField";
+import { schoolBranding } from "../config/branding";
 import { api } from "../services/api";
 import { useAuthStore } from "../store/auth";
+import { exportWorkbook } from "../utils/financeExcel";
 
 type Employee = {
   id: string;
@@ -32,6 +34,71 @@ type EmployeeFormState = {
   department: string;
   jobTitle: string;
   mustChangePassword: boolean;
+};
+
+type SalaryProfile = {
+  id: string;
+  employeeCode: string;
+  fullName: string;
+  department: string;
+  position: string;
+  baseSalary: number;
+  currency: string;
+  frequency: string;
+  defaultBonus: number;
+  defaultDeduction: number;
+  advanceBalance?: number;
+  debtRecoveryRate: number;
+  notes?: string;
+  isActive: boolean;
+  createdAt?: string;
+};
+
+type PayrollRunItem = {
+  id: string;
+  baseSalary?: number;
+  bonuses?: number;
+  deductions?: number;
+  advancesRecovered?: number;
+  debtRecovered?: number;
+  netSalary: number;
+  salarySlipNumber: string;
+  salaryProfile: SalaryProfile;
+};
+
+type PayrollRun = {
+  id: string;
+  title: string;
+  department?: string;
+  frequency: string;
+  status: string;
+  totalGross: number;
+  totalBonuses: number;
+  totalDeductions: number;
+  totalNet: number;
+  notes?: string;
+  processedAt: string | null;
+  period?: { id: string; name: string } | null;
+  items: PayrollRunItem[];
+};
+
+type EmployeeFinanceRecord = {
+  run: PayrollRun;
+  item: PayrollRunItem;
+};
+
+type EmployeeFinanceSnapshot = {
+  profiles: SalaryProfile[];
+  payrollRecords: EmployeeFinanceRecord[];
+  primaryProfile: SalaryProfile | null;
+  currency: string;
+  totals: {
+    totalNetPaid: number;
+    totalBonuses: number;
+    totalDeductions: number;
+    totalDebtRecovered: number;
+    totalAdvancesRecovered: number;
+  };
 };
 
 const EMPTY_FORM: EmployeeFormState = {
@@ -87,18 +154,27 @@ function XIcon() {
 
 function ModalShell({ title, subtitle, onClose, children }: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="relative glass w-full max-w-3xl rounded-3xl border border-white/10 p-6 shadow-2xl animate-fadeInUp" onClick={(event) => event.stopPropagation()}>
-        <button onClick={onClose} className="absolute right-4 top-4 text-ink-dim transition-colors hover:text-white">
+      <div className="relative my-4 max-h-[calc(100dvh-2rem)] w-full max-w-3xl overflow-y-auto rounded-3xl border border-white/10 glass shadow-2xl animate-fadeInUp" onClick={(event) => event.stopPropagation()}>
+        <button
+          type="button"
+          aria-label="Fermer"
+          onClick={onClose}
+          className="absolute right-4 top-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-slate-950/80 text-white/80 shadow-lg backdrop-blur transition-all hover:border-white/30 hover:bg-slate-900 hover:text-white"
+        >
           <XIcon />
         </button>
-        <div className="mb-6 pr-10">
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-300">Employés</p>
-          <h2 className="mt-2 font-display text-2xl font-bold text-white">{title}</h2>
-          {subtitle ? <p className="mt-2 text-sm text-ink-dim">{subtitle}</p> : null}
+        <div className="sticky top-0 z-[1] rounded-t-3xl border-b border-white/10 bg-slate-950/85 px-6 pb-5 pt-6 backdrop-blur">
+          <div className="pr-12">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-300">Employés</p>
+            <h2 className="mt-2 font-display text-2xl font-bold text-white">{title}</h2>
+            {subtitle ? <p className="mt-2 text-sm text-ink-dim">{subtitle}</p> : null}
+          </div>
         </div>
-        {children}
+        <div className="p-6">
+          {children}
+        </div>
       </div>
     </div>
   );
@@ -123,6 +199,407 @@ function infoValue(value?: string | null) {
   return value?.trim() ? value : "Non renseigné";
 }
 
+function normalizeComparable(value?: string | null) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function formatCurrency(amount: number, currency = "USD") {
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number.isFinite(amount) ? amount : 0);
+}
+
+function formatDateTimeLabel(value?: string | null) {
+  if (!value) return "Non disponible";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Non disponible";
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
+}
+
+function labelizeFrequency(value?: string | null) {
+  switch (String(value ?? "").toUpperCase()) {
+    case "MONTHLY":
+      return "Mensuelle";
+    case "BI_MONTHLY":
+      return "Bimensuelle";
+    case "QUARTERLY":
+      return "Trimestrielle";
+    case "ANNUAL":
+      return "Annuelle";
+    default:
+      return infoValue(value);
+  }
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function slugify(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "") || "employee";
+}
+
+function buildEmployeeFinanceSnapshot(employee: Employee, profiles: SalaryProfile[], runs: PayrollRun[]): EmployeeFinanceSnapshot {
+  const employeeKeys = new Set(
+    [employee.id, employee.orbitId, employee.displayId, employee.employeeId]
+      .map((value) => normalizeComparable(value))
+      .filter(Boolean)
+  );
+  const employeeName = normalizeComparable(employee.fullName);
+
+  const matchedProfiles = profiles.filter((profile) => {
+    const profileCode = normalizeComparable(profile.employeeCode);
+    const profileName = normalizeComparable(profile.fullName);
+    return employeeKeys.has(profileCode) || (employeeName && profileName === employeeName);
+  });
+
+  const matchedProfileIds = new Set(matchedProfiles.map((profile) => profile.id));
+
+  const payrollRecords = runs.flatMap((run) =>
+    (Array.isArray(run.items) ? run.items : [])
+      .filter((item) => {
+        const code = normalizeComparable(item.salaryProfile?.employeeCode);
+        const name = normalizeComparable(item.salaryProfile?.fullName);
+        const profileId = item.salaryProfile?.id;
+        return Boolean(
+          (profileId && matchedProfileIds.has(profileId))
+          || employeeKeys.has(code)
+          || (employeeName && name === employeeName)
+        );
+      })
+      .map((item) => ({ run, item }))
+  );
+
+  const primaryProfile = matchedProfiles[0] ?? payrollRecords[0]?.item.salaryProfile ?? null;
+  const currency = primaryProfile?.currency || payrollRecords[0]?.item.salaryProfile?.currency || "USD";
+
+  return {
+    profiles: matchedProfiles,
+    payrollRecords,
+    primaryProfile,
+    currency,
+    totals: {
+      totalNetPaid: payrollRecords.reduce((sum, record) => sum + Number(record.item.netSalary ?? 0), 0),
+      totalBonuses: payrollRecords.reduce((sum, record) => sum + Number(record.item.bonuses ?? record.item.salaryProfile?.defaultBonus ?? 0), 0),
+      totalDeductions: payrollRecords.reduce((sum, record) => sum + Number(record.item.deductions ?? record.item.salaryProfile?.defaultDeduction ?? 0), 0),
+      totalDebtRecovered: payrollRecords.reduce((sum, record) => sum + Number(record.item.debtRecovered ?? 0), 0),
+      totalAdvancesRecovered: payrollRecords.reduce((sum, record) => sum + Number(record.item.advancesRecovered ?? 0), 0),
+    },
+  };
+}
+
+function buildEmployeeReportHtml(employee: Employee, snapshot: EmployeeFinanceSnapshot) {
+  const currency = snapshot.currency;
+  const profile = snapshot.primaryProfile;
+  const payrollRows = snapshot.payrollRecords.length > 0
+    ? snapshot.payrollRecords.map(({ run, item }) => `
+        <tr>
+          <td>${escapeHtml(formatDateTimeLabel(run.processedAt))}</td>
+          <td>${escapeHtml(item.salarySlipNumber)}</td>
+          <td>${escapeHtml(run.title)}</td>
+          <td>${escapeHtml(run.period?.name ?? "Période active")}</td>
+          <td>${escapeHtml(formatCurrency(Number(item.baseSalary ?? item.salaryProfile.baseSalary ?? 0), currency))}</td>
+          <td>${escapeHtml(formatCurrency(Number(item.bonuses ?? item.salaryProfile.defaultBonus ?? 0), currency))}</td>
+          <td>${escapeHtml(formatCurrency(Number(item.deductions ?? item.salaryProfile.defaultDeduction ?? 0), currency))}</td>
+          <td>${escapeHtml(formatCurrency(Number(item.advancesRecovered ?? 0), currency))}</td>
+          <td>${escapeHtml(formatCurrency(Number(item.debtRecovered ?? 0), currency))}</td>
+          <td>${escapeHtml(formatCurrency(Number(item.netSalary ?? 0), currency))}</td>
+        </tr>`).join("")
+    : '<tr><td colspan="10" class="empty">Aucun historique salarial disponible pour cet employé.</td></tr>';
+
+  const notesBlock = profile?.notes?.trim()
+    ? `<div class="panel"><h3>Observations RH</h3><p>${escapeHtml(profile.notes.trim())}</p></div>`
+    : "";
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dossier financier employé - ${escapeHtml(employee.fullName)}</title>
+  <style>
+    @page { size: A4; margin: 14mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Arial, Helvetica, sans-serif; background: #edf2f7; color: #0f172a; }
+    .sheet { width: 100%; max-width: 1020px; margin: 0 auto; padding: 24px; }
+    .report { background: #ffffff; border: 1px solid #dbe4f0; border-radius: 24px; overflow: hidden; position: relative; }
+    .watermark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; opacity: 0.05; pointer-events: none; }
+    .watermark img { width: 320px; height: 320px; object-fit: contain; }
+    .hero { position: relative; padding: 28px; background: linear-gradient(135deg, ${schoolBranding.colors.primary}, ${schoolBranding.colors.secondary}); color: white; }
+    .hero-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+    .brand { display: flex; align-items: center; gap: 16px; }
+    .brand img { width: 64px; height: 64px; border-radius: 16px; object-fit: cover; background: rgba(255,255,255,0.14); padding: 8px; }
+    .eyebrow { font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: rgba(255,255,255,0.8); }
+    h1 { margin: 10px 0 0; font-size: 30px; }
+    .hero p { margin: 6px 0 0; color: rgba(255,255,255,0.82); }
+    .meta-badge { border: 1px solid rgba(255,255,255,0.22); border-radius: 999px; padding: 10px 14px; font-size: 12px; font-weight: 700; }
+    .section { padding: 24px 28px 0; }
+    .cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    .card { border: 1px solid #dbe4f0; border-radius: 18px; padding: 16px; background: #f8fbff; }
+    .label { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: #64748b; }
+    .value { margin-top: 8px; font-size: 20px; font-weight: 700; color: #0f172a; }
+    .subvalue { margin-top: 6px; font-size: 12px; color: #475569; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+    .panel { border: 1px solid #dbe4f0; border-radius: 18px; padding: 18px; background: #ffffff; }
+    .panel h3 { margin: 0 0 12px; font-size: 15px; }
+    .detail-list { display: grid; gap: 10px; }
+    .detail-row { display: flex; justify-content: space-between; gap: 12px; border-bottom: 1px solid #eef2f7; padding-bottom: 8px; }
+    .detail-row:last-child { border-bottom: 0; padding-bottom: 0; }
+    .detail-row span:first-child { color: #64748b; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b; background: #f8fafc; }
+    th, td { border-bottom: 1px solid #e2e8f0; padding: 12px 10px; text-align: left; font-size: 12px; }
+    .empty { text-align: center; color: #64748b; padding: 20px; }
+    .footer { padding: 22px 28px 28px; font-size: 12px; color: #475569; }
+    @media print {
+      body { background: white; }
+      .sheet { padding: 0; }
+      .report { border-radius: 0; border: 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <div class="report">
+      <div class="watermark"><img src="${escapeHtml(schoolBranding.logoSrc)}" alt="Logo" /></div>
+      <div class="hero">
+        <div class="hero-top">
+          <div class="brand">
+            <img src="${escapeHtml(schoolBranding.logoSrc)}" alt="${escapeHtml(schoolBranding.schoolName)}" />
+            <div>
+              <div class="eyebrow">${escapeHtml(schoolBranding.schoolName)}</div>
+              <h1>Dossier financier employé</h1>
+              <p>${escapeHtml(employee.fullName)} • ${escapeHtml(infoValue(employee.jobTitle))} • ${escapeHtml(infoValue(employee.department))}</p>
+            </div>
+          </div>
+          <div class="meta-badge">ID système: ${escapeHtml(employee.displayId || employee.employeeId || employee.id)}</div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="cards">
+          <div class="card"><div class="label">Salaire de base</div><div class="value">${escapeHtml(formatCurrency(Number(profile?.baseSalary ?? 0), currency))}</div><div class="subvalue">${escapeHtml(labelizeFrequency(profile?.frequency))}</div></div>
+          <div class="card"><div class="label">Bonus cumulés</div><div class="value">${escapeHtml(formatCurrency(snapshot.totals.totalBonuses, currency))}</div><div class="subvalue">Historique de paie</div></div>
+          <div class="card"><div class="label">Dettes recouvrées</div><div class="value">${escapeHtml(formatCurrency(snapshot.totals.totalDebtRecovered, currency))}</div><div class="subvalue">Taux: ${escapeHtml(`${Number(profile?.debtRecoveryRate ?? 0).toFixed(2)}%`)}</div></div>
+          <div class="card"><div class="label">Avances en cours</div><div class="value">${escapeHtml(formatCurrency(Number(profile?.advanceBalance ?? 0), currency))}</div><div class="subvalue">Avances récupérées: ${escapeHtml(formatCurrency(snapshot.totals.totalAdvancesRecovered, currency))}</div></div>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="grid">
+          <div class="panel">
+            <h3>Référentiel salarial</h3>
+            <div class="detail-list">
+              <div class="detail-row"><span>Code employé</span><strong>${escapeHtml(profile?.employeeCode || employee.displayId || employee.employeeId || employee.id)}</strong></div>
+              <div class="detail-row"><span>Poste</span><strong>${escapeHtml(infoValue(profile?.position || employee.jobTitle))}</strong></div>
+              <div class="detail-row"><span>Département</span><strong>${escapeHtml(infoValue(profile?.department || employee.department))}</strong></div>
+              <div class="detail-row"><span>Bonus par défaut</span><strong>${escapeHtml(formatCurrency(Number(profile?.defaultBonus ?? 0), currency))}</strong></div>
+              <div class="detail-row"><span>Déductions par défaut</span><strong>${escapeHtml(formatCurrency(Number(profile?.defaultDeduction ?? 0), currency))}</strong></div>
+              <div class="detail-row"><span>Net versé cumulé</span><strong>${escapeHtml(formatCurrency(snapshot.totals.totalNetPaid, currency))}</strong></div>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>Coordonnées et traçabilité</h3>
+            <div class="detail-list">
+              <div class="detail-row"><span>Email</span><strong>${escapeHtml(infoValue(employee.email))}</strong></div>
+              <div class="detail-row"><span>Téléphone</span><strong>${escapeHtml(infoValue(employee.phone))}</strong></div>
+              <div class="detail-row"><span>Type</span><strong>${escapeHtml(infoValue(employee.employeeType))}</strong></div>
+              <div class="detail-row"><span>Spécialité</span><strong>${escapeHtml(infoValue(employee.subject))}</strong></div>
+              <div class="detail-row"><span>Dernier run</span><strong>${escapeHtml(formatDateTimeLabel(snapshot.payrollRecords[0]?.run.processedAt))}</strong></div>
+              <div class="detail-row"><span>Nombre de fiches</span><strong>${escapeHtml(String(snapshot.payrollRecords.length))}</strong></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      ${notesBlock ? `<div class="section">${notesBlock}</div>` : ""}
+
+      <div class="section">
+        <div class="panel">
+          <h3>Historique salarial détaillé</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Fiche</th>
+                <th>Run</th>
+                <th>Période</th>
+                <th>Brut</th>
+                <th>Bonus</th>
+                <th>Déductions</th>
+                <th>Avances</th>
+                <th>Dettes</th>
+                <th>Net payé</th>
+              </tr>
+            </thead>
+            <tbody>${payrollRows}</tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="footer">Document généré par ${escapeHtml(schoolBranding.appName)} le ${escapeHtml(formatDateTimeLabel(new Date().toISOString()))}.</div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
+function printHtmlDocument(html: string) {
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.opacity = "0";
+  iframe.style.pointerEvents = "none";
+  iframe.style.border = "0";
+  document.body.appendChild(iframe);
+
+  const cleanup = () => {
+    window.setTimeout(() => {
+      iframe.remove();
+    }, 0);
+  };
+
+  const frameWindow = iframe.contentWindow;
+  const frameDocument = iframe.contentDocument ?? frameWindow?.document;
+  if (!frameWindow || !frameDocument) {
+    cleanup();
+    return;
+  }
+
+  frameDocument.open();
+  frameDocument.write(html);
+  frameDocument.close();
+
+  const triggerPrint = () => {
+    frameWindow.focus();
+    frameWindow.print();
+    frameWindow.addEventListener("afterprint", cleanup, { once: true });
+    window.setTimeout(cleanup, 2000);
+  };
+
+  const fontsReady = frameDocument.fonts?.ready;
+  if (fontsReady) {
+    fontsReady.catch(() => undefined).finally(() => {
+      window.setTimeout(triggerPrint, 220);
+    });
+    return;
+  }
+
+  window.setTimeout(triggerPrint, 320);
+}
+
+async function exportEmployeeReportPdf(employee: Employee, snapshot: EmployeeFinanceSnapshot) {
+  const html = buildEmployeeReportHtml(employee, snapshot);
+  const mount = document.createElement("div");
+  mount.style.position = "fixed";
+  mount.style.left = "-10000px";
+  mount.style.top = "0";
+  mount.style.width = "1020px";
+  mount.innerHTML = html;
+  document.body.appendChild(mount);
+
+  try {
+    const reportNode = mount.querySelector(".report") as HTMLElement | null;
+    if (!reportNode) throw new Error("Support de rapport introuvable.");
+
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
+    await document.fonts?.ready;
+
+    const canvas = await html2canvas(reportNode, {
+      scale: 2,
+      useCORS: true,
+      backgroundColor: "#edf2f7",
+    });
+
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const imageWidth = pageWidth;
+    const imageHeight = (canvas.height * imageWidth) / canvas.width;
+    const imageData = canvas.toDataURL("image/png");
+
+    let remainingHeight = imageHeight;
+    let position = 0;
+    pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight);
+    remainingHeight -= pageHeight;
+
+    while (remainingHeight > 0) {
+      position = remainingHeight - imageHeight;
+      pdf.addPage();
+      pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight);
+      remainingHeight -= pageHeight;
+    }
+
+    pdf.save(`dossier-financier-${slugify(employee.fullName)}.pdf`);
+  } finally {
+    mount.remove();
+  }
+}
+
+function printEmployeeReport(employee: Employee, snapshot: EmployeeFinanceSnapshot) {
+  printHtmlDocument(buildEmployeeReportHtml(employee, snapshot));
+}
+
+function exportEmployeeReportExcel(employee: Employee, snapshot: EmployeeFinanceSnapshot) {
+  const currency = snapshot.currency;
+  const profile = snapshot.primaryProfile;
+  exportWorkbook(`dossier-financier-${slugify(employee.fullName)}`, [
+    {
+      name: "Synthese",
+      rows: [{
+        "Employé": employee.fullName,
+        "ID système": employee.displayId || employee.employeeId || employee.id,
+        "Département": profile?.department || employee.department || "",
+        "Poste": profile?.position || employee.jobTitle || "",
+        "Fréquence": labelizeFrequency(profile?.frequency),
+        "Salaire de base": Number(profile?.baseSalary ?? 0),
+        "Bonus par défaut": Number(profile?.defaultBonus ?? 0),
+        "Déductions par défaut": Number(profile?.defaultDeduction ?? 0),
+        "Avances en cours": Number(profile?.advanceBalance ?? 0),
+        "Taux recouvrement dette %": Number(Number(profile?.debtRecoveryRate ?? 0).toFixed(2)),
+        "Net payé cumulé": Number(snapshot.totals.totalNetPaid.toFixed(2)),
+        "Bonus cumulés": Number(snapshot.totals.totalBonuses.toFixed(2)),
+        "Déductions cumulées": Number(snapshot.totals.totalDeductions.toFixed(2)),
+        "Dettes recouvrées": Number(snapshot.totals.totalDebtRecovered.toFixed(2)),
+        "Avances récupérées": Number(snapshot.totals.totalAdvancesRecovered.toFixed(2)),
+        "Devise": currency,
+      }],
+    },
+    {
+      name: "Historique paie",
+      rows: snapshot.payrollRecords.map(({ run, item }) => ({
+        "Date de traitement": formatDateTimeLabel(run.processedAt),
+        "Run": run.title,
+        "Période": run.period?.name ?? "Période active",
+        "Statut": run.status,
+        "Numéro fiche": item.salarySlipNumber,
+        "Salaire brut": Number((item.baseSalary ?? item.salaryProfile.baseSalary ?? 0).toFixed(2)),
+        "Bonus": Number((item.bonuses ?? item.salaryProfile.defaultBonus ?? 0).toFixed(2)),
+        "Déductions": Number((item.deductions ?? item.salaryProfile.defaultDeduction ?? 0).toFixed(2)),
+        "Avances récupérées": Number((item.advancesRecovered ?? 0).toFixed(2)),
+        "Dettes recouvrées": Number((item.debtRecovered ?? 0).toFixed(2)),
+        "Net payé": Number(item.netSalary.toFixed(2)),
+      })),
+    },
+  ]);
+}
+
 export function EmployeesPage() {
   const role = useAuthStore((state) => state.role);
   const canManageEmployees = ["SUPER_ADMIN", "OWNER", "ADMIN", "HR_MANAGER"].includes(role || "");
@@ -135,6 +612,9 @@ export function EmployeesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
   const [form, setForm] = useState<EmployeeFormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [employeeFinanceLoading, setEmployeeFinanceLoading] = useState(false);
+  const [employeeFinanceError, setEmployeeFinanceError] = useState<string | null>(null);
+  const [employeeFinanceSnapshot, setEmployeeFinanceSnapshot] = useState<EmployeeFinanceSnapshot | null>(null);
 
   async function loadEmployees() {
     setLoading(true);
@@ -152,6 +632,40 @@ export function EmployeesPage() {
   useEffect(() => {
     void loadEmployees();
   }, []);
+
+  useEffect(() => {
+    if (!selectedEmployee) {
+      setEmployeeFinanceSnapshot(null);
+      setEmployeeFinanceError(null);
+      setEmployeeFinanceLoading(false);
+      return;
+    }
+
+    let active = true;
+    setEmployeeFinanceLoading(true);
+    setEmployeeFinanceError(null);
+
+    void Promise.all([
+      api<SalaryProfile[]>("/api/expenses/payroll/profiles"),
+      api<PayrollRun[]>("/api/expenses/payroll/runs"),
+    ])
+      .then(([profiles, runs]) => {
+        if (!active) return;
+        setEmployeeFinanceSnapshot(buildEmployeeFinanceSnapshot(selectedEmployee, Array.isArray(profiles) ? profiles : [], Array.isArray(runs) ? runs : []));
+      })
+      .catch((err) => {
+        if (!active) return;
+        setEmployeeFinanceSnapshot(null);
+        setEmployeeFinanceError(err instanceof Error ? err.message : "Impossible de charger le dossier financier de cet employé.");
+      })
+      .finally(() => {
+        if (active) setEmployeeFinanceLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [selectedEmployee]);
 
   const filteredEmployees = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -205,7 +719,6 @@ export function EmployeesPage() {
           email: form.email.trim() ? form.email.trim() : null,
           accessCode: form.accessCode.trim() ? form.accessCode.trim() : null,
           subject: form.subject.trim() ? form.subject.trim() : null,
-          employeeId: form.employeeId.trim() ? form.employeeId.trim() : null,
           employeeType: form.employeeType.trim() ? form.employeeType.trim() : null,
           department: form.department.trim() ? form.department.trim() : null,
           jobTitle: form.jobTitle.trim() ? form.jobTitle.trim() : null,
@@ -382,6 +895,32 @@ export function EmployeesPage() {
 
       {selectedEmployee ? (
         <ModalShell title={selectedEmployee.fullName} subtitle="Fiche détaillée de l'employé dans le registre partagé." onClose={() => setSelectedEmployee(null)}>
+          <div className="mb-5 flex flex-wrap items-center justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => employeeFinanceSnapshot && void exportEmployeeReportPdf(selectedEmployee, employeeFinanceSnapshot)}
+              disabled={employeeFinanceLoading || !employeeFinanceSnapshot}
+              className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              PDF
+            </button>
+            <button
+              type="button"
+              onClick={() => employeeFinanceSnapshot && printEmployeeReport(selectedEmployee, employeeFinanceSnapshot)}
+              disabled={employeeFinanceLoading || !employeeFinanceSnapshot}
+              className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Impression
+            </button>
+            <button
+              type="button"
+              onClick={() => employeeFinanceSnapshot && exportEmployeeReportExcel(selectedEmployee, employeeFinanceSnapshot)}
+              disabled={employeeFinanceLoading || !employeeFinanceSnapshot}
+              className="rounded-2xl border border-brand-300/25 bg-brand-500/15 px-4 py-2 text-sm font-semibold text-brand-100 transition hover:bg-brand-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Excel
+            </button>
+          </div>
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-ink-dim">Identifiant affiché</p>
@@ -425,6 +964,109 @@ export function EmployeesPage() {
                 )) : <span className="text-sm text-ink-dim">Aucun identifiant externe.</span>}
               </div>
             </div>
+            <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4 md:col-span-2">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.18em] text-ink-dim">Dossier financier</p>
+                  <h3 className="mt-2 text-lg font-semibold text-white">Historique salarial, dettes et avances</h3>
+                </div>
+                {employeeFinanceLoading ? <span className="text-sm text-ink-dim">Chargement des données financières...</span> : null}
+              </div>
+
+              {employeeFinanceError ? (
+                <div className="mt-4 rounded-2xl border border-danger/40 bg-danger/10 px-4 py-3 text-sm text-danger">
+                  {employeeFinanceError}
+                </div>
+              ) : null}
+
+              {employeeFinanceSnapshot ? (
+                <div className="mt-4 space-y-4">
+                  <div className="grid gap-3 md:grid-cols-4">
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Salaire de base</p>
+                      <p className="mt-2 text-lg font-semibold text-white">{formatCurrency(Number(employeeFinanceSnapshot.primaryProfile?.baseSalary ?? 0), employeeFinanceSnapshot.currency)}</p>
+                      <p className="mt-1 text-xs text-ink-dim">{labelizeFrequency(employeeFinanceSnapshot.primaryProfile?.frequency)}</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Bonus cumulés</p>
+                      <p className="mt-2 text-lg font-semibold text-emerald-300">{formatCurrency(employeeFinanceSnapshot.totals.totalBonuses, employeeFinanceSnapshot.currency)}</p>
+                      <p className="mt-1 text-xs text-ink-dim">Toutes fiches confondues</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Dettes recouvrées</p>
+                      <p className="mt-2 text-lg font-semibold text-amber-300">{formatCurrency(employeeFinanceSnapshot.totals.totalDebtRecovered, employeeFinanceSnapshot.currency)}</p>
+                      <p className="mt-1 text-xs text-ink-dim">Taux {Number(employeeFinanceSnapshot.primaryProfile?.debtRecoveryRate ?? 0).toFixed(2)}%</p>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Avances en cours</p>
+                      <p className="mt-2 text-lg font-semibold text-cyan-300">{formatCurrency(Number(employeeFinanceSnapshot.primaryProfile?.advanceBalance ?? 0), employeeFinanceSnapshot.currency)}</p>
+                      <p className="mt-1 text-xs text-ink-dim">Récupérées: {formatCurrency(employeeFinanceSnapshot.totals.totalAdvancesRecovered, employeeFinanceSnapshot.currency)}</p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-ink-dim">Paramètres salariaux</p>
+                      <div className="mt-3 space-y-3 text-sm text-ink-dim">
+                        <div className="flex items-center justify-between gap-3"><span>Code employé</span><span className="font-semibold text-white">{employeeFinanceSnapshot.primaryProfile?.employeeCode || selectedEmployee.displayId || selectedEmployee.employeeId || selectedEmployee.id}</span></div>
+                        <div className="flex items-center justify-between gap-3"><span>Bonus par défaut</span><span className="font-semibold text-white">{formatCurrency(Number(employeeFinanceSnapshot.primaryProfile?.defaultBonus ?? 0), employeeFinanceSnapshot.currency)}</span></div>
+                        <div className="flex items-center justify-between gap-3"><span>Déductions par défaut</span><span className="font-semibold text-white">{formatCurrency(Number(employeeFinanceSnapshot.primaryProfile?.defaultDeduction ?? 0), employeeFinanceSnapshot.currency)}</span></div>
+                        <div className="flex items-center justify-between gap-3"><span>Net payé cumulé</span><span className="font-semibold text-white">{formatCurrency(employeeFinanceSnapshot.totals.totalNetPaid, employeeFinanceSnapshot.currency)}</span></div>
+                      </div>
+                    </div>
+                    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                      <p className="text-xs uppercase tracking-[0.18em] text-ink-dim">Notes et couverture</p>
+                      <div className="mt-3 space-y-3 text-sm text-ink-dim">
+                        <div className="flex items-center justify-between gap-3"><span>Fiches salariales</span><span className="font-semibold text-white">{employeeFinanceSnapshot.payrollRecords.length}</span></div>
+                        <div className="flex items-center justify-between gap-3"><span>Dernier traitement</span><span className="font-semibold text-white">{formatDateTimeLabel(employeeFinanceSnapshot.payrollRecords[0]?.run.processedAt)}</span></div>
+                        <div><span className="block text-xs uppercase tracking-[0.16em] text-ink-dim">Observation</span><p className="mt-2 text-sm text-white">{employeeFinanceSnapshot.primaryProfile?.notes?.trim() || "Aucune note RH disponible pour ce profil salarial."}</p></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-2xl border border-white/10">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-white/10 bg-white/[0.04] text-left text-xs uppercase tracking-[0.14em] text-ink-dim">
+                          <th className="px-4 py-3">Date</th>
+                          <th className="px-4 py-3">Fiche</th>
+                          <th className="px-4 py-3">Run</th>
+                          <th className="px-4 py-3">Brut</th>
+                          <th className="px-4 py-3">Bonus</th>
+                          <th className="px-4 py-3">Déductions</th>
+                          <th className="px-4 py-3">Avances</th>
+                          <th className="px-4 py-3">Dettes</th>
+                          <th className="px-4 py-3">Net payé</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {employeeFinanceSnapshot.payrollRecords.length > 0 ? employeeFinanceSnapshot.payrollRecords.map(({ run, item }) => (
+                          <tr key={item.id} className="border-b border-white/5 last:border-b-0">
+                            <td className="px-4 py-3 text-ink-dim">{formatDateTimeLabel(run.processedAt)}</td>
+                            <td className="px-4 py-3 font-medium text-white">{item.salarySlipNumber}</td>
+                            <td className="px-4 py-3 text-ink-dim">{run.title}</td>
+                            <td className="px-4 py-3 text-white">{formatCurrency(Number(item.baseSalary ?? item.salaryProfile.baseSalary ?? 0), employeeFinanceSnapshot.currency)}</td>
+                            <td className="px-4 py-3 text-emerald-300">{formatCurrency(Number(item.bonuses ?? item.salaryProfile.defaultBonus ?? 0), employeeFinanceSnapshot.currency)}</td>
+                            <td className="px-4 py-3 text-rose-300">{formatCurrency(Number(item.deductions ?? item.salaryProfile.defaultDeduction ?? 0), employeeFinanceSnapshot.currency)}</td>
+                            <td className="px-4 py-3 text-cyan-300">{formatCurrency(Number(item.advancesRecovered ?? 0), employeeFinanceSnapshot.currency)}</td>
+                            <td className="px-4 py-3 text-amber-300">{formatCurrency(Number(item.debtRecovered ?? 0), employeeFinanceSnapshot.currency)}</td>
+                            <td className="px-4 py-3 font-semibold text-white">{formatCurrency(Number(item.netSalary ?? 0), employeeFinanceSnapshot.currency)}</td>
+                          </tr>
+                        )) : (
+                          <tr>
+                            <td colSpan={9} className="px-4 py-6 text-center text-ink-dim">Aucune fiche salariale disponible pour cet employé.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : employeeFinanceLoading ? null : (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-5 text-sm text-ink-dim">
+                  Aucun profil de paie ou historique salarial n'a encore été trouvé pour cet employé.
+                </div>
+              )}
+            </div>
           </div>
         </ModalShell>
       ) : null}
@@ -446,7 +1088,8 @@ export function EmployeesPage() {
             </label>
             <label className="space-y-2">
               <span className="text-sm font-medium text-white">Matricule employé</span>
-              <input className="w-full" value={form.employeeId} onChange={(event) => setForm((current) => ({ ...current, employeeId: event.target.value }))} placeholder="EMP-001" />
+              <input className="w-full cursor-not-allowed opacity-70" value={form.employeeId} readOnly disabled placeholder="Généré par le système" />
+              <p className="text-xs text-ink-dim">Ce matricule est généré par le système et ne peut pas être modifié ici.</p>
             </label>
             <label className="space-y-2">
               <span className="text-sm font-medium text-white">Type d'employé</span>

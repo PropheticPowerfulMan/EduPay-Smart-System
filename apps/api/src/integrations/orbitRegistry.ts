@@ -371,7 +371,6 @@ export async function updateOrbitTeacher(identifier: string, payload: {
   phone?: string | null;
   accessCode?: string | null;
   subject?: string | null;
-  employeeId?: string | null;
   employeeType?: string | null;
   department?: string | null;
   jobTitle?: string | null;

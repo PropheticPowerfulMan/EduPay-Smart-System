@@ -1777,7 +1777,8 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
           ...body,
           id: employee.id,
           orbitId: employee.orbitId,
-          displayId: String(body.employeeId ?? employee.displayId ?? employee.employeeId ?? employee.id),
+          employeeId: employee.employeeId,
+          displayId: String(employee.displayId ?? employee.employeeId ?? employee.id),
         }
       : employee);
     saveDemoEmployees(nextEmployees);
