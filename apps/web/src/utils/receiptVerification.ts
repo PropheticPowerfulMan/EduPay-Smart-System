@@ -1,6 +1,6 @@
 import { schoolBranding } from "../config/branding";
 
-const DEFAULT_RECEIPT_VERIFICATION_BASE_URL = "https://edupay-web.onrender.com/EduPay-Smart-System/";
+const DEFAULT_RECEIPT_VERIFICATION_BASE_URL = "/";
 
 export type PaymentMethodCode = "CASH" | "AIRTEL_MONEY" | "MPESA" | "ORANGE_MONEY";
 export type PaymentStatusCode = "COMPLETED" | "PENDING" | "FAILED";
@@ -168,9 +168,9 @@ export function buildReceiptVerificationUrl(
   const security = buildReceiptSecurity(input);
   const tx = encodeURIComponent(input.transactionNumber);
   const code = encodeURIComponent(security.verificationCode);
-  const configuredBaseUrl = import.meta.env.VITE_RECEIPT_VERIFICATION_BASE_URL || import.meta.env.VITE_PUBLIC_APP_URL || DEFAULT_RECEIPT_VERIFICATION_BASE_URL;
-  const fallbackBaseUrl = `${locationLike.origin}${locationLike.pathname}`;
-  const rawBaseUrl = configuredBaseUrl.trim() || fallbackBaseUrl;
+  const configuredBaseUrl = (import.meta.env.VITE_RECEIPT_VERIFICATION_BASE_URL || import.meta.env.VITE_PUBLIC_APP_URL || "").trim();
+  const currentAppBaseUrl = `${locationLike.origin}${locationLike.pathname}`.trim();
+  const rawBaseUrl = currentAppBaseUrl || configuredBaseUrl || DEFAULT_RECEIPT_VERIFICATION_BASE_URL;
   const baseUrl = rawBaseUrl.endsWith("/") ? rawBaseUrl : `${rawBaseUrl}/`;
   return `${baseUrl}#/receipt/verify?tx=${tx}&c=${code}`;
 }
