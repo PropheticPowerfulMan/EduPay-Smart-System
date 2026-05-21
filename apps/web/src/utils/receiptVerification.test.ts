@@ -30,4 +30,13 @@ describe("buildReceiptVerificationUrl", () => {
 
     expect(url).toMatch(/^https:\/\/edupay.example.com\/app\/#\/receipt\/verify\?tx=TX-1001&c=EDP-22FB-4D92&d=/);
   });
+  it("corrige une base publique configuree directement sur la page de verification", () => {
+    const url = buildReceiptVerificationUrl(
+      sampleReceipt,
+      { origin: "http://localhost:5174" },
+      "https://edupay.example.com/EduPay-Smart-System/receipt/verify"
+    );
+
+    expect(url).toMatch(/^https:\/\/edupay.example.com\/EduPay-Smart-System\/#\/receipt\/verify\?tx=TX-1001&c=EDP-22FB-4D92&d=/);
+  });
 });
