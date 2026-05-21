@@ -85,6 +85,36 @@ function buildToken(user: { id: string; role: StaffRole; schoolId: string }) {
   });
 }
 
+async function resolveParentForUser(user: { id: string; role: StaffRole; schoolId: string; email: string }) {
+  if (user.role !== "PARENT") return null;
+
+  const linkedParent = await prisma.parent.findUnique({
+    where: { userId: user.id },
+    select: { id: true, photoUrl: true }
+  });
+  if (linkedParent) return linkedParent;
+
+  const parentByEmail = await prisma.parent.findFirst({
+    where: {
+      schoolId: user.schoolId,
+      email: { equals: user.email, mode: "insensitive" }
+    },
+    select: { id: true, userId: true, photoUrl: true }
+  });
+
+  if (!parentByEmail) return null;
+  if (parentByEmail.userId && parentByEmail.userId !== user.id) return null;
+
+  if (!parentByEmail.userId) {
+    await prisma.parent.update({
+      where: { id: parentByEmail.id },
+      data: { userId: user.id }
+    });
+  }
+
+  return { id: parentByEmail.id, photoUrl: parentByEmail.photoUrl };
+}
+
 function hashResetToken(token: string) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
@@ -314,9 +344,7 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
       const ok = await bcrypt.compare(payload.password, user.passwordHash);
       if (ok) {
         const token = buildToken({ id: user.id, role: user.role, schoolId: user.schoolId });
-        const parent = user.role === "PARENT"
-          ? await prisma.parent.findUnique({ where: { userId: user.id }, select: { id: true, photoUrl: true } })
-          : null;
+        const parent = await resolveParentForUser(user);
         return res.json({
           token,
           role: user.role,

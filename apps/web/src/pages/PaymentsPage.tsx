@@ -1845,7 +1845,7 @@ export function PaymentsPage() {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
-    if (tuitionPreview || (allocationMode === "AUTO" && shouldUseTuitionEngineForFamilyPayment)) {
+    if (tuitionPreview || shouldUseTuitionEngineForFamilyPayment) {
       await confirmTuitionPayment();
       return;
     }

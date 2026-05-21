@@ -112,6 +112,14 @@ type AllocationTrace = {
 type AdminParentModule = "students" | "debts" | "alerts" | "reductions" | "agreements" | "payments";
 type AdminParentAction = "assignment" | "agreement";
 
+function uniqueReductionRows<T extends { studentName?: string | null; scope?: string | null; amount: number; title: string }>(rows: T[]) {
+  return Array.from(rows.reduce((acc, row) => {
+    const key = [row.studentName || "parent", row.scope || "UNKNOWN", Number(row.amount || 0).toFixed(5), row.title.trim().toLowerCase()].join("|");
+    if (!acc.has(key)) acc.set(key, row);
+    return acc;
+  }, new Map<string, T>()).values());
+}
+
 type AgreementInstallmentForm = {
   label: string;
   dueDate: string;
@@ -729,7 +737,8 @@ export function FinanceParentAdminPage() {
   const firstDueDate = debtDueDates.length ? new Date(Math.min(...debtDueDates.map((date) => date.getTime()))) : null;
   const lastDueDate = debtDueDates.length ? new Date(Math.max(...debtDueDates.map((date) => date.getTime()))) : null;
   const paymentCount = snapshot?.paymentHistory?.length ?? 0;
-  const scholarshipRows = snapshot?.reductions.filter((reduction) =>
+  const visibleReductions = snapshot ? uniqueReductionRows(snapshot.reductions) : [];
+  const scholarshipRows = visibleReductions.filter((reduction) =>
     reduction.scope === "MANUAL" ||
     reduction.title.toLowerCase().includes("bourse") ||
     reduction.title.toLowerCase().includes("scholarship")
@@ -769,7 +778,7 @@ export function FinanceParentAdminPage() {
   const submitAssignment = async () => {
     if (!selectedParent) return;
     if (isManualScholarshipPlan) {
-      await submitAgreement();
+      openSpecialAgreementDialog();
       return;
     }
     setAssignmentSubmitting(true);
@@ -792,6 +801,21 @@ export function FinanceParentAdminPage() {
     } finally {
       setAssignmentSubmitting(false);
     }
+  };
+
+  const openSpecialAgreementDialog = () => {
+    const targetStudent = availableStudents.find((student) => student.id === assignmentForm.studentId);
+    const targetFinanceStudent = snapshot?.students.find((student) => student.id === assignmentForm.studentId);
+    setAgreementForm((current) => ({
+      ...current,
+      studentId: assignmentForm.studentId,
+      title: current.title || copy.scholarshipAgreementTitle,
+      customTotal: current.customTotal || (targetStudent?.annualFee ? String(targetStudent.annualFee) : ""),
+      gradeGroup: targetFinanceStudent?.gradeGroup || current.gradeGroup,
+      status: "APPROVED",
+      notes: current.notes || assignmentForm.notes || copy.scholarshipAgreementHelp
+    }));
+    setActiveAction("agreement");
   };
 
   const submitAgreement = async () => {
@@ -1190,8 +1214,8 @@ export function FinanceParentAdminPage() {
 
                   {activeModule === "reductions" && (
                     <div className="space-y-3">
-                      {snapshot.reductions.length === 0 && <p className="text-sm text-ink-dim">{copy.noReductionApplied}</p>}
-                      {snapshot.reductions.map((reduction) => (
+                      {visibleReductions.length === 0 && <p className="text-sm text-ink-dim">{copy.noReductionApplied}</p>}
+                      {visibleReductions.map((reduction) => (
                         <article key={reduction.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                           <div className="flex flex-wrap items-start justify-between gap-3">
                             <div>
@@ -1295,150 +1319,18 @@ export function FinanceParentAdminPage() {
                     </div>
 
                     {isManualScholarshipPlan && (
-                      <div className="space-y-4 rounded-2xl border border-cyan-300/20 bg-cyan-500/10 p-4">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100">Bourse</p>
-                            <h3 className="mt-1 font-display text-xl font-bold text-white">{copy.scholarshipAgreementTitle}</h3>
-                            <p className="mt-1 text-sm text-ink-dim">{copy.scholarshipAgreementHelp}</p>
-                          </div>
-                          <span className="rounded-full border border-cyan-300/25 bg-slate-950/40 px-3 py-1 text-xs font-bold text-cyan-100">
-                            {money.format(displayedScholarshipAmount)}
-                          </span>
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-3">
-                          <div>
-                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">{copy.officialReferenceAmount}</label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={agreementForm.customTotal}
-                              onChange={(event) => setAgreementForm((current) => ({ ...current, customTotal: event.target.value }))}
-                              className="w-full"
-                              placeholder={suggestedOfficialReference ? String(suggestedOfficialReference) : "0"}
-                            />
-                          </div>
-                          <div>
-                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">{copy.agreedTuitionTotal}</label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={agreementInstallmentsTotal || ""}
-                              readOnly
-                              className="w-full opacity-80"
-                            />
-                          </div>
-                          <div>
-                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">{copy.scholarshipAmount}</label>
-                            <input
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={agreementForm.reductionAmount}
-                              onChange={(event) => setAgreementForm((current) => ({ ...current, reductionAmount: event.target.value }))}
-                              className="w-full"
-                              placeholder={String(Math.max(displayedOfficialReference - agreementInstallmentsTotal, 0))}
-                            />
-                          </div>
-                          <div className="md:col-span-2">
-                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">{copy.title}</label>
-                            <input
-                              value={agreementForm.title}
-                              onChange={(event) => setAgreementForm((current) => ({ ...current, title: event.target.value }))}
-                              className="w-full"
-                              placeholder={copy.scholarshipAgreementTitle}
-                            />
-                          </div>
-                          <div>
-                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">{copy.gradeGroup}</label>
-                            <select
-                              value={agreementForm.gradeGroup}
-                              onChange={(event) => setAgreementForm((current) => ({ ...current, gradeGroup: event.target.value }))}
-                              className="w-full"
-                            >
-                              {gradeGroupChoices.map((option) => <option key={option.value} value={option.value}>{copy[option.labelKey]}</option>)}
-                            </select>
-                          </div>
-                        </div>
-
-                        <div className="space-y-3 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                          <div className="flex flex-wrap items-center justify-between gap-3">
-                            <div>
-                              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">{copy.installments}</p>
-                              <p className="mt-1 text-xs text-ink-dim">{copy.scholarshipInstallmentsHelp}</p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setAgreementForm((current) => ({ ...current, installments: [...current.installments, emptyInstallment()] }))}
-                              className="inline-flex items-center gap-2 rounded-lg border border-brand-500/25 bg-brand-500/10 px-3 py-1.5 text-xs font-semibold text-brand-200"
-                            >
-                              <Plus className="h-3.5 w-3.5" />
-                              {copy.addInstallment}
-                            </button>
-                          </div>
-                          {agreementForm.installments.map((installment, index) => (
-                            <div key={`scholarship-installment-${index}`} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                              <div className="grid gap-3 md:grid-cols-3">
-                                <input
-                                  value={installment.label}
-                                  onChange={(event) => setAgreementForm((current) => ({
-                                    ...current,
-                                    installments: current.installments.map((row, rowIndex) => rowIndex === index ? { ...row, label: event.target.value } : row)
-                                  }))}
-                                  className="w-full"
-                                  placeholder={copy.label}
-                                />
-                                <input
-                                  type="date"
-                                  value={installment.dueDate}
-                                  onChange={(event) => setAgreementForm((current) => ({
-                                    ...current,
-                                    installments: current.installments.map((row, rowIndex) => rowIndex === index ? { ...row, dueDate: event.target.value } : row)
-                                  }))}
-                                  className="w-full"
-                                />
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={installment.amountDue}
-                                  onChange={(event) => setAgreementForm((current) => ({
-                                    ...current,
-                                    installments: current.installments.map((row, rowIndex) => rowIndex === index ? { ...row, amountDue: event.target.value } : row)
-                                  }))}
-                                  className="w-full"
-                                  placeholder={copy.amountDue}
-                                />
-                              </div>
-                              <div className="mt-3 flex flex-col gap-3 sm:flex-row">
-                                <input
-                                  value={installment.notes}
-                                  onChange={(event) => setAgreementForm((current) => ({
-                                    ...current,
-                                    installments: current.installments.map((row, rowIndex) => rowIndex === index ? { ...row, notes: event.target.value } : row)
-                                  }))}
-                                  className="w-full"
-                                  placeholder={copy.installmentNotesPlaceholder}
-                                />
-                                {agreementForm.installments.length > 1 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => setAgreementForm((current) => ({
-                                      ...current,
-                                      installments: current.installments.filter((_row, rowIndex) => rowIndex !== index)
-                                    }))}
-                                    className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200"
-                                  >
-                                    {copy.remove}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
+                      <div className="rounded-2xl border border-cyan-300/20 bg-cyan-500/10 p-4">
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100">Accord spécial propriétaire</p>
+                        <h3 className="mt-1 font-display text-xl font-bold text-white">{copy.scholarshipAgreementTitle}</h3>
+                        <p className="mt-1 text-sm text-ink-dim">{copy.scholarshipAgreementHelp}</p>
+                        <button
+                          type="button"
+                          onClick={openSpecialAgreementDialog}
+                          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2 text-sm font-bold text-slate-950 hover:bg-cyan-400"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Ouvrir la boite de dialogue
+                        </button>
                       </div>
                     )}
 
@@ -1469,7 +1361,7 @@ export function FinanceParentAdminPage() {
                         <Save className="h-4 w-4" />
                         {assignmentSubmitting || agreementSubmitting
                           ? copy.assigning
-                          : isManualScholarshipPlan ? copy.saveAgreement : copy.assignPlanButton}
+                          : isManualScholarshipPlan ? "Configurer l'accord" : copy.assignPlanButton}
                       </button>
                     </div>
                   </div>
@@ -1721,8 +1613,8 @@ export function FinanceParentAdminPage() {
                   <div className="card glass border border-white/10 shadow-lg">
                     <h3 className="font-display text-xl font-bold text-white">{copy.reductionsTitle}</h3>
                     <div className="mt-5 space-y-3">
-                      {snapshot.reductions.length === 0 && <p className="text-sm text-ink-dim">{copy.noReductionTracked}</p>}
-                      {snapshot.reductions.map((reduction) => (
+                      {visibleReductions.length === 0 && <p className="text-sm text-ink-dim">{copy.noReductionTracked}</p>}
+                      {visibleReductions.map((reduction) => (
                         <div key={reduction.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                           <div className="flex items-start justify-between gap-3">
                             <div>

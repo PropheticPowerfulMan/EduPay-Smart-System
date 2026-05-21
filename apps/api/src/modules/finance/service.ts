@@ -540,6 +540,22 @@ function normalizeScheduleJson(value: unknown) {
   return Array.isArray(value) ? value as Array<Record<string, unknown>> : [];
 }
 
+function scaleScheduleRowsToExpectedTotal(rows: Array<Record<string, unknown>>, expectedTotal: number): Array<Record<string, unknown> & { amount: number }> {
+  const total = roundCurrency(rows.reduce((sum, row) => sum + Number(row.amount ?? 0), 0));
+  if (rows.length === 0 || total <= 0 || expectedTotal <= 0 || total === expectedTotal) {
+    return rows.map((row) => ({ ...row, amount: roundCurrency(Number(row.amount ?? 0)) }));
+  }
+
+  let runningTotal = 0;
+  return rows.map((row, index) => {
+    const amount = index === rows.length - 1
+      ? roundCurrency(expectedTotal - runningTotal)
+      : roundCurrency((Number(row.amount ?? 0) / total) * expectedTotal);
+    runningTotal = roundCurrency(runningTotal + amount);
+    return { ...row, amount };
+  });
+}
+
 function deriveInstallmentStatus(amountDue: number, amountPaid: number, dueDate: Date) {
   if (amountPaid >= amountDue && amountDue > 0) return InstallmentStatus.PAID;
   if (amountPaid > 0) return dueDate.getTime() < Date.now() ? InstallmentStatus.OVERDUE : InstallmentStatus.PARTIALLY_PAID;
@@ -738,6 +754,22 @@ function buildDerivedPlanReduction(input: {
     effectiveDate: (input.assignedAt ?? new Date()).toISOString(),
     studentName: input.studentName
   };
+}
+
+function reductionDedupKey(reduction: {
+  studentId?: string | null;
+  scope?: ReductionScope | string | null;
+  paymentOptionType?: PaymentOptionType | string | null;
+  amount?: number | null;
+  title?: string | null;
+}) {
+  return [
+    reduction.studentId ?? "parent",
+    reduction.scope ?? "UNKNOWN",
+    reduction.paymentOptionType ?? "CUSTOM",
+    roundCurrency(Number(reduction.amount || 0)).toFixed(5),
+    String(reduction.title ?? "").trim().toLowerCase()
+  ].join("|");
 }
 
 function groupCurrencyTotals<T extends string | number>(entries: Array<{ key: T; amount: number }>) {
@@ -1047,6 +1079,21 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
     const plan = assignment?.tuitionPlan ?? planLookup.get(`${gradeGroup}:${paymentOptionType}`) ?? planLookup.get(`${gradeGroup}:${PaymentOptionType.STANDARD_MONTHLY}`) ?? null;
     const agreement = assignment?.financialAgreementId ? agreementLookup.get(assignment.financialAgreementId) ?? null : null;
     const persistedStudentInstallments = installments.filter((installment) => installment.academicYearId === academicYear.id && installment.studentId === student.id);
+    const expectedTotal = roundCurrency(
+      agreement
+        ? Number(agreement.balanceDue || agreement.customTotal || 0)
+        : assignment?.expectedTotal
+          ? Number(assignment.expectedTotal)
+          : Number(plan?.finalAmount || student.annualFee || 0)
+    );
+    const reductionTotal = roundCurrency(
+      agreement
+        ? Number(agreement.reductionAmount || 0)
+        : assignment?.reductionTotal
+          ? Number(assignment.reductionTotal)
+          : Number(plan?.reductionAmount || 0)
+    );
+    const assignedSchedule = scaleScheduleRowsToExpectedTotal(normalizeScheduleJson(plan?.scheduleJson), expectedTotal);
 
     const derivedSchedule = persistedStudentInstallments.length > 0
       ? persistedStudentInstallments.map((installment) => ({
@@ -1078,7 +1125,7 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
             paymentOptionType: PaymentOptionType.SPECIAL_OWNER_AGREEMENT,
             gradeGroup: agreement.gradeGroup ?? gradeGroup
           }))
-        : normalizeScheduleJson(plan?.scheduleJson).map((row, index) => ({
+        : assignedSchedule.map((row, index) => ({
           id: `derived-${student.id}-${paymentOptionType}-${index + 1}`,
           persistedId: null,
           label: String(row.label ?? `Installment ${index + 1}`),
@@ -1097,21 +1144,6 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
           paymentOptionType: plan?.paymentOptionType ?? paymentOptionType,
           gradeGroup
         }));
-
-    const expectedTotal = roundCurrency(
-      agreement
-        ? Number(agreement.customTotal || 0)
-        : assignment?.expectedTotal
-          ? Number(assignment.expectedTotal)
-          : Number(plan?.finalAmount || student.annualFee || 0)
-    );
-    const reductionTotal = roundCurrency(
-      agreement
-        ? Number(agreement.reductionAmount || 0)
-        : assignment?.reductionTotal
-          ? Number(assignment.reductionTotal)
-          : Number(plan?.reductionAmount || 0)
-    );
 
     return {
       id: student.id,
@@ -1167,7 +1199,7 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
     installmentsByStudent.set(installment.studentId ?? "", current);
   }
 
-  const explicitDiscounts = discounts.map((discount) => ({
+  const explicitDiscountRows = discounts.map((discount) => ({
     id: discount.id,
     source: "MANUAL",
     title: discount.title,
@@ -1183,6 +1215,13 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
     effectiveDate: discount.effectiveDate.toISOString(),
     studentName: parent.students.find((student) => student.id === discount.studentId)?.fullName ?? null
   }));
+  const explicitDiscounts = Array.from(
+    explicitDiscountRows.reduce((acc, discount) => {
+      const key = reductionDedupKey(discount);
+      if (!acc.has(key)) acc.set(key, discount);
+      return acc;
+    }, new Map<string, (typeof explicitDiscountRows)[number]>()).values()
+  );
 
   const derivedDiscounts = studentSummaries
     .map((student) => buildDerivedPlanReduction({
@@ -1196,7 +1235,9 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
       plan: student.planCode ? planLookup.get(`${student.gradeGroup}:${student.paymentOptionType}`) : null,
       assignedAt: assignmentsByStudent.get(student.id)?.assignedAt ?? genericAssignment?.assignedAt ?? new Date()
     }))
-    .filter(Boolean);
+    .filter(Boolean)
+    .filter((discount) => !explicitDiscounts.some((explicit) => reductionDedupKey(explicit) === reductionDedupKey(discount!)));
+  const reductions = [...explicitDiscounts, ...derivedDiscounts];
 
   const studentRows = studentSummaries.map((student) => {
     const studentInstallments = installmentsByStudent.get(student.id) ?? [];
@@ -1228,8 +1269,7 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
   const totalDebt = roundCurrency(tuitionDebt + openManualDebt + carriedOverDebt);
   const totalExpected = roundCurrency(studentRows.reduce((sum, student) => sum + student.expectedTotal, 0));
   const totalReduction = roundCurrency([
-    ...explicitDiscounts.map((discount) => discount.amount),
-    ...derivedDiscounts.map((discount) => Number(discount?.amount || 0))
+    ...reductions.map((discount) => Number(discount?.amount || 0))
   ].reduce((sum, amount) => sum + amount, 0));
   const overdueInstallments = finalizedInstallments.filter((installment) => installment.isOverdue).length;
   const delayedPayments = payments.filter((payment) => payment.status === "PENDING" || payment.status === "FAILED").length;
@@ -1392,7 +1432,7 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
     },
     students: studentRows,
     installments: finalizedInstallments,
-    reductions: [...explicitDiscounts, ...derivedDiscounts],
+    reductions,
     debts: debts.map((debt) => ({
       id: debt.id,
       title: debt.title,
@@ -1611,11 +1651,21 @@ export async function getReductionAnalytics(input: {
         parentName: ownerSnapshot?.parent.fullName ?? null
       };
     });
+  const uniqueReductions = Array.from(
+    reductions.reduce((acc, reduction) => {
+      const key = [
+        reduction.parentId ?? "parent",
+        reductionDedupKey(reduction)
+      ].join("|");
+      if (!acc.has(key)) acc.set(key, reduction);
+      return acc;
+    }, new Map<string, (typeof reductions)[number]>()).values()
+  );
 
-  const byScope = groupCurrencyTotals(reductions.map((reduction) => ({ key: String(reduction.scope ?? "UNKNOWN"), amount: reduction.amount })));
-  const byGradeGroup = groupCurrencyTotals(reductions.map((reduction) => ({ key: String(reduction.gradeGroup ?? GradeGroup.CUSTOM), amount: reduction.amount })));
-  const byPaymentOption = groupCurrencyTotals(reductions.map((reduction) => ({ key: String(reduction.paymentOptionType ?? PaymentOptionType.CUSTOM), amount: reduction.amount })));
-  const scholarships = reductions.filter((reduction) =>
+  const byScope = groupCurrencyTotals(uniqueReductions.map((reduction) => ({ key: String(reduction.scope ?? "UNKNOWN"), amount: reduction.amount })));
+  const byGradeGroup = groupCurrencyTotals(uniqueReductions.map((reduction) => ({ key: String(reduction.gradeGroup ?? GradeGroup.CUSTOM), amount: reduction.amount })));
+  const byPaymentOption = groupCurrencyTotals(uniqueReductions.map((reduction) => ({ key: String(reduction.paymentOptionType ?? PaymentOptionType.CUSTOM), amount: reduction.amount })));
+  const scholarships = uniqueReductions.filter((reduction) =>
     reduction.scope === ReductionScope.MANUAL ||
     reduction.title.toLowerCase().includes("bourse") ||
     reduction.title.toLowerCase().includes("scholarship")
@@ -1625,17 +1675,17 @@ export async function getReductionAnalytics(input: {
     academicYear: academicYear.name,
     periodType: input.periodType,
     periodLabel: bounds.label,
-    totalReductions: roundCurrency(reductions.reduce((sum, reduction) => sum + reduction.amount, 0)),
-    reductionCount: reductions.length,
-    scholarshipTotal: roundCurrency(reductions.reduce((sum, reduction) => sum + reduction.amount, 0)),
-    scholarshipCount: reductions.length,
+    totalReductions: roundCurrency(uniqueReductions.reduce((sum, reduction) => sum + reduction.amount, 0)),
+    reductionCount: uniqueReductions.length,
+    scholarshipTotal: roundCurrency(uniqueReductions.reduce((sum, reduction) => sum + reduction.amount, 0)),
+    scholarshipCount: uniqueReductions.length,
     manualScholarshipTotal: roundCurrency(scholarships.reduce((sum, reduction) => sum + reduction.amount, 0)),
     manualScholarshipCount: scholarships.length,
     byScope: byScope.map((entry) => ({ scope: entry.key, amount: entry.amount })),
     byGradeGroup: byGradeGroup.map((entry) => ({ gradeGroup: entry.key, amount: entry.amount })),
     byPaymentOption: byPaymentOption.map((entry) => ({ paymentOptionType: entry.key, amount: entry.amount })),
     scholarships,
-    reductions
+    reductions: uniqueReductions
   };
 }
 

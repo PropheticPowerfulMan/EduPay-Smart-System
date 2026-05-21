@@ -3,7 +3,7 @@ import { z } from "zod";
 import bcrypt from "bcrypt";
 import { randomInt } from "crypto";
 import { AgreementStatus, PaymentOptionType } from "@prisma/client";
-import { createOrbitParent, deleteOrbitParent, matchesSharedParentIdentifier, orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
+import { createOrbitParent, deleteOrbitFamily, matchesSharedParentIdentifier, orbitRegistryIsEnabled, syncOrbitRegistryMirror, updateOrbitParent } from "../../integrations/orbitRegistry";
 import { prisma } from "../../prisma";
 import { env } from "../../config/env";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
@@ -918,12 +918,66 @@ parentRouter.post("/:id/reset-password", authorize("ADMIN", "ACCOUNTANT"), async
 parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
   const { id } = req.params;
   const payload = parentSchema.parse(req.body);
+  const normalizedEmail = payload.email.trim().toLowerCase();
+  const normalizedPhone = payload.phone.replace(/\s+/g, "");
+  const normalizedFullName = payload.fullName.trim();
   try {
     const parentExists = await prisma.parent.findFirst({
       where: { id, schoolId: req.user!.schoolId },
-      select: { id: true }
+      select: { id: true, userId: true }
     });
     if (!parentExists) return res.status(404).json({ message: "Parent non trouve" });
+
+    const duplicateParent = await prisma.parent.findFirst({
+      where: {
+        schoolId: req.user!.schoolId,
+        NOT: { id },
+        OR: [
+          { email: { equals: normalizedEmail, mode: "insensitive" } },
+          { phone: normalizedPhone },
+          { fullName: { equals: normalizedFullName, mode: "insensitive" } }
+        ]
+      },
+      select: { id: true, fullName: true, email: true, phone: true }
+    });
+    if (duplicateParent) {
+      return res.status(409).json({
+        code: "PARENT_ALREADY_EXISTS",
+        message: "Un autre dossier parent utilise deja cet email, ce telephone ou ce nom.",
+        existingParent: duplicateParent
+      });
+    }
+    const duplicateUser = await prisma.user.findFirst({
+      where: {
+        schoolId: req.user!.schoolId,
+        email: normalizedEmail,
+        ...(parentExists.userId ? { NOT: { id: parentExists.userId } } : {})
+      },
+      select: { id: true, fullName: true, role: true }
+    });
+    if (duplicateUser) {
+      return res.status(409).json({
+        code: "USER_EMAIL_ALREADY_EXISTS",
+        message: `Cet email est deja utilise par ${duplicateUser.fullName} (${duplicateUser.role}).`
+      });
+    }
+
+    if (orbitRegistryIsEnabled()) {
+      const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);
+      const mirroredParent = mirrored.parents.find((entry) => matchesSharedParentIdentifier(entry, id));
+      if (!mirroredParent?.orbitId) {
+        return res.status(409).json({ message: "Impossible de modifier ce parent car son identifiant Orbit est introuvable." });
+      }
+      const { firstName, lastName } = splitPersonName(payload.fullName);
+      await updateOrbitParent(mirroredParent.orbitId, {
+        fullName: payload.fullName,
+        firstName: payload.prenom || firstName,
+        lastName: [payload.nom, payload.postnom].filter(Boolean).join(" ") || lastName,
+        email: normalizedEmail,
+        phone: normalizedPhone
+      });
+      await syncOrbitRegistryMirror(req.user!.schoolId);
+    }
 
     const classIdResolution = await resolveStudentClassIds(req.user!.schoolId, payload.students);
 
@@ -933,12 +987,22 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
         where: { id },
         data: {
           fullName: payload.fullName,
-          phone: payload.phone,
-          email: payload.email,
+          phone: normalizedPhone,
+          email: normalizedEmail,
           photoUrl: payload.photoUrl || null,
           preferredLanguage: payload.preferredLanguage
         }
       });
+
+      if (parentExists.userId) {
+        await tx.user.update({
+          where: { id: parentExists.userId },
+          data: {
+            fullName: payload.fullName,
+            email: normalizedEmail
+          }
+        });
+      }
 
       const existingStudents = await tx.student.findMany({
         where: { parentId: id, schoolId: req.user!.schoolId },
@@ -1034,21 +1098,29 @@ parentRouter.delete("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authen
       });
     }
 
-    await deleteOrbitParent(parent.orbitId);
+    await deleteOrbitFamily(parent.orbitId);
     await syncOrbitRegistryMirror(req.user!.schoolId);
     return res.status(204).end();
   }
 
   try {
-    const children = await prisma.student.count({ where: { parentId: id, schoolId: req.user!.schoolId } });
-    if (children > 0) {
-      return res.status(409).json({
-        message: "Impossible de supprimer ce parent: des eleves lui sont encore rattaches.",
-        children,
-      });
-    }
+    const parent = await prisma.parent.findFirst({
+      where: { id, schoolId: req.user!.schoolId },
+      select: { id: true, userId: true }
+    });
+    if (!parent) return res.status(404).json({ message: "Parent non trouve" });
 
-    await prisma.parent.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.parent.delete({ where: { id: parent.id } });
+      if (parent.userId) {
+        await tx.user.deleteMany({
+          where: {
+            id: parent.userId,
+            role: "PARENT"
+          }
+        });
+      }
+    });
     return res.status(204).end();
   } catch (error) {
     console.error("DB unavailable on parent delete", error);

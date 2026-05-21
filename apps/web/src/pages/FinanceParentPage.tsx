@@ -177,6 +177,14 @@ type ParentLight = {
 
 type ParentFinanceModule = "students" | "obligations" | "forecast" | "debts" | "alerts" | "reductions" | "agreements" | "payments" | "notifications";
 
+function uniqueReductionRows<T extends { studentName?: string | null; scope?: string | null; amount: number; title: string }>(rows: T[]) {
+  return Array.from(rows.reduce((acc, row) => {
+    const key = [row.studentName || "parent", row.scope || "UNKNOWN", Number(row.amount || 0).toFixed(5), row.title.trim().toLowerCase()].join("|");
+    if (!acc.has(key)) acc.set(key, row);
+    return acc;
+  }, new Map<string, T>()).values());
+}
+
 function imageFileToAvatar(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
@@ -483,6 +491,7 @@ export function FinanceParentPage() {
   ).sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime());
   const nextInstallment = openInstallments.find((installment) => daysUntil(installment.dueDate) >= 0) ?? openInstallments[0] ?? null;
   const overdueBalance = openInstallments.filter((installment) => installment.isOverdue).reduce((sum, installment) => sum + installment.balance, 0);
+  const visibleReductions = uniqueReductionRows(snapshot.reductions);
   const next30DaysBalance = openInstallments
     .filter((installment) => {
       const delay = daysUntil(installment.dueDate);
@@ -518,7 +527,7 @@ export function FinanceParentPage() {
     { id: "forecast", title: L("Prévisions", "Forecasts"), subtitle: L("Projection à 30 jours, score de santé et risque de retard.", "30-day projection, health score and late-payment risk."), count: openInstallments.length, metric: money.format(projectedRemainingAfter30Days), icon: BrainCircuit, tone: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100" },
     { id: "debts", title: L("Dettes historiques", "Historical debts"), subtitle: L("Années antérieures, reports, origine, échéance et solde restant.", "Previous years, carry-overs, source, due date and remaining balance."), count: snapshot.debts.length, metric: money.format(previousDebtTotal), icon: FileClock, tone: "border-red-300/20 bg-red-500/10 text-red-100" },
     { id: "alerts", title: L("Alertes", "Alerts"), subtitle: L("Retards et anomalies détectés par le moteur financier.", "Late payments and anomalies detected by the finance engine."), count: snapshot.alerts.length, metric: L(`${snapshot.profile.overdueInstallments} retard(s)`, `${snapshot.profile.overdueInstallments} late item(s)`), icon: AlertTriangle, tone: "border-amber-300/20 bg-amber-500/10 text-amber-100" },
-    { id: "reductions", title: L("Réductions", "Discounts"), subtitle: L("Remises officielles, réductions manuelles et contexte.", "Official discounts, manual reductions and context."), count: snapshot.reductions.length, metric: money.format(snapshot.profile.totalReduction), icon: HandCoins, tone: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100" },
+    { id: "reductions", title: L("Réductions", "Discounts"), subtitle: L("Remises officielles, réductions manuelles et contexte.", "Official discounts, manual reductions and context."), count: visibleReductions.length, metric: money.format(snapshot.profile.totalReduction), icon: HandCoins, tone: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100" },
     { id: "agreements", title: L("Accords", "Agreements"), subtitle: L("Accords spéciaux, montants personnalisés et statut.", "Special agreements, custom amounts and status."), count: snapshot.agreements.length, metric: activeAgreement ? money.format(activeAgreement.balanceDue) : L("Aucun", "None"), icon: ShieldCheck, tone: "border-emerald-300/20 bg-emerald-500/10 text-emerald-100" },
     { id: "payments", title: L("Paiements et reçus", "Payments & receipts"), subtitle: L("Historique des encaissements et reçus archivés.", "Payment history and archived receipts."), count: snapshot.paymentHistory.length + snapshot.historicalReceipts.length, metric: money.format(snapshot.profile.totalPaid), icon: ReceiptText, tone: "border-violet-300/20 bg-violet-500/10 text-violet-100" },
     { id: "notifications", title: L("Messages reçus", "Received messages"), subtitle: L("SMS, e-mails, confirmations et alertes envoyés par EduPay.", "SMS, emails, confirmations and alerts sent by EduPay."), count: notificationHistory.length, metric: L(`${notificationHistory.filter((log) => log.channel === "SMS" || log.channel === "EMAIL").length} directs`, `${notificationHistory.filter((log) => log.channel === "SMS" || log.channel === "EMAIL").length} direct`), icon: BellRing, tone: "border-orange-300/20 bg-orange-500/10 text-orange-100" }
@@ -572,7 +581,7 @@ export function FinanceParentPage() {
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <MetricCard label={L("Total payé", "Total paid")} value={money.format(snapshot.profile.totalPaid)} detail={L("Encaissements validés", "Validated collections")} icon={CheckCircle2} tone="text-emerald-300" />
         <MetricCard label={L("Dette totale", "Total debt")} value={money.format(snapshot.profile.totalDebt)} detail={L("Dette active + reports", "Active debt + carry-overs")} icon={WalletCards} tone="text-red-300" />
-        <MetricCard label={L("Réductions", "Discounts")} value={money.format(snapshot.profile.totalReduction)} detail={L(`${snapshot.reductions.length} avantage(s) suivi(s)`, `${snapshot.reductions.length} tracked benefit(s)`)} icon={HandCoins} tone="text-cyan-300" />
+        <MetricCard label={L("Réductions", "Discounts")} value={money.format(snapshot.profile.totalReduction)} detail={L(`${visibleReductions.length} avantage(s) suivi(s)`, `${visibleReductions.length} tracked benefit(s)`)} icon={HandCoins} tone="text-cyan-300" />
         <MetricCard label={L("Reports", "Carry-over")} value={money.format(snapshot.profile.carriedOverDebt)} detail={L("Dettes des années précédentes", "Debts from previous years")} icon={FileClock} tone="text-amber-300" />
         <MetricCard label={L("Couverture", "Completion")} value={`${snapshot.profile.completionRate.toFixed(1)} %`} detail={L(`${snapshot.profile.childrenLinkedToAccount} enfant(s) lié(s)`, `${snapshot.profile.childrenLinkedToAccount} linked child/children`)} icon={ShieldCheck} tone="text-brand-200" />
         <MetricCard label={L("En retard", "Overdue")} value={String(snapshot.profile.overdueInstallments)} detail={L(`En attente : ${money.format(snapshot.profile.pendingPaymentsTotal)}`, `Pending ${money.format(snapshot.profile.pendingPaymentsTotal)}`)} icon={AlertTriangle} tone="text-orange-300" />
@@ -840,8 +849,8 @@ export function FinanceParentPage() {
 
           {activeModule === "reductions" && (
             <div className="space-y-3">
-              {snapshot.reductions.length === 0 && <p className="text-sm text-ink-dim">Aucune reduction appliquee.</p>}
-              {snapshot.reductions.map((reduction) => (
+              {visibleReductions.length === 0 && <p className="text-sm text-ink-dim">Aucune reduction appliquee.</p>}
+              {visibleReductions.map((reduction) => (
                 <div key={reduction.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                   <div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-white">{reduction.title}</p><p className="mt-1 text-xs text-ink-dim">{reduction.studentName || "Compte parent"} - {reduction.scope}</p></div><span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-200">{money.format(reduction.amount)}</span></div>
                   <p className="mt-2 text-xs text-ink-dim">{new Date(reduction.effectiveDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}</p>
@@ -1071,8 +1080,8 @@ export function FinanceParentPage() {
               <HandCoins className="h-6 w-6 text-cyan-300" />
             </div>
             <div className="mt-5 space-y-3">
-              {snapshot.reductions.length === 0 && <p className="text-sm text-ink-dim">Aucune reduction appliquee.</p>}
-              {snapshot.reductions.map((reduction) => (
+              {visibleReductions.length === 0 && <p className="text-sm text-ink-dim">Aucune reduction appliquee.</p>}
+              {visibleReductions.map((reduction) => (
                 <div key={reduction.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div>

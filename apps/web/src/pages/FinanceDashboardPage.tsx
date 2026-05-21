@@ -179,6 +179,21 @@ type ExpenseOverviewResponse = {
 
 type FinanceErpModule = "health" | "forecast" | "revenue" | "scholarships" | "expenses" | "budgets" | "payroll";
 
+function uniqueReductionRows<T extends { parentName?: string | null; studentName?: string | null; scope?: string | null; paymentOptionType?: string | null; amount: number; title: string }>(rows: T[]) {
+  return Array.from(rows.reduce((acc, row) => {
+    const key = [
+      row.parentName || "parent",
+      row.studentName || "parent-account",
+      row.scope || "UNKNOWN",
+      row.paymentOptionType || "CUSTOM",
+      Number(row.amount || 0).toFixed(5),
+      row.title.trim().toLowerCase()
+    ].join("|");
+    if (!acc.has(key)) acc.set(key, row);
+    return acc;
+  }, new Map<string, T>()).values());
+}
+
 const expenseStatusTone: Record<string, string> = {
   APPROVED: "border-emerald-500/25 bg-emerald-500/10 text-emerald-200",
   PENDING: "border-amber-500/25 bg-amber-500/10 text-amber-200",
@@ -426,8 +441,8 @@ export function FinanceDashboardPage() {
   const healthTone = healthScore >= 78 ? "text-emerald-300" : healthScore >= 58 ? "text-amber-300" : "text-red-300";
   const healthLabel = healthScore >= 78 ? L("Stable", "Stable") : healthScore >= 58 ? L("Sous surveillance", "Under watch") : L("Critique", "Critical");
   const riskIndex = clampScore(100 - healthScore);
-  const allReductionRows = revenueOverview.reductionStatistics.reductions ?? revenueOverview.reductionStatistics.scholarships ?? [];
-  const manualScholarshipRows = revenueOverview.reductionStatistics.scholarships ?? [];
+  const allReductionRows = uniqueReductionRows(revenueOverview.reductionStatistics.reductions ?? revenueOverview.reductionStatistics.scholarships ?? []);
+  const manualScholarshipRows = uniqueReductionRows(revenueOverview.reductionStatistics.scholarships ?? []);
   const scholarshipRows = allReductionRows;
   const scholarshipTotal = revenueOverview.reductionStatistics.scholarshipTotal ?? revenueOverview.reductionStatistics.totalReductions;
   const scholarshipCount = revenueOverview.reductionStatistics.scholarshipCount ?? revenueOverview.reductionStatistics.reductionCount;

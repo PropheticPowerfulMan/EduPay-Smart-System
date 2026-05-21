@@ -147,8 +147,7 @@ const TUITION_OPTION_ORDER = [
   "FULL_PRESEPTEMBER",
   "TWO_INSTALLMENTS",
   "THREE_INSTALLMENTS",
-  "STANDARD_MONTHLY",
-  "SPECIAL_OWNER_AGREEMENT"
+  "STANDARD_MONTHLY"
 ];
 
 const PAYMENT_OPTION_LABELS: Record<string, string> = {
@@ -1501,8 +1500,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
     const gradeGroup = resolveGradeGroup(getClassName(classId));
     const officialPlans = catalog.plans.filter((plan) => plan.gradeGroup === gradeGroup && PAYMENT_OPTION_LABELS[plan.paymentOptionType]);
     if (!student || !classId) return officialPlans;
-    const specialPlan = buildSpecialOwnerAgreementPlan(student, getClassName(classId), officialPlans);
-    return specialPlan ? [...officialPlans, specialPlan] : officialPlans;
+    return officialPlans;
   };
 
   const getPreferredOption = (classId: string, currentOptionType?: string, student?: StudentFormState) => {
@@ -1855,8 +1853,8 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                       <option key={`${plan.gradeGroup}-${plan.paymentOptionType}`} value={plan.paymentOptionType}>
                         {getPaymentOptionLabel(plan.paymentOptionType)} - {formatMoney(plan.finalAmount)}
                       </option>
-                    )) : Object.entries(PAYMENT_OPTION_LABELS).map(([value, label]) => (
-                      <option key={value} value={value}>{label}</option>
+                    )) : TUITION_OPTION_ORDER.map((value) => (
+                      <option key={value} value={value}>{getPaymentOptionLabel(value)}</option>
                     ))}
                   </select>
                   <p className="text-[11px] text-ink-dim">

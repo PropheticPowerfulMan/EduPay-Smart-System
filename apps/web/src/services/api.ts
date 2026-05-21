@@ -2157,6 +2157,11 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     if (response.status === 401) {
+      if (path === "/api/auth/login") {
+        const loginError = await response.json().catch(() => null) as { message?: string } | null;
+        throw new Error(loginError?.message || "Identifiants invalides.");
+      }
+
       if ((LOCAL_API_FALLBACK_ENABLED && canFallbackToDemo(path, init)) || canUseParentSessionFallback(path, init)) {
         return demoApi<T>(path, init);
       }
