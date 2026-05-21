@@ -1676,18 +1676,38 @@ export function PaymentsPage() {
     [manualAllocations]
   );
 
-  const fillManualAllocationFromPreview = () => {
-    if (!tuitionPreview) return;
-    let remaining = amountNum;
-    const next: Record<string, string> = {};
-    for (const line of tuitionPreview.allocationPreview.lines) {
-      if (remaining <= 0) break;
-      const amount = roundMoney(Math.min(line.outstandingBefore, remaining));
-      if (amount > 0) next[line.installmentId] = String(amount);
-      remaining = roundMoney(remaining - amount);
-    }
-    setManualAllocations(next);
+  const manualAllocationRows = useMemo(() => {
+    if (!selectedParentFinance) return [];
+    const targetStudentIds = form.studentIds.length > 0 ? new Set(form.studentIds) : null;
+    return selectedParentFinance.students
+      .filter((student) => !targetStudentIds || targetStudentIds.has(student.id))
+      .flatMap((student) =>
+        student.installments
+          .filter((installment) => installment.balance > 0)
+          .map((installment) => ({
+            installmentId: installment.id,
+            studentId: student.id,
+            studentName: student.fullName,
+            planName: student.planName,
+            paymentOptionLabel: student.paymentOptionLabel,
+            label: installment.label,
+            dueDate: installment.dueDate,
+            balance: installment.balance,
+            amountDue: installment.amountDue,
+            isOverdue: installment.isOverdue,
+            status: installment.status
+          }))
+      )
+      .sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime());
+  }, [form.studentIds, selectedParentFinance]);
+
+  const setManualAllocationAmount = (installmentId: string, value: string) => {
+    setManualAllocations((current) => ({ ...current, [installmentId]: value }));
+    setTuitionPreview(null);
   };
+
+  const manualAdvanceAmount = roundMoney(Math.max(amountNum - manualAllocationTotal, 0));
+  const manualAllocationExceedsAmount = allocationMode === "MANUAL" && manualAllocationTotal > roundMoney(amountNum);
 
   const buildReceiptAllocationSummary = (preview: TuitionAllocationPreview, mode: AllocationMode): PaymentRecord["tuitionAllocationSummary"] => {
     type ReceiptAllocationChild = NonNullable<PaymentRecord["tuitionAllocationSummary"]>["perChild"][number];
@@ -2775,6 +2795,73 @@ export function PaymentsPage() {
                   </div>
                 </div>
 
+                {allocationMode === "MANUAL" && (
+                  <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-300/10 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-100">Repartition manuelle exacte</p>
+                        <p className="mt-1 text-sm font-semibold text-amber-50">
+                          Le financier saisit le montant exact a appliquer sur chaque enfant et chaque echeance ouverte.
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-amber-200/25 bg-slate-950/30 px-3 py-2 text-right text-xs">
+                        <p className={`font-mono font-black ${manualAllocationExceedsAmount ? "text-red-200" : "text-white"}`}>
+                          Saisi {fmtUsd(manualAllocationTotal)} / {fmtUsd(amountNum)}
+                        </p>
+                        <p className="mt-1 font-mono text-emerald-100">Avance {fmtUsd(manualAdvanceAmount)}</p>
+                      </div>
+                    </div>
+
+                    {manualAllocationExceedsAmount && (
+                      <div className="mt-3 rounded-lg border border-red-300/35 bg-red-400/10 p-3 text-xs font-bold text-red-100">
+                        Le total manuel depasse le montant recu. Corrigez les champs avant de confirmer.
+                      </div>
+                    )}
+
+                    {manualAllocationRows.length > 0 ? (
+                      <div className="edupay-scrollbar mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
+                        {manualAllocationRows.map((row) => (
+                          <div key={row.installmentId} className="grid gap-3 rounded-lg border border-white/10 bg-slate-950/35 p-3 md:grid-cols-[1fr_170px] md:items-center">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-semibold text-white">{row.studentName}</p>
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${row.isOverdue ? "bg-red-500/15 text-red-200" : "bg-cyan-500/15 text-cyan-100"}`}>
+                                  {row.isOverdue ? "Retard" : row.status}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-xs text-ink-dim">
+                                {row.label} · {new Date(row.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")} · {row.planName} · {row.paymentOptionLabel}
+                              </p>
+                              <p className="mt-1 text-xs font-mono text-amber-100">
+                                Solde ouvert {fmtUsd(row.balance)} sur {fmtUsd(row.amountDue)}
+                              </p>
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-[11px] font-black uppercase tracking-wide text-amber-100">
+                                Montant a allouer
+                              </label>
+                              <input
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                max={row.balance}
+                                value={manualAllocations[row.installmentId] ?? ""}
+                                onChange={(event) => setManualAllocationAmount(row.installmentId, event.target.value)}
+                                placeholder="0.00"
+                                className="w-full"
+                              />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="mt-3 rounded-lg border border-white/10 bg-slate-950/30 p-3 text-sm font-semibold text-ink-dim">
+                        Aucune echeance ouverte disponible pour les enfants selectionnes.
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {tuitionPreview && (
                   <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
                     <div className="rounded-xl border border-white/10 bg-slate-950/35 p-3">
@@ -2818,17 +2905,8 @@ export function PaymentsPage() {
                           )}
                           {allocationMode === "MANUAL" && (
                             <div className="mt-2 rounded-lg border border-amber-300/20 bg-amber-300/10 p-3 text-xs font-semibold text-amber-50">
-                              <p>Saisissez les montants par ligne. Si le total saisi est inferieur au montant recu, le reste sera conserve en avance.</p>
-                              <div className="mt-3 flex flex-wrap items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={fillManualAllocationFromPreview}
-                                  className="rounded-lg border border-amber-200/30 bg-amber-200/10 px-3 py-1.5 text-[11px] font-bold text-amber-50 hover:bg-amber-200/20"
-                                >
-                                  Remplir jusqu'au montant recu
-                                </button>
-                                <span className="font-mono">Saisi {fmtUsd(manualAllocationTotal)} / {fmtUsd(amountNum)}</span>
-                              </div>
+                              <p>Les montants saisis dans la section manuelle ci-dessus sont recalcules ici avant enregistrement. Si le total est inferieur au montant recu, le reste sera conserve en avance.</p>
+                              <p className="mt-2 font-mono">Saisi {fmtUsd(manualAllocationTotal)} / {fmtUsd(amountNum)}</p>
                             </div>
                           )}
                         </div>
@@ -2876,18 +2954,6 @@ export function PaymentsPage() {
                                 <p className="font-mono text-ink-dim">Reste {fmtUsd(line.outstandingAfter)}</p>
                               </div>
                             </div>
-                            {allocationMode === "MANUAL" && (
-                              <input
-                                type="number"
-                                step="0.01"
-                                min="0"
-                                max={line.outstandingBefore}
-                                value={manualAllocations[line.installmentId] ?? ""}
-                                onChange={(event) => setManualAllocations((current) => ({ ...current, [line.installmentId]: event.target.value }))}
-                                placeholder={`Manual amount up to ${line.outstandingBefore.toFixed(2)}`}
-                                className="mt-2 w-full"
-                              />
-                            )}
                           </div>
                         ))}
                       </div>
