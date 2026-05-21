@@ -3,7 +3,7 @@ import { schoolBranding } from "../config/branding";
 const DEFAULT_RECEIPT_VERIFICATION_BASE_URL = "/";
 
 function normalizeReceiptBaseUrl(baseUrl: string) {
-  const normalized = baseUrl.trim();
+  const normalized = baseUrl.trim().split("#")[0].split("?")[0].replace(/\/receipt\/verify\/?$/i, "");
   if (!normalized) return DEFAULT_RECEIPT_VERIFICATION_BASE_URL;
   return normalized.endsWith("/") ? normalized : `${normalized}/`;
 }

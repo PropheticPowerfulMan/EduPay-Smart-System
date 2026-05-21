@@ -1565,7 +1565,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
         paymentOptionType,
         annualFee: matchingPlan ? formatAmountInput(matchingPlan.finalAmount) : student.annualFee
       };
-      return { ...current, students };
+      return { ...current, defaultPaymentOptionType: paymentOptionType, students };
     });
   };
 

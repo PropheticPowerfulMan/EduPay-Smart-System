@@ -470,6 +470,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
   const filtered = filterParent
     ? payments.filter((p) => getPaymentSubjectName(p).toLowerCase().includes(filterParent.toLowerCase()))
     : payments;
+  const activePayments = filtered.filter((p) => p.status !== "CANCELLED");
 
   const byParent = filtered.reduce<Record<string, PaymentRecord[]>>((acc, p) => {
     const key = getPaymentSubjectName(p);
@@ -478,10 +479,11 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
     return acc;
   }, {});
 
-  const grandTotal = filtered.reduce((s, p) => s + p.amount, 0);
+  const grandTotal = activePayments.reduce((s, p) => s + p.amount, 0);
   const completedTotal = filtered.filter((p) => p.status === "COMPLETED").reduce((s, p) => s + p.amount, 0);
   const pendingTotal = filtered.filter((p) => p.status === "PENDING").reduce((s, p) => s + p.amount, 0);
   const failedTotal = filtered.filter((p) => p.status === "FAILED").reduce((s, p) => s + p.amount, 0);
+  const cancelledTotal = filtered.filter((p) => p.status === "CANCELLED").reduce((s, p) => s + p.amount, 0);
 
   const methodLabel: Record<string, string> = {
     CASH: "Cash / Especes",
@@ -492,7 +494,8 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
   const statusColor: Record<string, string> = {
     COMPLETED: "#16a34a",
     PENDING: "#d97706",
-    FAILED: "#dc2626"
+    FAILED: "#dc2626",
+    CANCELLED: "#64748b"
   };
   const statusLabel: Record<string, string> = {
     COMPLETED: "Réglé",
@@ -509,7 +512,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
     logoSrc: escapeHtml(schoolBranding.logoSrc)
   };
 
-  const byMethod = filtered.reduce<Record<string, number>>((acc, p) => {
+  const byMethod = activePayments.reduce<Record<string, number>>((acc, p) => {
     acc[p.method] = (acc[p.method] ?? 0) + p.amount;
     return acc;
   }, {});
@@ -524,7 +527,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
   const parentBlocks = Object.entries(byParent).map(([parent, recs]) => {
     const parentName = plainPrintText(parent);
     const parentCaption = plainPrintText(Array.from(new Set(recs.map((r) => getPaymentParentCaption(r)).filter(Boolean))).join(" / "));
-    const total = recs.reduce((s, r) => s + r.amount, 0);
+    const total = recs.filter((r) => r.status !== "CANCELLED").reduce((s, r) => s + r.amount, 0);
     const rows = recs.map((r) => `<tr>
       <td style="padding:6px 8px; font-family:monospace; font-size:11px; color:#475569">${plainPrintText(r.transactionNumber)}</td>
       <td style="padding:6px 8px; font-size:11px; white-space:nowrap">${plainPrintText(r.date.split(",").slice(0, 2).join(","))}</td>
@@ -666,7 +669,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
       <div style="border:1px solid #e2e8f0; border-radius:6px; padding:12px 14px; background:#f8fafc;">
         <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Total encaisse (USD)</div>
         <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${formatMoney(grandTotal)}</div>
-        <div style="font-size:9px; color:#94a3b8; margin-top:2px;">${filtered.length} transaction${filtered.length > 1 ? "s" : ""}</div>
+        <div style="font-size:9px; color:#94a3b8; margin-top:2px;">${activePayments.length} active${activePayments.length > 1 ? "s" : ""} / ${filtered.length} transaction${filtered.length > 1 ? "s" : ""}</div>
       </div>
       <div style="border:1px solid #d1fae5; border-radius:6px; padding:12px 14px; background:#f0fdf4;">
         <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Paiements regles</div>
@@ -679,6 +682,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
       <div style="border:1px solid #fee2e2; border-radius:6px; padding:12px 14px; background:#fef2f2;">
         <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Échoués</div>
         <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#dc2626;">$ ${formatMoney(failedTotal)}</div>
+        <div style="font-size:10px; color:#64748b; margin-top:2px;">Annules: $ ${formatMoney(cancelledTotal)}</div>
       </div>
     </div>
 
@@ -767,13 +771,15 @@ function exportPaymentsExcel(filename: string, records: PaymentRecord[], parentF
   const filtered = parentFilter
     ? records.filter((payment) => getPaymentSubjectName(payment) === parentFilter)
     : records;
+  const activePayments = filtered.filter((payment) => payment.status !== "CANCELLED");
 
-  const total = filtered.reduce((sum, payment) => sum + payment.amount, 0);
+  const total = activePayments.reduce((sum, payment) => sum + payment.amount, 0);
   const completed = filtered.filter((payment) => payment.status === "COMPLETED");
   const pending = filtered.filter((payment) => payment.status === "PENDING");
   const failed = filtered.filter((payment) => payment.status === "FAILED");
+  const cancelled = filtered.filter((payment) => payment.status === "CANCELLED");
 
-  const byMethod = filtered.reduce<Record<string, number>>((acc, payment) => {
+  const byMethod = activePayments.reduce<Record<string, number>>((acc, payment) => {
     const key = getMethodLabel(payment.method);
     acc[key] = (acc[key] ?? 0) + payment.amount;
     return acc;
@@ -788,7 +794,8 @@ function exportPaymentsExcel(filename: string, records: PaymentRecord[], parentF
         "Total USD": total,
         "Regles USD": completed.reduce((sum, payment) => sum + payment.amount, 0),
         "En attente USD": pending.reduce((sum, payment) => sum + payment.amount, 0),
-        "Echoues USD": failed.reduce((sum, payment) => sum + payment.amount, 0)
+        "Echoues USD": failed.reduce((sum, payment) => sum + payment.amount, 0),
+        "Annules USD": cancelled.reduce((sum, payment) => sum + payment.amount, 0)
       }]
     },
     {
@@ -891,6 +898,7 @@ type FinanceParentSnapshot = {
   students: Array<{
     id: string;
     fullName: string;
+    paymentOptionType?: string;
     paymentOptionLabel: string;
     planName: string;
     paid: number;
@@ -1502,9 +1510,10 @@ export function PaymentsPage() {
   }), [payments, searchQuery, filterStatus, filterMethod]);
 
   const stats = useMemo(() => ({
-    total:     payments.reduce((s, p) => s + p.amount, 0),
+    total:     payments.filter((p) => p.status === "COMPLETED").reduce((s, p) => s + p.amount, 0),
     completed: payments.filter((p) => p.status === "COMPLETED").reduce((s, p) => s + p.amount, 0),
     pending:   payments.filter((p) => p.status === "PENDING").reduce((s, p) => s + p.amount, 0),
+    cancelled: payments.filter((p) => p.status === "CANCELLED").reduce((s, p) => s + p.amount, 0),
     count:     payments.length,
   }), [payments]);
 
@@ -1586,6 +1595,22 @@ export function PaymentsPage() {
     () => selectedStudents.map((student) => student.fullName).join(" / "),
     [selectedStudents]
   );
+
+  useEffect(() => {
+    const officialOptions = new Set<PaymentOptionType>(["FULL_PRESEPTEMBER", "TWO_INSTALLMENTS", "THREE_INSTALLMENTS", "STANDARD_MONTHLY"]);
+    const selectedIds = form.studentIds.length > 0 ? new Set(form.studentIds) : null;
+    const financeStudents = (selectedParentFinance?.students ?? [])
+      .filter((student) => !selectedIds || selectedIds.has(student.id));
+    const officialSelections = Array.from(new Set(
+      financeStudents
+        .map((student) => student.paymentOptionType)
+        .filter((value): value is PaymentOptionType => Boolean(value) && officialOptions.has(value as PaymentOptionType))
+    ));
+
+    if (officialSelections.length === 1 && officialSelections[0] !== tuitionPlan) {
+      setTuitionPlan(officialSelections[0]);
+    }
+  }, [form.studentIds, selectedParentFinance, tuitionPlan]);
 
   const lastAutoReasonRef = useRef("");
 
@@ -1701,6 +1726,17 @@ export function PaymentsPage() {
     };
   };
 
+  const requestTuitionAllocationPreview = async () => api<TuitionEngineResponse>("/api/finance/tuition-engine/preview-allocation", {
+    method: "POST",
+    body: JSON.stringify({
+      parentId: form.parentId,
+      amount: amountNum,
+      paymentOptionType: tuitionPlan,
+      allocationMode,
+      manualAllocations: allocationMode === "MANUAL" ? buildManualAllocationPayload() : []
+    })
+  });
+
   const previewTuitionAllocation = async () => {
     if (!form.parentId || amountNum <= 0) {
       setApiError("Choisissez un parent et entrez un montant avant la previsualisation tuition.");
@@ -1709,16 +1745,7 @@ export function PaymentsPage() {
     setTuitionEngineBusy(true);
     setApiError(null);
     try {
-      const preview = await api<TuitionEngineResponse>("/api/finance/tuition-engine/preview-allocation", {
-        method: "POST",
-        body: JSON.stringify({
-          parentId: form.parentId,
-          amount: amountNum,
-          paymentOptionType: tuitionPlan,
-          allocationMode,
-          manualAllocations: allocationMode === "MANUAL" ? buildManualAllocationPayload() : []
-        })
-      });
+      const preview = await requestTuitionAllocationPreview();
       setTuitionPreview(preview);
       if (form.studentIds.length === 0 && selectedParent?.students?.length) {
         setForm((current) => ({ ...current, studentIds: selectedParent.students!.map((student) => student.id) }));
@@ -1733,6 +1760,10 @@ export function PaymentsPage() {
   const confirmTuitionPayment = async () => {
     if (!form.parentId || amountNum <= 0) {
       setApiError("Choisissez un parent et entrez un montant avant de confirmer.");
+      return;
+    }
+    if (form.status !== "COMPLETED") {
+      setApiError("Le moteur tuition et la repartition manuelle s'appliquent uniquement aux paiements regles. Utilisez le statut Regle pour affecter les echeances.");
       return;
     }
     if (allocationMode === "MANUAL" && !tuitionPreview) {
@@ -1751,6 +1782,8 @@ export function PaymentsPage() {
     setSaving(true);
     setApiError(null);
     try {
+      const confirmedPreview = await requestTuitionAllocationPreview();
+      setTuitionPreview(confirmedPreview);
       const result = await api<TuitionEngineResponse>("/api/finance/tuition-engine/payments", {
         method: "POST",
         body: JSON.stringify({
@@ -1959,7 +1992,7 @@ export function PaymentsPage() {
         { label: "Total encaissé",   value: fmtUsd(stats.total),     color: "text-brand-300"   },
         { label: "Réglés",           value: fmtUsd(stats.completed), color: "text-emerald-300" },
         { label: "En attente",       value: fmtUsd(stats.pending),   color: "text-amber-300"   },
-        { label: "Transactions",     value: String(stats.count),     color: "text-white"       },
+        { label: "Annules",          value: fmtUsd(stats.cancelled), color: "text-slate-300"   },
       ].map((s) => (
         <div key={s.label} className="card py-4 px-5">
           <p className="text-xs text-ink-dim uppercase tracking-wide mb-1">{s.label}</p>
@@ -2270,7 +2303,7 @@ export function PaymentsPage() {
                     Total ({filteredPayments.length} paiement{filteredPayments.length > 1 ? "s" : ""})
                   </td>
                   <td className="py-4 font-mono font-bold text-xl text-brand-300">
-                    $ {formatMoney(filteredPayments.reduce((s, p) => s + p.amount, 0))}
+                    $ {formatMoney(filteredPayments.filter((p) => p.status === "COMPLETED").reduce((s, p) => s + p.amount, 0))}
                   </td>
                   <td colSpan={2} />
                 </tr>
@@ -2315,7 +2348,7 @@ export function PaymentsPage() {
       return acc;
     }, {});
 
-    const reportTotal = reportPayments.reduce((s, p) => s + p.amount, 0);
+    const reportTotal = reportPayments.filter((p) => p.status === "COMPLETED").reduce((s, p) => s + p.amount, 0);
 
     return (
       <div className="space-y-6 pb-10">
@@ -2364,7 +2397,7 @@ export function PaymentsPage() {
           <div className="card text-center py-12 text-ink-dim">Aucun paiement enregistré.</div>
         ) : (
           Object.entries(bySubject).map(([subject, recs]) => {
-            const parentTotal  = recs.reduce((s, r) => s + r.amount, 0);
+            const parentTotal  = recs.filter((r) => r.status === "COMPLETED").reduce((s, r) => s + r.amount, 0);
             const completedAmt = recs.filter((r) => r.status === "COMPLETED").reduce((s, r) => s + r.amount, 0);
             const pendingAmt   = recs.filter((r) => r.status === "PENDING").reduce((s, r) => s + r.amount, 0);
             const failedAmt    = recs.filter((r) => r.status === "FAILED").reduce((s, r) => s + r.amount, 0);

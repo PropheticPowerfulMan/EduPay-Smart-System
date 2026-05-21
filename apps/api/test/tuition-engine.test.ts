@@ -346,6 +346,43 @@ describe("EduPay Tuition Payment Engine", () => {
     expect(result.allocationPreview.lines.every((line) => line.allocated <= line.outstandingBefore)).toBe(true);
   });
 
+  it("honors manual finance split for every official tuition plan", () => {
+    const plans = [
+      PaymentOptionType.FULL_PRESEPTEMBER,
+      PaymentOptionType.TWO_INSTALLMENTS,
+      PaymentOptionType.THREE_INSTALLMENTS,
+      PaymentOptionType.STANDARD_MONTHLY
+    ];
+
+    for (const paymentOptionType of plans) {
+      const setup = simulateTuitionEngineScenario({
+        paymentOptionType,
+        amount: 0,
+        children: stressFamilies.mixedGrades
+      });
+      const manualTargets = setup.allocationPreview.lines.slice(0, 3).map((line, index) => ({
+        installmentId: line.installmentId,
+        amount: round(Math.min(line.outstandingBefore, [300, 200, 100][index]))
+      }));
+      const manualTotal = round(manualTargets.reduce((sum, row) => sum + row.amount, 0));
+      const result = simulateTuitionEngineScenario({
+        paymentOptionType,
+        amount: manualTotal,
+        allocationMode: "MANUAL",
+        manualAllocations: manualTargets,
+        children: stressFamilies.mixedGrades
+      });
+
+      assertDiscountOrder(result);
+      assertFinancialIntegrity(result);
+      expect(result.allocationPreview.mode, paymentOptionType).toBe("MANUAL");
+      expect(result.allocationPreview.allocatedTotal, paymentOptionType).toBe(manualTotal);
+      for (const target of manualTargets) {
+        expect(result.allocationPreview.lines.find((line) => line.installmentId === target.installmentId)?.allocated, paymentOptionType).toBe(target.amount);
+      }
+    }
+  });
+
   it("generates finance audit reports for discounts, allocations, risk, and recommendations", () => {
     const result = simulateTuitionEngineScenario({
       paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,

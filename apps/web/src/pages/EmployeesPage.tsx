@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { FileSpreadsheet, FileText, Printer } from "lucide-react";
 import { SearchField } from "../components/SearchField";
 import { schoolBranding } from "../config/branding";
 import { api } from "../services/api";
@@ -152,7 +153,7 @@ function XIcon() {
   );
 }
 
-function ModalShell({ title, subtitle, onClose, children }: { title: string; subtitle?: string; onClose: () => void; children: React.ReactNode }) {
+function ModalShell({ title, subtitle, actions, onClose, children }: { title: string; subtitle?: string; actions?: React.ReactNode; onClose: () => void; children: React.ReactNode }) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
@@ -166,10 +167,13 @@ function ModalShell({ title, subtitle, onClose, children }: { title: string; sub
           <XIcon />
         </button>
         <div className="sticky top-0 z-[1] rounded-t-3xl border-b border-white/10 bg-[rgba(6,23,34,0.56)] px-6 pb-5 pt-6 backdrop-blur-2xl">
-          <div className="pr-12">
+          <div className="flex flex-col gap-4 pr-12 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-300">Employés</p>
-            <h2 className="mt-2 font-display text-2xl font-bold text-white">{title}</h2>
+            <h2 className="mt-2 truncate font-display text-2xl font-bold text-white">{title}</h2>
             {subtitle ? <p className="mt-2 text-sm text-ink-dim">{subtitle}</p> : null}
+            </div>
+            {actions ? <div className="flex flex-wrap items-center gap-2 sm:justify-end">{actions}</div> : null}
           </div>
         </div>
         <div className="p-6">
@@ -615,6 +619,7 @@ export function EmployeesPage() {
   const [employeeFinanceLoading, setEmployeeFinanceLoading] = useState(false);
   const [employeeFinanceError, setEmployeeFinanceError] = useState<string | null>(null);
   const [employeeFinanceSnapshot, setEmployeeFinanceSnapshot] = useState<EmployeeFinanceSnapshot | null>(null);
+  const [employeePdfExporting, setEmployeePdfExporting] = useState(false);
 
   async function loadEmployees() {
     setLoading(true);
@@ -638,6 +643,7 @@ export function EmployeesPage() {
       setEmployeeFinanceSnapshot(null);
       setEmployeeFinanceError(null);
       setEmployeeFinanceLoading(false);
+      setEmployeePdfExporting(false);
       return;
     }
 
@@ -894,33 +900,46 @@ export function EmployeesPage() {
       </div>
 
       {selectedEmployee ? (
-        <ModalShell title={selectedEmployee.fullName} subtitle="Fiche détaillée de l'employé dans le registre partagé." onClose={() => setSelectedEmployee(null)}>
-          <div className="mb-5 flex flex-wrap items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => employeeFinanceSnapshot && void exportEmployeeReportPdf(selectedEmployee, employeeFinanceSnapshot)}
-              disabled={employeeFinanceLoading || !employeeFinanceSnapshot}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-3 text-xs font-semibold text-cyan-100 transition hover:border-cyan-400/45 hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              PDF
-            </button>
-            <button
-              type="button"
-              onClick={() => employeeFinanceSnapshot && printEmployeeReport(selectedEmployee, employeeFinanceSnapshot)}
-              disabled={employeeFinanceLoading || !employeeFinanceSnapshot}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 text-xs font-semibold text-sky-100 transition hover:border-sky-400/45 hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Impression
-            </button>
-            <button
-              type="button"
-              onClick={() => employeeFinanceSnapshot && exportEmployeeReportExcel(selectedEmployee, employeeFinanceSnapshot)}
-              disabled={employeeFinanceLoading || !employeeFinanceSnapshot}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-100 transition hover:border-emerald-400/45 hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Excel
-            </button>
-          </div>
+        <ModalShell
+          title={selectedEmployee.fullName}
+          subtitle="Fiche détaillée de l'employé dans le registre partagé."
+          onClose={() => setSelectedEmployee(null)}
+          actions={(
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!employeeFinanceSnapshot) return;
+                  setEmployeePdfExporting(true);
+                  void exportEmployeeReportPdf(selectedEmployee, employeeFinanceSnapshot).finally(() => setEmployeePdfExporting(false));
+                }}
+                disabled={employeeFinanceLoading || !employeeFinanceSnapshot || employeePdfExporting}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-3 text-xs font-semibold text-cyan-100 transition-colors hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Télécharger le rapport en PDF"
+              >
+                <FileText className="h-4 w-4" /> {employeePdfExporting ? "PDF..." : "PDF"}
+              </button>
+              <button
+                type="button"
+                onClick={() => employeeFinanceSnapshot && printEmployeeReport(selectedEmployee, employeeFinanceSnapshot)}
+                disabled={employeeFinanceLoading || !employeeFinanceSnapshot || employeePdfExporting}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 text-xs font-semibold text-sky-100 transition-colors hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Imprimer le rapport"
+              >
+                <Printer className="h-4 w-4" /> Impression
+              </button>
+              <button
+                type="button"
+                onClick={() => employeeFinanceSnapshot && exportEmployeeReportExcel(selectedEmployee, employeeFinanceSnapshot)}
+                disabled={employeeFinanceLoading || !employeeFinanceSnapshot || employeePdfExporting}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                title="Exporter le rapport en Excel"
+              >
+                <FileSpreadsheet className="h-4 w-4" /> Excel
+              </button>
+            </>
+          )}
+        >
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-ink-dim">Identifiant affiché</p>
