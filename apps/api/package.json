@@ -11,7 +11,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "report:receipt-regeneration": "tsx src/scripts/reportReceiptRegeneration.ts",
-    "test": "vitest run test/amount-words.test.ts test/orbit.integration.test.ts test/orbit.registry.test.ts test/tuition-engine.test.ts",
+    "test": "vitest run test/amount-words.test.ts test/orbit.integration.test.ts test/orbit.registry.test.ts test/tuition-engine.test.ts test/ai-assistant.test.ts test/overdue-reminders.test.ts",
     "lint": "echo \"No lint configured yet\""
   },
   "dependencies": {

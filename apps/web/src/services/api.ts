@@ -26,6 +26,7 @@ const DEMO_SALARY_PROFILES_KEY = "edupay_demo_salary_profiles_v1";
 const DEMO_PAYROLL_RUNS_KEY = "edupay_demo_payroll_runs_v1";
 const DEMO_EMPLOYEES_KEY = "edupay_demo_employees_v1";
 const API_RESPONSE_CACHE_PREFIX = "edupay_api_cache_v1:";
+const OFFLINE_MUTATION_QUEUE_KEY = "edupay_offline_mutation_queue_v1";
 const DEMO_FALLBACK_ENABLED = (import.meta.env.VITE_ENABLE_DEMO_FALLBACK ?? "").trim().toLowerCase() === "true";
 const STATIC_APP_FALLBACK_ENABLED = ["demo", "github-pages", "pages"].includes((import.meta.env.VITE_ENVIRONMENT ?? "").trim().toLowerCase());
 const PLACEHOLDER_API_URL = /MON-BACKEND|example\.com/i.test(API_BASE_URL);
@@ -120,6 +121,16 @@ type DemoBudget = {
   period: { id: string; name: string };
   category: { id: string; name: string } | null;
   createdAt: string;
+};
+
+type OfflineMutation = {
+  id: string;
+  path: string;
+  method: string;
+  body?: string;
+  headers: Record<string, string>;
+  queuedAt: string;
+  replayAttempts: number;
 };
 
 type DemoExpenseApprovalStep = {
@@ -315,6 +326,76 @@ function writeCachedResponse(path: string, value: unknown) {
   } catch {
     // Storage may be full or unavailable; live API response still wins.
   }
+}
+
+function isOfflineQueueableRequest(path: string, init?: RequestInit) {
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (!path.startsWith("/api/")) return false;
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return false;
+  if (path.startsWith("/api/auth/")) return false;
+  return typeof init?.body === "string" || init?.body === undefined;
+}
+
+function readOfflineQueue() {
+  return readJson<OfflineMutation[]>(OFFLINE_MUTATION_QUEUE_KEY, []);
+}
+
+function writeOfflineQueue(queue: OfflineMutation[]) {
+  writeJson(OFFLINE_MUTATION_QUEUE_KEY, queue.slice(-100));
+}
+
+function queueOfflineMutation(path: string, init?: RequestInit) {
+  if (!isOfflineQueueableRequest(path, init)) return null;
+  const mutation: OfflineMutation = {
+    id: `offline-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    path,
+    method: (init?.method ?? "POST").toUpperCase(),
+    body: typeof init?.body === "string" ? init.body : undefined,
+    headers: Object.fromEntries(new Headers(init?.headers || {}).entries()),
+    queuedAt: new Date().toISOString(),
+    replayAttempts: 0
+  };
+  writeOfflineQueue([...readOfflineQueue(), mutation]);
+  return mutation;
+}
+
+export async function flushOfflineMutationQueue() {
+  const queue = readOfflineQueue();
+  if (!queue.length) return { attempted: 0, sent: 0, remaining: 0 };
+
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY) ?? "";
+  const remaining: OfflineMutation[] = [];
+  let sent = 0;
+
+  for (const item of queue) {
+    try {
+      const response = await fetch(resolveApiUrl(item.path), {
+        method: item.method,
+        body: item.body,
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...item.headers
+        }
+      });
+      if (response.ok || response.status === 409) {
+        sent += 1;
+      } else {
+        remaining.push({ ...item, replayAttempts: item.replayAttempts + 1 });
+      }
+    } catch {
+      remaining.push({ ...item, replayAttempts: item.replayAttempts + 1 });
+    }
+  }
+
+  writeOfflineQueue(remaining.filter((item) => item.replayAttempts < 10));
+  return { attempted: queue.length, sent, remaining: readOfflineQueue().length };
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => {
+    void flushOfflineMutationQueue();
+  });
 }
 
 function buildReadableEntityId(prefix: "PAR" | "STU", fullName: string) {
@@ -2041,6 +2122,10 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
     return demoApi<T>(path, init);
   }
 
+  if ((init?.method ?? "GET").toUpperCase() === "GET") {
+    void flushOfflineMutationQueue();
+  }
+
   const token = storedToken ?? "";
   const url = resolveApiUrl(path);
 
@@ -2057,6 +2142,15 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   } catch {
     const cached = isCacheableRequest(path, init) ? readCachedResponse<T>(path) : null;
     if (cached !== null) return cached;
+    const queued = queueOfflineMutation(path, init);
+    if (queued) {
+      if (canFallbackToDemo(path, init)) return demoApi<T>(path, init);
+      return {
+        offlineQueued: true,
+        id: queued.id,
+        message: "Action enregistree hors ligne. Elle sera synchronisee automatiquement au retour de la connexion."
+      } as T;
+    }
     if (LOCAL_API_FALLBACK_ENABLED && canFallbackToDemo(path, init)) return demoApi<T>(path, init);
     throw new Error("Impossible de joindre l'API. Verifiez que le backend est demarre.");
   }

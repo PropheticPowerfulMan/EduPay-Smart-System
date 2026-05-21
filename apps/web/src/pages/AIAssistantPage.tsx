@@ -9,6 +9,7 @@ type AssistantResponse = {
   facts?: string[];
   actions?: string[];
   confidence?: string;
+  tableRows?: StudentPaymentTableRow[];
 };
 
 type Overview = {
@@ -84,6 +85,17 @@ type ChatMessage = {
   facts?: string[];
   actions?: string[];
   confidence?: string;
+  tableRows?: StudentPaymentTableRow[];
+};
+
+type StudentPaymentTableRow = {
+  student: string;
+  className: string;
+  parent: string;
+  expected: number;
+  paid: number;
+  balance: number;
+  status: string;
 };
 
 const USD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
@@ -312,6 +324,18 @@ function formatStudentPaymentLine(row: ReturnType<typeof buildStudentPaymentRows
   return `${row.name} - ${row.className} - parent ${row.parentName} (${contact}) - attendu ${USD.format(row.expected)}, paye ${USD.format(row.paid)}, reste ${USD.format(row.balance)}.`;
 }
 
+function toStudentPaymentTableRows(rows: ReturnType<typeof buildStudentPaymentRows>): StudentPaymentTableRow[] {
+  return rows.slice(0, 50).map((row) => ({
+    student: row.name,
+    className: row.className,
+    parent: row.parentName,
+    expected: row.expected,
+    paid: row.paid,
+    balance: row.balance,
+    status: row.balance <= 0 ? "PAYE" : row.paid > 0 ? "PARTIEL" : "IMPAYE"
+  }));
+}
+
 function localAssistantReply(query: string, lang: "fr" | "en", context: AssistantContext): AssistantResponse {
   const q = normalize(query);
   const insights = buildInsights(context);
@@ -346,6 +370,7 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
     const totalExpected = targetRows.reduce((sum, row) => sum + row.expected, 0);
     const totalPaid = targetRows.reduce((sum, row) => sum + row.paid, 0);
     const shownRows = targetRows.slice(0, 25).map(formatStudentPaymentLine);
+    const tableRows = toStudentPaymentTableRows(targetRows);
     const hiddenCount = Math.max(0, targetRows.length - shownRows.length);
 
     return {
@@ -373,6 +398,7 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
             ...(shownRows.length > 0 ? shownRows : ["No student row to display."]),
             ...(hiddenCount > 0 ? [`${hiddenCount} other student(s) not shown in this summary.`] : [])
           ],
+      tableRows,
       actions: lang === "fr"
         ? ["Relancer les parents de cette liste avec le montant exact.", "Verifier les paiements PENDING avant sanction.", "Exporter ou filtrer par classe pour traitement financier."]
         : ["Follow up with these parents using the exact amount.", "Check PENDING payments before escalation.", "Export or filter by class for finance processing."],
@@ -616,7 +642,7 @@ function isPrecisionFinanceQuestion(query: string) {
   return asksForList && asksForPaymentState;
 }
 
-function ResponseSections({ response }: { response: { answer?: string; text?: string; facts?: string[]; actions?: string[]; confidence?: string } }) {
+function ResponseSections({ response }: { response: { answer?: string; text?: string; facts?: string[]; actions?: string[]; confidence?: string; tableRows?: StudentPaymentTableRow[] } }) {
   const answer = response.answer ?? response.text ?? "";
   return (
     <div className="space-y-4">
@@ -633,6 +659,39 @@ function ResponseSections({ response }: { response: { answer?: string; text?: st
                 {fact}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+      {response.tableRows && response.tableRows.length > 0 && (
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-300">Tableau exact</p>
+          <div className="mt-2 overflow-x-auto rounded-xl border border-slate-700/60">
+            <table className="min-w-[760px] w-full text-left text-sm">
+              <thead className="bg-slate-950/80 text-xs uppercase tracking-[0.12em] text-cyan-200">
+                <tr>
+                  <th className="px-3 py-3">Élève</th>
+                  <th className="px-3 py-3">Classe</th>
+                  <th className="px-3 py-3">Parent</th>
+                  <th className="px-3 py-3 text-right">Attendu</th>
+                  <th className="px-3 py-3 text-right">Payé</th>
+                  <th className="px-3 py-3 text-right">Reste</th>
+                  <th className="px-3 py-3">Statut</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800 bg-slate-900/35 text-ink-dim">
+                {response.tableRows.map((row) => (
+                  <tr key={`${row.student}-${row.className}-${row.parent}`}>
+                    <td className="px-3 py-3 font-semibold text-white">{row.student}</td>
+                    <td className="px-3 py-3">{row.className}</td>
+                    <td className="px-3 py-3">{row.parent}</td>
+                    <td className="px-3 py-3 text-right font-mono">{USD.format(row.expected)}</td>
+                    <td className="px-3 py-3 text-right font-mono">{USD.format(row.paid)}</td>
+                    <td className="px-3 py-3 text-right font-mono text-amber-200">{USD.format(row.balance)}</td>
+                    <td className="px-3 py-3">{row.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -708,7 +767,8 @@ export function AIAssistantPage() {
         suggestions: finalResult.suggestions,
         facts: finalResult.facts,
         actions: finalResult.actions,
-        confidence: finalResult.confidence
+        confidence: finalResult.confidence,
+        tableRows: finalResult.tableRows
       }]);
       if (isGenericAssistantResponse(data)) setError(null);
     } catch {
@@ -720,7 +780,8 @@ export function AIAssistantPage() {
         suggestions: localResult.suggestions,
         facts: localResult.facts,
         actions: localResult.actions,
-        confidence: localResult.confidence
+        confidence: localResult.confidence,
+        tableRows: localResult.tableRows
       }]);
       setError(null);
     } finally {

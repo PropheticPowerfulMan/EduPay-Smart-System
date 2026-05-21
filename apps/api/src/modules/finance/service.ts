@@ -547,7 +547,7 @@ function deriveInstallmentStatus(amountDue: number, amountPaid: number, dueDate:
   return InstallmentStatus.SCHEDULED;
 }
 
-const OVERDUE_REMINDER_STAGES = [
+export const OVERDUE_REMINDER_STAGES = [
   { stage: 1, minDelayDays: 1, minDaysAfterPreviousNotice: 0, severity: "MEDIUM" },
   { stage: 2, minDelayDays: 2, minDaysAfterPreviousNotice: 1, severity: "MEDIUM" },
   { stage: 3, minDelayDays: 3, minDaysAfterPreviousNotice: 1, severity: "HIGH" },
@@ -627,7 +627,7 @@ function buildOverdueReminderMessages(input: {
   return { subject, emailBody, smsBody, dashboardBody };
 }
 
-function canSendOverdueStage(input: {
+export function canSendOverdueStage(input: {
   stage: number;
   delayDays: number;
   logs: Array<{ content: string; createdAt: Date }>;

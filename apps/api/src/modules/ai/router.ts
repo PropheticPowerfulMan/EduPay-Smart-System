@@ -19,12 +19,22 @@ function normalize(value: string | undefined) {
     .toLowerCase();
 }
 
-function buildLocalAssistantFallback(query: string, context: any) {
+export type AssistantTableRow = {
+  student: string;
+  className: string;
+  parent: string;
+  expected: number;
+  paid: number;
+  balance: number;
+  status: string;
+};
+
+export function buildLocalAssistantFallback(query: string, context: any) {
   const q = normalize(query);
   const parents = Array.isArray(context?.parents) ? context.parents : [];
   const payments = Array.isArray(context?.payments) ? context.payments : [];
   const profiles = Array.isArray(context?.parentProfiles) ? context.parentProfiles : [];
-  const asksUnpaidStudents = /(liste|eleve|student|qui)/.test(q) && /(impay|non pay|pas pay|sans paiement|retard|solde|debt|unpaid|not paid)/.test(q);
+  const asksUnpaidStudents = /(liste|eleve|student|qui)/.test(q) && /(impay|non pay|pas encore pay|pas pay|sans paiement|retard|solde|debt|unpaid|not paid)/.test(q);
 
   if (asksUnpaidStudents) {
     const paidNames = new Set<string>();
@@ -61,8 +71,17 @@ function buildLocalAssistantFallback(query: string, context: any) {
     const targets = rows
       .filter((row: any) => noPaymentOnly ? !row.hasPayment : row.balance > 0)
       .sort((left: any, right: any) => right.balance - left.balance || String(left.name).localeCompare(String(right.name)));
-    const facts = targets.slice(0, 25).map((row: any) =>
-      `${row.name} - ${row.className} - parent ${row.parentName} - attendu $${Number(row.expected || 0).toFixed(2)}, paye $${Number(row.paid || 0).toFixed(2)}, reste $${Number(row.balance || 0).toFixed(2)}.`
+    const tableRows: AssistantTableRow[] = targets.slice(0, 50).map((row: any) => ({
+      student: row.name,
+      className: row.className,
+      parent: row.parentName,
+      expected: Number(row.expected || 0),
+      paid: Number(row.paid || 0),
+      balance: Number(row.balance || 0),
+      status: row.hasPayment ? "PARTIAL" : "UNPAID"
+    }));
+    const facts = tableRows.slice(0, 25).map((row) =>
+      `${row.student} - ${row.className} - parent ${row.parent} - attendu $${row.expected.toFixed(2)}, paye $${row.paid.toFixed(2)}, reste $${row.balance.toFixed(2)}.`
     );
 
     return {
@@ -70,6 +89,7 @@ function buildLocalAssistantFallback(query: string, context: any) {
         ? `Liste precise des eleves ${noPaymentOnly ? "sans paiement enregistre" : "avec solde restant"} selon les donnees EduPay chargees.`
         : "Aucun eleve correspondant n'apparait dans les donnees EduPay chargees.",
       facts: [`${targets.length} eleve(s) concerne(s).`, ...facts],
+      tableRows,
       actions: ["Verifier les paiements en attente avant relance.", "Contacter les parents avec le montant exact.", "Filtrer par classe si la liste doit etre traitee par niveau."],
       confidence: "Analyse locale basee sur les donnees EduPay transmises a l'assistant.",
       suggestions: ["Lister les parents avec solde", "Afficher les paiements en attente", "Voir les cas critiques par classe"]
