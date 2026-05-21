@@ -58,6 +58,7 @@ const tuitionManualAllocationSchema = z.object({
 
 const tuitionEnginePlanSchema = z.object({
   parentId: z.string().min(1),
+  studentIds: z.array(z.string().min(1)).optional().default([]),
   academicYearName: z.string().optional(),
   paymentOptionType: z.nativeEnum(PaymentOptionType),
   notes: z.string().max(4000).optional()

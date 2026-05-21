@@ -1665,6 +1665,7 @@ export function PaymentsPage() {
         : [...prev.studentIds, studentId]
     }));
     setFieldErrors((prev) => ({ ...prev, studentIds: undefined }));
+    setTuitionPreview(null);
   };
 
   const buildManualAllocationPayload = () => Object.entries(manualAllocations)
@@ -1750,6 +1751,7 @@ export function PaymentsPage() {
     method: "POST",
     body: JSON.stringify({
       parentId: form.parentId,
+      studentIds: form.studentIds,
       amount: amountNum,
       paymentOptionType: tuitionPlan,
       allocationMode,
@@ -1762,14 +1764,15 @@ export function PaymentsPage() {
       setApiError("Choisissez un parent et entrez un montant avant la previsualisation tuition.");
       return;
     }
+    if (selectedParent && (selectedParent.students?.length ?? 0) > 0 && form.studentIds.length === 0) {
+      setApiError("Selectionnez au moins un enfant avant la previsualisation tuition.");
+      return;
+    }
     setTuitionEngineBusy(true);
     setApiError(null);
     try {
       const preview = await requestTuitionAllocationPreview();
       setTuitionPreview(preview);
-      if (form.studentIds.length === 0 && selectedParent?.students?.length) {
-        setForm((current) => ({ ...current, studentIds: selectedParent.students!.map((student) => student.id) }));
-      }
     } catch (error) {
       setApiError(error instanceof Error ? error.message : "Impossible de previsualiser l'allocation tuition.");
     } finally {
@@ -1784,6 +1787,10 @@ export function PaymentsPage() {
     }
     if (form.status !== "COMPLETED") {
       setApiError("Le moteur tuition et la repartition manuelle s'appliquent uniquement aux paiements regles. Utilisez le statut Regle pour affecter les echeances.");
+      return;
+    }
+    if (selectedParent && (selectedParent.students?.length ?? 0) > 0 && form.studentIds.length === 0) {
+      setApiError("Selectionnez au moins un enfant avant de confirmer le paiement tuition.");
       return;
     }
     if (allocationMode === "MANUAL" && !tuitionPreview) {
@@ -1808,6 +1815,7 @@ export function PaymentsPage() {
         method: "POST",
         body: JSON.stringify({
           parentId: form.parentId,
+          studentIds: form.studentIds,
           amount: amountNum,
           paymentOptionType: tuitionPlan,
           allocationMode,
@@ -1828,7 +1836,7 @@ export function PaymentsPage() {
         parentFullName: parentName,
         paymentSubjectName: subjectName,
         studentNames: result.calculations.map((row) => row.studentName),
-        studentClassNames: Array.from(new Set((selectedParent?.students ?? []).map((student) => student.className).filter(Boolean))),
+        studentClassNames: Array.from(new Set(selectedStudents.map((student) => student.className).filter(Boolean))),
         reason: form.reason || `Tuition - ${TUITION_PLAN_OPTIONS.find((plan) => plan.value === tuitionPlan)?.label ?? tuitionPlan}`,
         amount: amountNum,
         amountWords: amountToWords(amountNum, lang as "fr" | "en"),
@@ -2636,10 +2644,38 @@ export function PaymentsPage() {
 
             {selectedParent && (selectedParent.students?.length ?? 0) > 0 && (
               <div className="space-y-1.5">
-                <label className="text-sm font-semibold text-ink-dim uppercase tracking-wide">
-                  Eleves concernes <span className="text-danger">*</span>
-                </label>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <label className="text-sm font-semibold text-ink-dim uppercase tracking-wide">
+                    Eleves concernes <span className="text-danger">*</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForm((prev) => ({ ...prev, studentIds: selectedParent.students?.map((student) => student.id) ?? [] }));
+                        setFieldErrors((prev) => ({ ...prev, studentIds: undefined }));
+                        setTuitionPreview(null);
+                      }}
+                      className="rounded-lg border border-brand-500/30 px-2.5 py-1 text-[11px] font-bold text-brand-200 hover:bg-brand-500/10"
+                    >
+                      Tous
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForm((prev) => ({ ...prev, studentIds: [] }));
+                        setTuitionPreview(null);
+                      }}
+                      className="rounded-lg border border-slate-600 px-2.5 py-1 text-[11px] font-bold text-ink-dim hover:text-white"
+                    >
+                      Aucun
+                    </button>
+                  </div>
+                </div>
                 <div className="space-y-2 rounded-xl border border-slate-700 bg-slate-950/50 p-3">
+                  <p className="text-xs font-semibold text-ink-dim">
+                    {form.studentIds.length} sur {selectedParent.students?.length ?? 0} enfant(s) selectionne(s). Le paiement, les echeances, la repartition manuelle et le recu seront limites a cette selection.
+                  </p>
                   {selectedParent.students?.map((student) => {
                     const active = form.studentIds.includes(student.id);
                     return (
@@ -2731,7 +2767,7 @@ export function PaymentsPage() {
                     <button
                       type="button"
                       onClick={() => void previewTuitionAllocation()}
-                      disabled={tuitionEngineBusy || !form.parentId || amountNum <= 0}
+                      disabled={tuitionEngineBusy || !form.parentId || amountNum <= 0 || ((selectedParent?.students?.length ?? 0) > 0 && form.studentIds.length === 0)}
                       className="rounded-xl border border-emerald-400/40 bg-emerald-500/20 px-4 py-2 text-sm font-bold text-emerald-50 hover:bg-emerald-500/30 disabled:opacity-50"
                     >
                       {tuitionEngineBusy ? "Calcul..." : allocationMode === "MANUAL" && tuitionPreview ? "Recalculer manuel" : "Previsualiser la repartition"}
@@ -2739,7 +2775,7 @@ export function PaymentsPage() {
                     <button
                       type="button"
                       onClick={() => void confirmTuitionPayment()}
-                      disabled={tuitionEngineBusy || !form.parentId || amountNum <= 0 || !tuitionPreview}
+                      disabled={tuitionEngineBusy || !form.parentId || amountNum <= 0 || !tuitionPreview || ((selectedParent?.students?.length ?? 0) > 0 && form.studentIds.length === 0)}
                       className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-700 disabled:opacity-50"
                     >
                       Confirmer le paiement tuition

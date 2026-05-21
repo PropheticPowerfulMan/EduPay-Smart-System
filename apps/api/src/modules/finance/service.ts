@@ -2382,6 +2382,7 @@ export function buildTuitionParentNotificationMessages(input: {
 export async function ensureParentTuitionEnginePlan(input: {
   schoolId: string;
   parentId: string;
+  studentIds?: string[];
   paymentOptionType: PaymentOptionType;
   academicYearName?: string;
   actorUserId?: string;
@@ -2398,6 +2399,14 @@ export async function ensureParentTuitionEnginePlan(input: {
   });
   if (!parent) throw new Error("Parent not found.");
   if (parent.students.length === 0) throw new Error("Parent has no linked children.");
+  const requestedStudentIds = Array.from(new Set(input.studentIds ?? []));
+  if (requestedStudentIds.length > 0) {
+    const parentStudentIds = new Set(parent.students.map((student) => student.id));
+    const invalidStudentIds = requestedStudentIds.filter((studentId) => !parentStudentIds.has(studentId));
+    if (invalidStudentIds.length > 0) {
+      throw new Error("One or more selected children do not belong to this parent.");
+    }
+  }
   const existingAssignments = await prisma.parentPlanAssignment.findMany({
     where: {
       parentId: input.parentId,
@@ -2627,6 +2636,7 @@ export async function ensureParentTuitionEnginePlan(input: {
             academicYearId: academicYear.id,
             paymentOptionType: input.paymentOptionType,
             familyAccount: parent.students.length >= 2,
+            requestedStudentIds,
             calculations
           }
         }
@@ -2792,6 +2802,7 @@ function buildAllocationPreviewFromInstallments(input: {
 export async function previewTuitionPaymentAllocation(input: {
   schoolId: string;
   parentId: string;
+  studentIds?: string[];
   amount: number;
   paymentOptionType: PaymentOptionType;
   allocationMode: "AUTO" | "MANUAL";
@@ -2801,14 +2812,20 @@ export async function previewTuitionPaymentAllocation(input: {
   const setup = await ensureParentTuitionEnginePlan({
     schoolId: input.schoolId,
     parentId: input.parentId,
+    studentIds: input.studentIds,
     paymentOptionType: input.paymentOptionType,
     academicYearName: input.academicYearName
   });
+  const targetStudentIds = input.studentIds && input.studentIds.length > 0
+    ? Array.from(new Set(input.studentIds))
+    : setup.calculations.map((calculation) => calculation.studentId);
+  const targetStudentIdSet = new Set(targetStudentIds);
   const installments = await prisma.paymentInstallment.findMany({
     where: {
       schoolId: input.schoolId,
       parentId: input.parentId,
-      academicYearId: setup.academicYear.id
+      academicYearId: setup.academicYear.id,
+      studentId: { in: targetStudentIds }
     },
     include: { allocations: true, student: true },
     orderBy: [{ dueDate: "asc" }, { sequence: "asc" }]
@@ -2819,12 +2836,17 @@ export async function previewTuitionPaymentAllocation(input: {
     mode: input.allocationMode,
     manualAllocations: input.manualAllocations
   });
-  return { ...setup, allocationPreview: preview };
+  return {
+    ...setup,
+    calculations: setup.calculations.filter((calculation) => targetStudentIdSet.has(calculation.studentId)),
+    allocationPreview: preview
+  };
 }
 
 export async function recordTuitionEnginePayment(input: {
   schoolId: string;
   parentId: string;
+  studentIds?: string[];
   amount: number;
   paymentOptionType: PaymentOptionType;
   allocationMode: "AUTO" | "MANUAL";
@@ -2839,22 +2861,37 @@ export async function recordTuitionEnginePayment(input: {
   const setup = await ensureParentTuitionEnginePlan({
     schoolId: input.schoolId,
     parentId: input.parentId,
+    studentIds: input.studentIds,
     paymentOptionType: input.paymentOptionType,
     academicYearName: input.academicYearName,
     actorUserId: input.createdById,
     notes: input.notes
   });
+  const targetStudentIds = input.studentIds && input.studentIds.length > 0
+    ? Array.from(new Set(input.studentIds))
+    : setup.calculations.map((calculation) => calculation.studentId);
+  const targetStudentIdSet = new Set(targetStudentIds);
+  const targetCalculations = setup.calculations.filter((calculation) => targetStudentIdSet.has(calculation.studentId));
 
   const result = await prisma.$transaction(async (tx) => {
     const parent = await tx.parent.findFirstOrThrow({
       where: { id: input.parentId, schoolId: input.schoolId },
       include: { students: true }
     });
+    const targetStudents = parent.students.filter((student) => targetStudentIdSet.has(student.id));
+    if (targetStudents.length === 0) {
+      throw new Error("Select at least one child for this tuition payment.");
+    }
     const profile = await tx.parentFinancialProfile.findFirstOrThrow({
       where: { parentId: input.parentId, academicYearId: setup.academicYear.id }
     });
     const installments = await tx.paymentInstallment.findMany({
-      where: { schoolId: input.schoolId, parentId: input.parentId, academicYearId: setup.academicYear.id },
+      where: {
+        schoolId: input.schoolId,
+        parentId: input.parentId,
+        academicYearId: setup.academicYear.id,
+        studentId: { in: targetStudentIds }
+      },
       include: { allocations: true, student: true },
       orderBy: [{ dueDate: "asc" }, { sequence: "asc" }]
     });
@@ -2889,7 +2926,7 @@ export async function recordTuitionEnginePayment(input: {
         academicYearId: setup.academicYear.id,
         parentFinancialProfileId: profile.id,
         notes: input.notes ?? null,
-        students: { connect: parent.students.map((student) => ({ id: student.id })) }
+        students: { connect: targetStudents.map((student) => ({ id: student.id })) }
       }
     });
 
@@ -2945,7 +2982,7 @@ export async function recordTuitionEnginePayment(input: {
     const receiptNumber = `REC-${txNumber}`;
     const receiptBreakdown = {
       parentName: parent.fullName,
-      children: setup.calculations,
+      children: targetCalculations,
       allocation: preview,
       paymentMethod: input.method,
       transactionNumber: txNumber,
@@ -2969,11 +3006,11 @@ export async function recordTuitionEnginePayment(input: {
         metadata: {
           financeOfficerId: input.createdById,
           parentId: input.parentId,
-          studentIds: parent.students.map((student) => student.id),
+          studentIds: targetStudents.map((student) => student.id),
           paymentAmount: input.amount,
           allocationMode: input.allocationMode,
           planUsed: input.paymentOptionType,
-          discountsApplied: setup.calculations.map((row) => ({
+          discountsApplied: targetCalculations.map((row) => ({
             studentId: row.studentId,
             familyDiscountAmount: row.familyDiscountAmount,
             planDiscountAmount: row.planDiscountAmount,
@@ -3053,7 +3090,7 @@ export async function recordTuitionEnginePayment(input: {
     }).catch((error) => console.error("Tuition parent dashboard notification log failed", error));
   }
 
-  return { ...setup, ...result, snapshot };
+  return { ...setup, calculations: targetCalculations, ...result, snapshot };
 }
 
 export function simulateTuitionEngineScenario(input: {
