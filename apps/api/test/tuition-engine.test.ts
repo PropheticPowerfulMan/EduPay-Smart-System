@@ -56,8 +56,9 @@ function assertDiscountOrder(result: ReturnType<typeof simulateTuitionEngineScen
     if (row.paymentOptionType !== PaymentOptionType.SPECIAL_OWNER_AGREEMENT) {
       const expectedPlanDiscount = round(row.familyAdjustedTuition * (row.planDiscountRate / 100));
       expect(row.planDiscountAmount).toBe(expectedPlanDiscount);
-      expect(row.finalTuition).toBe(round(row.familyAdjustedTuition - expectedPlanDiscount));
+      expect(row.finalTuition).toBe(round(Math.max(row.familyAdjustedTuition - expectedPlanDiscount - row.additionalReductionAmount, 0)));
     }
+    expect(row.totalReductionAmount).toBe(round(row.familyDiscountAmount + row.planDiscountAmount + row.additionalReductionAmount));
   }
 }
 
@@ -319,6 +320,33 @@ describe("EduPay Tuition Payment Engine", () => {
     expect(custom?.familyAdjustedTuition).toBe(3393);
     expect(custom?.finalTuition).toBe(2500);
     expect(custom?.planDiscountAmount).toBe(893);
+  });
+
+  it("subtracts every approved extra reduction after family and plan discounts before allocating payments", () => {
+    const result = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.FULL_PRESEPTEMBER,
+      amount: 5000,
+      children: [
+        { id: "all-reductions-a", fullName: "All Reductions A", className: "Grade 1", additionalReductionAmount: 250 },
+        { id: "all-reductions-b", fullName: "All Reductions B", className: "Grade 6", additionalReductionAmount: 400 }
+      ]
+    });
+
+    assertDiscountOrder(result);
+    assertFinancialIntegrity(result);
+
+    const first = result.calculations.find((row) => row.studentId === "all-reductions-a");
+    const second = result.calculations.find((row) => row.studentId === "all-reductions-b");
+    expect(first?.familyDiscountAmount).toBe(377);
+    expect(first?.planDiscountAmount).toBe(339.3);
+    expect(first?.additionalReductionAmount).toBe(250);
+    expect(first?.finalTuition).toBe(2803.7);
+    expect(second?.familyDiscountAmount).toBe(459.5);
+    expect(second?.planDiscountAmount).toBe(413.55);
+    expect(second?.additionalReductionAmount).toBe(400);
+    expect(second?.finalTuition).toBe(3321.95);
+    expect(result.totals.additionalReduction).toBe(650);
+    expect(result.totals.totalReduction).toBe(2239.35);
   });
 
   it("stress-tests manual allocation warnings and prevents over-allocation", () => {

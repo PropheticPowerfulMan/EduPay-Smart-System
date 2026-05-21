@@ -2093,6 +2093,8 @@ type TuitionEngineCalculation = {
   familyAdjustedTuition: number;
   planDiscountRate: number;
   planDiscountAmount: number;
+  additionalReductionAmount: number;
+  totalReductionAmount: number;
   finalTuition: number;
   monthlyAmount: number | null;
   schedule: TuitionEngineScheduleRow[];
@@ -2173,6 +2175,7 @@ function calculateTuitionForStudent(input: {
   paymentOptionType: PaymentOptionType;
   academicYearName: string;
   customAgreementFinalTuition?: number;
+  additionalReductionAmount?: number;
 }) {
   const gradeGroup = resolveGradeGroup({
     className: input.student.class?.name,
@@ -2192,7 +2195,10 @@ function calculateTuitionForStudent(input: {
   const planDiscountAmount = customAgreementFinalTuition !== null
     ? roundCurrency(Math.max(familyAdjustedTuition - customAgreementFinalTuition, 0))
     : roundCurrency(familyAdjustedTuition * (planDiscountRate / 100));
-  const finalTuition = customAgreementFinalTuition ?? roundCurrency(familyAdjustedTuition - planDiscountAmount);
+  const additionalReductionAmount = roundCurrency(Math.max(Number(input.additionalReductionAmount || 0), 0));
+  const finalTuitionBeforeAdditionalReduction = customAgreementFinalTuition ?? roundCurrency(familyAdjustedTuition - planDiscountAmount);
+  const finalTuition = roundCurrency(Math.max(finalTuitionBeforeAdditionalReduction - additionalReductionAmount, 0));
+  const totalReductionAmount = roundCurrency(familyDiscountAmount + planDiscountAmount + additionalReductionAmount);
 
   return {
     studentId: input.student.id,
@@ -2205,6 +2211,8 @@ function calculateTuitionForStudent(input: {
     familyAdjustedTuition,
     planDiscountRate,
     planDiscountAmount,
+    additionalReductionAmount,
+    totalReductionAmount,
     finalTuition,
     monthlyAmount: input.paymentOptionType === PaymentOptionType.STANDARD_MONTHLY ? roundCurrency(finalTuition / 10) : null,
     schedule: buildEngineSchedule({
@@ -2239,6 +2247,33 @@ function summarizeTuitionMessage(input: {
     overdue.length ? `Overdue balance: ${formatAlertCurrency(overdue.reduce((sum, line) => sum + line.outstandingAfter, 0))}.` : "No overdue balance remains in this allocation preview.",
     input.advanceBalance > 0 ? `Advance payment balance: ${formatAlertCurrency(input.advanceBalance)}.` : ""
   ].filter(Boolean).join(" ");
+}
+
+function calculateRetainedReductionForStudent(input: {
+  discounts: Array<{
+    studentId: string | null;
+    sourceAgreementId: string | null;
+    scope: ReductionScope;
+    amount: number;
+    paymentOptionType: PaymentOptionType | null;
+    gradeGroup: GradeGroup | null;
+  }>;
+  studentId: string;
+  paymentOptionType: PaymentOptionType;
+  gradeGroup: GradeGroup;
+  childrenCount: number;
+}) {
+  return roundCurrency(input.discounts.reduce((sum, discount) => {
+    if (discount.sourceAgreementId) return sum;
+    if (discount.scope === ReductionScope.PARENT || discount.scope === ReductionScope.PAYMENT_OPTION) return sum;
+    if (discount.studentId && discount.studentId !== input.studentId) return sum;
+    if (discount.paymentOptionType && discount.paymentOptionType !== input.paymentOptionType) return sum;
+    if (discount.gradeGroup && discount.gradeGroup !== input.gradeGroup) return sum;
+
+    const amount = Number(discount.amount || 0);
+    if (amount <= 0) return sum;
+    return sum + (discount.studentId ? amount : amount / Math.max(input.childrenCount, 1));
+  }, 0));
 }
 
 export function buildTuitionParentNotificationMessages(input: {
@@ -2373,6 +2408,22 @@ export async function ensureParentTuitionEnginePlan(input: {
   });
   const existingAssignmentByStudent = new Map(existingAssignments.filter((assignment) => assignment.studentId).map((assignment) => [assignment.studentId!, assignment]));
   const existingGenericAssignment = existingAssignments.find((assignment) => !assignment.studentId) ?? null;
+  const retainedDiscounts = await prisma.discount.findMany({
+    where: {
+      schoolId: input.schoolId,
+      parentId: input.parentId,
+      academicYearId: academicYear.id,
+      scope: { notIn: [ReductionScope.PARENT, ReductionScope.PAYMENT_OPTION] }
+    },
+    select: {
+      studentId: true,
+      sourceAgreementId: true,
+      scope: true,
+      amount: true,
+      paymentOptionType: true,
+      gradeGroup: true
+    }
+  });
 
   return prisma.$transaction(async (tx) => {
     const profile = await tx.parentFinancialProfile.upsert({
@@ -2388,14 +2439,35 @@ export async function ensureParentTuitionEnginePlan(input: {
     const calculations = parent.students.map((student) => {
       const existingAssignment = existingAssignmentByStudent.get(student.id) ?? existingGenericAssignment;
       const paymentOptionType = existingAssignment?.paymentOptionType ?? input.paymentOptionType;
+      const gradeGroup = resolveGradeGroup({
+        className: student.class?.name,
+        level: student.class?.level,
+        studentName: student.fullName
+      });
+      const customAgreementFinalTuition = existingAssignment?.financialAgreement
+        ? Number(
+          existingAssignment.financialAgreement.balanceDue
+          || existingAssignment.remainingBalanceSnapshot
+          || existingAssignment.expectedTotal
+          || existingAssignment.financialAgreement.customTotal
+          || student.annualFee
+          || 0
+        )
+        : undefined;
+      const additionalReductionAmount = calculateRetainedReductionForStudent({
+        discounts: retainedDiscounts,
+        studentId: student.id,
+        paymentOptionType,
+        gradeGroup,
+        childrenCount: parent.students.length
+      });
       return calculateTuitionForStudent({
         student,
         childrenCount: parent.students.length,
         paymentOptionType,
         academicYearName: academicYear.name,
-        customAgreementFinalTuition: existingAssignment?.financialAgreement
-          ? Number(existingAssignment.financialAgreement.customTotal || existingAssignment.expectedTotal || student.annualFee || 0)
-          : undefined
+        customAgreementFinalTuition,
+        additionalReductionAmount
       });
     });
 
@@ -2451,7 +2523,7 @@ export async function ensureParentTuitionEnginePlan(input: {
         gradeGroup: calculation.gradeGroup,
         paymentOptionType: calculation.paymentOptionType,
         expectedTotal: calculation.finalTuition,
-        reductionTotal: roundCurrency(calculation.familyDiscountAmount + calculation.planDiscountAmount),
+        reductionTotal: calculation.totalReductionAmount,
         remainingBalanceSnapshot: calculation.finalTuition,
         isActive: true,
         notes: input.notes ?? "EduPay Tuition Payment Engine assignment"
@@ -2533,7 +2605,7 @@ export async function ensureParentTuitionEnginePlan(input: {
     }
 
     const totalExpected = roundCurrency(calculations.reduce((sum, row) => sum + row.finalTuition, 0));
-    const totalReduction = roundCurrency(calculations.reduce((sum, row) => sum + row.familyDiscountAmount + row.planDiscountAmount, 0));
+    const totalReduction = roundCurrency(calculations.reduce((sum, row) => sum + row.totalReductionAmount, 0));
     await tx.parentFinancialProfile.update({
       where: { id: profile.id },
       data: {
@@ -2904,7 +2976,9 @@ export async function recordTuitionEnginePayment(input: {
           discountsApplied: setup.calculations.map((row) => ({
             studentId: row.studentId,
             familyDiscountAmount: row.familyDiscountAmount,
-            planDiscountAmount: row.planDiscountAmount
+            planDiscountAmount: row.planDiscountAmount,
+            additionalReductionAmount: row.additionalReductionAmount,
+            totalReductionAmount: row.totalReductionAmount
           })),
           allocation: preview,
           timestamp: new Date().toISOString(),
@@ -2995,6 +3069,7 @@ export function simulateTuitionEngineScenario(input: {
     level?: string;
     paymentOptionType?: PaymentOptionType;
     customAgreementFinalTuition?: number;
+    additionalReductionAmount?: number;
     alreadyPaidBySequence?: Record<number, number>;
   }>;
 }) {
@@ -3009,7 +3084,8 @@ export function simulateTuitionEngineScenario(input: {
     childrenCount: input.children.length,
     paymentOptionType: child.paymentOptionType ?? input.paymentOptionType,
     academicYearName,
-    customAgreementFinalTuition: child.customAgreementFinalTuition
+    customAgreementFinalTuition: child.customAgreementFinalTuition,
+    additionalReductionAmount: child.additionalReductionAmount
   }));
   const childLookup = new Map(input.children.map((child) => [child.id, child]));
   const installments = calculations.flatMap((calculation) =>
@@ -3039,6 +3115,8 @@ export function simulateTuitionEngineScenario(input: {
       baseAnnualTuition: roundCurrency(calculations.reduce((sum, row) => sum + row.baseAnnualTuition, 0)),
       familyDiscount: roundCurrency(calculations.reduce((sum, row) => sum + row.familyDiscountAmount, 0)),
       planDiscount: roundCurrency(calculations.reduce((sum, row) => sum + row.planDiscountAmount, 0)),
+      additionalReduction: roundCurrency(calculations.reduce((sum, row) => sum + row.additionalReductionAmount, 0)),
+      totalReduction: roundCurrency(calculations.reduce((sum, row) => sum + row.totalReductionAmount, 0)),
       finalTuition: roundCurrency(calculations.reduce((sum, row) => sum + row.finalTuition, 0)),
       allocated: allocationPreview.allocatedTotal,
       remaining: allocationPreview.missingAmount,
