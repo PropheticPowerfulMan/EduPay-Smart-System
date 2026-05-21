@@ -156,7 +156,7 @@ function ModalShell({ title, subtitle, onClose, children }: { title: string; sub
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="relative my-4 max-h-[calc(100dvh-2rem)] w-full max-w-3xl overflow-y-auto rounded-3xl border border-white/10 glass shadow-2xl animate-fadeInUp" onClick={(event) => event.stopPropagation()}>
+      <div className="edupay-scrollbar relative my-4 max-h-[calc(100dvh-2rem)] w-full max-w-3xl overflow-y-auto rounded-3xl border border-white/10 glass shadow-2xl animate-fadeInUp" onClick={(event) => event.stopPropagation()}>
         <button
           type="button"
           aria-label="Fermer"
@@ -165,7 +165,7 @@ function ModalShell({ title, subtitle, onClose, children }: { title: string; sub
         >
           <XIcon />
         </button>
-        <div className="sticky top-0 z-[1] rounded-t-3xl border-b border-white/10 bg-slate-950/85 px-6 pb-5 pt-6 backdrop-blur">
+        <div className="sticky top-0 z-[1] rounded-t-3xl border-b border-white/10 bg-[rgba(6,23,34,0.56)] px-6 pb-5 pt-6 backdrop-blur-2xl">
           <div className="pr-12">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-300">Employés</p>
             <h2 className="mt-2 font-display text-2xl font-bold text-white">{title}</h2>
@@ -900,7 +900,7 @@ export function EmployeesPage() {
               type="button"
               onClick={() => employeeFinanceSnapshot && void exportEmployeeReportPdf(selectedEmployee, employeeFinanceSnapshot)}
               disabled={employeeFinanceLoading || !employeeFinanceSnapshot}
-              className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-cyan-500/25 bg-cyan-500/10 px-3 text-xs font-semibold text-cyan-100 transition hover:border-cyan-400/45 hover:bg-cyan-500/15 disabled:cursor-not-allowed disabled:opacity-50"
             >
               PDF
             </button>
@@ -908,7 +908,7 @@ export function EmployeesPage() {
               type="button"
               onClick={() => employeeFinanceSnapshot && printEmployeeReport(selectedEmployee, employeeFinanceSnapshot)}
               disabled={employeeFinanceLoading || !employeeFinanceSnapshot}
-              className="rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/[0.12] disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 text-xs font-semibold text-sky-100 transition hover:border-sky-400/45 hover:bg-sky-500/15 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Impression
             </button>
@@ -916,7 +916,7 @@ export function EmployeesPage() {
               type="button"
               onClick={() => employeeFinanceSnapshot && exportEmployeeReportExcel(selectedEmployee, employeeFinanceSnapshot)}
               disabled={employeeFinanceLoading || !employeeFinanceSnapshot}
-              className="rounded-2xl border border-brand-300/25 bg-brand-500/15 px-4 py-2 text-sm font-semibold text-brand-100 transition hover:bg-brand-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-100 transition hover:border-emerald-400/45 hover:bg-emerald-500/15 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Excel
             </button>

@@ -15,6 +15,96 @@ const tenChildFamily = [
   { id: "stu-g12", fullName: "Child G12", className: "Grade 12" }
 ];
 
+const stressFamilies = {
+  twoChildren: [
+    { id: "case1-a", fullName: "Case 1 Child A", className: "Grade 1" },
+    { id: "case1-b", fullName: "Case 1 Child B", className: "Grade 1" }
+  ],
+  threeChildren: [
+    { id: "case2-a", fullName: "Case 2 Child A", className: "Grade 6" },
+    { id: "case2-b", fullName: "Case 2 Child B", className: "Grade 6" },
+    { id: "case2-c", fullName: "Case 2 Child C", className: "Grade 6" }
+  ],
+  fiveChildren: [
+    { id: "case3-a", fullName: "Case 3 Child A", className: "Grade 9" },
+    { id: "case3-b", fullName: "Case 3 Child B", className: "Grade 10" },
+    { id: "case3-c", fullName: "Case 3 Child C", className: "Grade 11" },
+    { id: "case3-d", fullName: "Case 3 Child D", className: "Grade 12" },
+    { id: "case3-e", fullName: "Case 3 Child E", className: "Grade 9" }
+  ],
+  singleChild: [
+    { id: "case4-a", fullName: "Case 4 Only Child", className: "Grade 6" }
+  ],
+  mixedGrades: [
+    { id: "case5-a", fullName: "Child A", className: "Grade 1" },
+    { id: "case5-b", fullName: "Child B", className: "Grade 6" },
+    { id: "case5-c", fullName: "Child C", className: "Grade 11" }
+  ]
+};
+
+function round(value: number) {
+  return Number(value.toFixed(5));
+}
+
+function assertDiscountOrder(result: ReturnType<typeof simulateTuitionEngineScenario>) {
+  for (const row of result.calculations) {
+    const expectedFamilyDiscount = round(row.baseAnnualTuition * (row.familyDiscountRate / 100));
+    const expectedFamilyAdjusted = round(row.baseAnnualTuition - expectedFamilyDiscount);
+    expect(row.familyDiscountAmount).toBe(expectedFamilyDiscount);
+    expect(row.familyAdjustedTuition).toBe(expectedFamilyAdjusted);
+
+    if (row.paymentOptionType !== PaymentOptionType.SPECIAL_OWNER_AGREEMENT) {
+      const expectedPlanDiscount = round(row.familyAdjustedTuition * (row.planDiscountRate / 100));
+      expect(row.planDiscountAmount).toBe(expectedPlanDiscount);
+      expect(row.finalTuition).toBe(round(row.familyAdjustedTuition - expectedPlanDiscount));
+    }
+  }
+}
+
+function assertFinancialIntegrity(result: ReturnType<typeof simulateTuitionEngineScenario>) {
+  expect(result.calculations.length).toBeGreaterThan(0);
+  expect(result.calculations.every((row) => row.baseAnnualTuition >= 0)).toBe(true);
+  expect(result.calculations.every((row) => row.familyAdjustedTuition >= 0)).toBe(true);
+  expect(result.calculations.every((row) => row.finalTuition >= 0)).toBe(true);
+  expect(result.calculations.every((row) => row.schedule.length > 0)).toBe(true);
+  expect(result.calculations.every((row) => round(row.schedule.reduce((sum, item) => sum + item.amountDue, 0)) === row.finalTuition)).toBe(true);
+
+  const lines = result.allocationPreview.lines;
+  const installmentIds = lines.map((line) => line.installmentId);
+  expect(new Set(installmentIds).size).toBe(installmentIds.length);
+  expect(lines.every((line) => line.amountDue >= 0 && line.outstandingBefore >= 0 && line.outstandingAfter >= 0)).toBe(true);
+  expect(lines.every((line) => line.allocated >= 0 && line.allocated <= line.outstandingBefore)).toBe(true);
+  expect(result.allocationPreview.allocatedTotal).toBeLessThanOrEqual(result.allocationPreview.totalReceived);
+  expect(round(result.allocationPreview.allocatedTotal + result.allocationPreview.advanceBalance)).toBe(result.allocationPreview.totalReceived);
+  expect(round(result.allocationPreview.allocatedTotal + result.allocationPreview.missingAmount)).toBe(result.totals.finalTuition);
+}
+
+function reportCase(result: ReturnType<typeof simulateTuitionEngineScenario>) {
+  return result.calculations.map((row) => ({
+    student: row.studentName,
+    step1BaseTuition: row.baseAnnualTuition,
+    step2FamilyDiscount: row.familyDiscountAmount,
+    step3FamilyAdjustedTuition: row.familyAdjustedTuition,
+    step4PlanDiscount: row.planDiscountAmount,
+    step5FinalTuition: row.finalTuition,
+    step6InstallmentBreakdown: row.schedule.map((item) => ({
+      label: item.label,
+      amountDue: item.amountDue,
+      dueDate: item.dueDate.toISOString().slice(0, 10)
+    })),
+    step7CurrentAmountDue: result.allocationPreview.lines
+      .filter((line) => line.studentId === row.studentId && line.dueBucket !== "FUTURE")
+      .reduce((sum, line) => round(sum + line.outstandingBefore), 0),
+    step8PaymentAllocationResult: result.allocationPreview.lines
+      .filter((line) => line.studentId === row.studentId)
+      .reduce((sum, line) => round(sum + line.allocated), 0),
+    step9RemainingBalance: result.allocationPreview.lines
+      .filter((line) => line.studentId === row.studentId)
+      .reduce((sum, line) => round(sum + line.outstandingAfter), 0),
+    step10AlertsGenerated: result.allocationPreview.warnings.filter((warning) => warning.includes(row.studentName))
+  }));
+}
+
 describe("EduPay Tuition Payment Engine", () => {
   it("applies family discount first, then plan discount, and auto-allocates a complex 10-child payment", () => {
     const result = simulateTuitionEngineScenario({
@@ -111,6 +201,7 @@ describe("EduPay Tuition Payment Engine", () => {
     });
     const messages = buildTuitionParentNotificationMessages({
       parentName: "Parent Ten",
+      language: "en",
       transactionNumber: "TXN-10-CHILDREN",
       receiptNumber: "REC-TXN-10-CHILDREN",
       paymentMethod: "CASH",
@@ -160,5 +251,133 @@ describe("EduPay Tuition Payment Engine", () => {
 
     const initialLines = result.allocationPreview.lines.filter((line) => line.label === "Initial 4-month payment");
     expect(initialLines.every((line) => line.outstandingAfter === 0)).toBe(true);
+  });
+
+  it("stress-tests required family sizes, mixed grades, incomplete payments, and overpayments", () => {
+    const cases = [
+      { name: "CASE 1 - family with 2 children", amount: 1300, paymentOptionType: PaymentOptionType.FULL_PRESEPTEMBER, children: stressFamilies.twoChildren },
+      { name: "CASE 2 - family with 3 children", amount: 2000, paymentOptionType: PaymentOptionType.TWO_INSTALLMENTS, children: stressFamilies.threeChildren },
+      { name: "CASE 3 - family with 5 children", amount: 5000, paymentOptionType: PaymentOptionType.THREE_INSTALLMENTS, children: stressFamilies.fiveChildren },
+      { name: "CASE 4 - single child parent", amount: 700, paymentOptionType: PaymentOptionType.STANDARD_MONTHLY, children: stressFamilies.singleChild },
+      { name: "CASE 5 - mixed grades", amount: 3000, paymentOptionType: PaymentOptionType.STANDARD_MONTHLY, children: stressFamilies.mixedGrades },
+      { name: "CASE 8 - incomplete payment", amount: 700, paymentOptionType: PaymentOptionType.STANDARD_MONTHLY, children: stressFamilies.mixedGrades },
+      { name: "CASE 9 - overpayment", amount: 50000, paymentOptionType: PaymentOptionType.FULL_PRESEPTEMBER, children: stressFamilies.mixedGrades },
+      { name: "CASE 10 - random allocation amount", amount: 1300, paymentOptionType: PaymentOptionType.STANDARD_MONTHLY, children: stressFamilies.mixedGrades }
+    ];
+
+    for (const testCase of cases) {
+      const result = simulateTuitionEngineScenario(testCase);
+      assertDiscountOrder(result);
+      assertFinancialIntegrity(result);
+      expect(reportCase(result), testCase.name).toHaveLength(testCase.children.length);
+      expect(result.allocationPreview.message).toContain(`Total amount received: $ ${testCase.amount.toFixed(2)} USD.`);
+      if (testCase.amount < result.totals.finalTuition) {
+        expect(result.totals.remaining).toBeGreaterThan(0);
+        expect(result.allocationPreview.warnings.length).toBeGreaterThan(0);
+      }
+      if (testCase.amount > result.totals.finalTuition) {
+        expect(result.totals.advance).toBe(round(testCase.amount - result.totals.finalTuition));
+      }
+    }
+  });
+
+  it("supports different payment plans within the same family and proves discounts are ordered per child", () => {
+    const result = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,
+      amount: 5000,
+      children: [
+        { id: "mixed-plan-a", fullName: "Mixed Plan A", className: "Grade 1", paymentOptionType: PaymentOptionType.FULL_PRESEPTEMBER },
+        { id: "mixed-plan-b", fullName: "Mixed Plan B", className: "Grade 6", paymentOptionType: PaymentOptionType.TWO_INSTALLMENTS },
+        { id: "mixed-plan-c", fullName: "Mixed Plan C", className: "Grade 11", paymentOptionType: PaymentOptionType.THREE_INSTALLMENTS },
+        { id: "mixed-plan-d", fullName: "Mixed Plan D", className: "K5", paymentOptionType: PaymentOptionType.STANDARD_MONTHLY }
+      ]
+    });
+
+    assertDiscountOrder(result);
+    assertFinancialIntegrity(result);
+
+    expect(result.calculations.find((row) => row.studentId === "mixed-plan-a")?.finalTuition).toBe(3053.7);
+    expect(result.calculations.find((row) => row.studentId === "mixed-plan-b")?.finalTuition).toBe(3928.725);
+    expect(result.calculations.find((row) => row.studentId === "mixed-plan-c")?.finalTuition).toBe(4780.44);
+    expect(result.calculations.find((row) => row.studentId === "mixed-plan-d")?.finalTuition).toBe(2774.25);
+  });
+
+  it("supports administrator-defined custom agreement plans without creating impossible totals", () => {
+    const result = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,
+      amount: 2000,
+      children: [
+        { id: "custom-a", fullName: "Custom A", className: "Grade 1", paymentOptionType: PaymentOptionType.SPECIAL_OWNER_AGREEMENT, customAgreementFinalTuition: 2500 },
+        { id: "custom-b", fullName: "Custom B", className: "Grade 6", paymentOptionType: PaymentOptionType.STANDARD_MONTHLY }
+      ]
+    });
+
+    assertDiscountOrder(result);
+    assertFinancialIntegrity(result);
+
+    const custom = result.calculations.find((row) => row.studentId === "custom-a");
+    expect(custom?.familyAdjustedTuition).toBe(3393);
+    expect(custom?.finalTuition).toBe(2500);
+    expect(custom?.planDiscountAmount).toBe(893);
+  });
+
+  it("stress-tests manual allocation warnings and prevents over-allocation", () => {
+    const setup = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,
+      amount: 0,
+      children: stressFamilies.mixedGrades
+    });
+    const [first, second] = setup.allocationPreview.lines;
+    const result = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,
+      amount: 1300,
+      allocationMode: "MANUAL",
+      manualAllocations: [
+        { installmentId: first.installmentId, amount: first.outstandingBefore + 500 },
+        { installmentId: second.installmentId, amount: 1000 }
+      ],
+      children: stressFamilies.mixedGrades
+    });
+
+    assertDiscountOrder(result);
+    assertFinancialIntegrity(result);
+    expect(result.allocationPreview.mode).toBe("MANUAL");
+    expect(result.allocationPreview.warnings).toContain("Manual allocation total cannot exceed the received payment amount.");
+    expect(result.allocationPreview.lines.every((line) => line.allocated <= line.outstandingBefore)).toBe(true);
+  });
+
+  it("generates finance audit reports for discounts, allocations, risk, and recommendations", () => {
+    const result = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,
+      amount: 1300,
+      children: stressFamilies.mixedGrades
+    });
+    const discountReport = {
+      familyDiscountsApplied: result.totals.familyDiscount,
+      tuitionDiscountsApplied: result.totals.planDiscount,
+      totalSavings: round(result.totals.familyDiscount + result.totals.planDiscount),
+      errorsDetected: result.calculations.filter((row) => row.familyAdjustedTuition !== round(row.baseAnnualTuition - row.familyDiscountAmount))
+    };
+    const allocationReport = {
+      automaticAllocations: result.allocationPreview.lines.filter((line) => line.allocated > 0),
+      manualAllocations: [],
+      warnings: result.allocationPreview.warnings
+    };
+    const riskReport = {
+      parentsAtPaymentRisk: result.totals.remaining > 0 ? ["stress-family"] : [],
+      studentsAtRisk: result.allocationPreview.lines.filter((line) => line.dueBucket !== "FUTURE" && line.outstandingAfter > 0).map((line) => line.studentName),
+      overdueAccounts: result.allocationPreview.lines.filter((line) => line.dueBucket === "OVERDUE" && line.outstandingAfter > 0)
+    };
+    const recommendations = [
+      result.totals.remaining > 0 ? "Trigger parent reminder with next required payment." : "Archive account as settled.",
+      allocationReport.warnings.length > 0 ? "Review allocation warnings before issuing final receipt." : "Allocation is mathematically consistent.",
+      "Keep family discount before plan discount in every future refactor."
+    ];
+
+    expect(discountReport.errorsDetected).toHaveLength(0);
+    expect(discountReport.totalSavings).toBeGreaterThan(0);
+    expect(allocationReport.automaticAllocations.length).toBeGreaterThan(0);
+    expect(riskReport.parentsAtPaymentRisk).toContain("stress-family");
+    expect(recommendations).toContain("Keep family discount before plan discount in every future refactor.");
   });
 });

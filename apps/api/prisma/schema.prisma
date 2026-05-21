@@ -33,6 +33,7 @@ enum PaymentStatus {
   COMPLETED
   PENDING
   FAILED
+  CANCELLED
 }
 
 enum NotificationType {
@@ -326,6 +327,7 @@ model Student {
   classId    String
   externalStudentId String?
   fullName   String
+  gender     String?
   annualFee  Float
   createdAt  DateTime  @default(now())
   school     School    @relation(fields: [schoolId], references: [id], onDelete: Cascade)

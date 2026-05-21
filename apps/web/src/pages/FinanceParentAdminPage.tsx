@@ -56,7 +56,7 @@ type FinanceSnapshot = {
     completionRate: number;
     overdueInstallments: number;
   }>;
-  reductions: Array<{ id: string; title: string; amount: number; studentName?: string | null }>;
+  reductions: Array<{ id: string; title: string; amount: number; studentName?: string | null; scope?: string | null }>;
   debts: Array<{
     id: string;
     title: string;
@@ -137,7 +137,7 @@ const pageCopy = {
     emptyBody: "Ajoutez un parent pour activer le suivi financier detaille.",
     pageEyebrow: "Administration financiere",
     pageTitle: "Suivi financier detaille des parents",
-    pageSubtitle: "Vue organisee par modules : plans actifs, reductions, dettes historiques, alertes, accords speciaux et paiements.",
+    pageSubtitle: "Vue organisee par modules : plans actifs, bourses, dettes historiques, alertes, accords speciaux et paiements.",
     searchPlaceholder: "Rechercher un parent, telephone, email...",
     profileLoading: "Chargement du profil financier...",
     phoneMissing: "Telephone non renseigne",
@@ -148,12 +148,12 @@ const pageCopy = {
     completion: "Couverture {{rate}}%",
     paid: "Paye",
     debt: "Dette",
-    reductions: "Reductions",
+    reductions: "Bourses",
     carryOver: "Solde anterieur inclus",
     overdue: "Echeances en retard",
     paidHelp: "Montant deja encaisse sur le plan de scolarite.",
     debtHelp: "Reste a payer selon le plan actif et les ajustements.",
-    reductionsHelp: "Remises et reductions appliquees au dossier.",
+    reductionsHelp: "Bourses, remises et reductions appliquees au dossier.",
     carryOverHelp: "Dette d'une annee precedente ramenee dans le suivi actuel.",
     overdueHelp: "Echeances du plan de paiement qui ne sont pas encore soldees.",
     coveredMetric: "{{rate}} % couvert",
@@ -165,8 +165,8 @@ const pageCopy = {
     historicalDebtsSubtitle: "Synthese detaillee des dettes du parent : montants, annees, echeances, dates de creation, reglements et soldes.",
     alertsTitle: "Alertes",
     alertsSubtitle: "Alertes de retard, anomalies et pression de recouvrement.",
-    reductionsTitle: "Reductions",
-    reductionsSubtitle: "Remises officielles et avantages appliques au dossier.",
+    reductionsTitle: "Bourses et reductions",
+    reductionsSubtitle: "Bourses, remises officielles et avantages appliques au dossier.",
     agreementsTitle: "Accords speciaux",
     agreementsSubtitle: "Accords proprietaire/direction, statuts et soldes restants.",
     paymentsTitle: "Paiements",
@@ -267,6 +267,13 @@ const pageCopy = {
     optionTwoInstallments: "Paiement en deux tranches",
     optionThreeInstallments: "Paiement en trois tranches",
     optionStandardMonthly: "Paiement mensuel standard",
+    optionSpecialOwnerAgreement: "Bourse / accord manuel owner",
+    scholarshipAgreementTitle: "Accord manuel owner-parent",
+    scholarshipAgreementHelp: "Cette 5e possibilite est determinee manuellement par le financier. La difference entre le montant officiel et le montant accepte est classee dans Bourse.",
+    officialReferenceAmount: "Montant officiel de reference",
+    agreedTuitionTotal: "Total accepte par l'ecole",
+    scholarshipAmount: "Bourse / reduction accordee",
+    scholarshipInstallmentsHelp: "Les echeances ci-dessous representent le montant que le parent paiera reellement.",
     gradeK: "Maternelle (K3-K5)",
     grade1to5: "Classes 1-5",
     grade6to8: "Classes 6-8",
@@ -303,7 +310,7 @@ const pageCopy = {
     emptyBody: "Add a parent to activate detailed financial tracking.",
     pageEyebrow: "Financial administration",
     pageTitle: "Detailed parent financial tracking",
-    pageSubtitle: "Module-based view: active plans, reductions, historical debts, alerts, special agreements, and payments.",
+    pageSubtitle: "Module-based view: active plans, scholarships, historical debts, alerts, special agreements, and payments.",
     searchPlaceholder: "Search by parent, phone, email...",
     profileLoading: "Loading financial profile...",
     phoneMissing: "Phone not provided",
@@ -314,12 +321,12 @@ const pageCopy = {
     completion: "Completion {{rate}}%",
     paid: "Paid",
     debt: "Debt",
-    reductions: "Reductions",
+    reductions: "Scholarships",
     carryOver: "Previous balance included",
     overdue: "Overdue installments",
     paidHelp: "Amount already collected on the tuition plan.",
     debtHelp: "Remaining amount due under the active plan and adjustments.",
-    reductionsHelp: "Discounts and reductions applied to the file.",
+    reductionsHelp: "Scholarships, discounts, and reductions applied to the file.",
     carryOverHelp: "Debt from a previous year brought into the current tracking view.",
     overdueHelp: "Installments in the payment plan that are not settled yet.",
     coveredMetric: "{{rate}}% covered",
@@ -331,8 +338,8 @@ const pageCopy = {
     historicalDebtsSubtitle: "Detailed summary of the parent's debts: amounts, years, due dates, creation dates, settlements, and balances.",
     alertsTitle: "Alerts",
     alertsSubtitle: "Late-payment alerts, anomalies, and collection pressure.",
-    reductionsTitle: "Reductions",
-    reductionsSubtitle: "Official discounts and benefits applied to the file.",
+    reductionsTitle: "Scholarships and reductions",
+    reductionsSubtitle: "Scholarships, official discounts, and benefits applied to the file.",
     agreementsTitle: "Special agreements",
     agreementsSubtitle: "Owner/management agreements, statuses, and remaining balances.",
     paymentsTitle: "Payments",
@@ -433,6 +440,13 @@ const pageCopy = {
     optionTwoInstallments: "Two-installment payment",
     optionThreeInstallments: "Three-installment payment",
     optionStandardMonthly: "Standard monthly payment",
+    optionSpecialOwnerAgreement: "Scholarship / manual owner agreement",
+    scholarshipAgreementTitle: "Manual owner-parent agreement",
+    scholarshipAgreementHelp: "This 5th option is set manually by finance. The difference between the official amount and the accepted amount is stored under Scholarship.",
+    officialReferenceAmount: "Official reference amount",
+    agreedTuitionTotal: "Total accepted by the school",
+    scholarshipAmount: "Scholarship / reduction granted",
+    scholarshipInstallmentsHelp: "The installments below are the amount the parent will actually pay.",
     gradeK: "K (K3-K5)",
     grade1to5: "Grades 1-5",
     grade6to8: "Grades 6-8",
@@ -461,7 +475,8 @@ const paymentOptionChoices = [
   { value: "FULL_PRESEPTEMBER", labelKey: "optionFullPreSeptember" },
   { value: "TWO_INSTALLMENTS", labelKey: "optionTwoInstallments" },
   { value: "THREE_INSTALLMENTS", labelKey: "optionThreeInstallments" },
-  { value: "STANDARD_MONTHLY", labelKey: "optionStandardMonthly" }
+  { value: "STANDARD_MONTHLY", labelKey: "optionStandardMonthly" },
+  { value: "SPECIAL_OWNER_AGREEMENT", labelKey: "optionSpecialOwnerAgreement" }
 ] as const;
 
 const gradeGroupChoices = [
@@ -714,6 +729,12 @@ export function FinanceParentAdminPage() {
   const firstDueDate = debtDueDates.length ? new Date(Math.min(...debtDueDates.map((date) => date.getTime()))) : null;
   const lastDueDate = debtDueDates.length ? new Date(Math.max(...debtDueDates.map((date) => date.getTime()))) : null;
   const paymentCount = snapshot?.paymentHistory?.length ?? 0;
+  const scholarshipRows = snapshot?.reductions.filter((reduction) =>
+    reduction.scope === "MANUAL" ||
+    reduction.title.toLowerCase().includes("bourse") ||
+    reduction.title.toLowerCase().includes("scholarship")
+  ) ?? [];
+  const scholarshipTotal = scholarshipRows.reduce((sum, reduction) => sum + Number(reduction.amount || 0), 0);
   const moduleCards: Array<{
     id: AdminParentModule;
     title: string;
@@ -726,12 +747,20 @@ export function FinanceParentAdminPage() {
     { id: "students", title: copy.studentsPlansTitle, subtitle: copy.studentsPlansSubtitle, count: snapshot.students.length, metric: formatCopy(copy.coveredMetric, { rate: snapshot.profile.completionRate.toFixed(1) }), Icon: CalendarClock, toneClass: "border-brand-300/20 bg-brand-500/10 text-brand-100" },
     { id: "debts", title: copy.historicalDebtsTitle, subtitle: copy.historicalDebtsSubtitle, count: snapshot.debts.length, metric: money.format(historicalDebtTotal), Icon: FileClock, toneClass: "border-red-300/20 bg-red-500/10 text-red-100" },
     { id: "alerts", title: copy.alertsTitle, subtitle: copy.alertsSubtitle, count: snapshot.alerts.length, metric: formatCopy(copy.lateMetric, { count: snapshot.profile.overdueInstallments }), Icon: ShieldAlert, toneClass: "border-amber-300/20 bg-amber-500/10 text-amber-100" },
-    { id: "reductions", title: copy.reductionsTitle, subtitle: copy.reductionsSubtitle, count: snapshot.reductions.length, metric: money.format(snapshot.profile.totalReduction), Icon: HandCoins, toneClass: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100" },
+    { id: "reductions", title: copy.reductionsTitle, subtitle: copy.reductionsSubtitle, count: scholarshipRows.length || snapshot.reductions.length, metric: money.format(scholarshipTotal || snapshot.profile.totalReduction), Icon: HandCoins, toneClass: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100" },
     { id: "agreements", title: copy.agreementsTitle, subtitle: copy.agreementsSubtitle, count: snapshot.agreements.length, metric: snapshot.agreements[0] ? money.format(snapshot.agreements[0].balanceDue) : copy.none, Icon: Save, toneClass: "border-emerald-300/20 bg-emerald-500/10 text-emerald-100" },
     { id: "payments", title: copy.paymentsTitle, subtitle: copy.paymentsSubtitle, count: paymentCount, metric: money.format(snapshot.profile.totalPaid), Icon: ReceiptText, toneClass: "border-violet-300/20 bg-violet-500/10 text-violet-100" }
   ] : [];
   const selectedModule = moduleCards.find((module) => module.id === activeModule) ?? null;
-
+  const isManualScholarshipPlan = assignmentForm.paymentOptionType === "SPECIAL_OWNER_AGREEMENT";
+  const agreementInstallmentsTotal = agreementForm.installments.reduce((sum, row) => sum + Number(row.amountDue || 0), 0);
+  const selectedAgreementStudents = agreementForm.studentId
+    ? availableStudents.filter((student) => student.id === agreementForm.studentId)
+    : availableStudents;
+  const suggestedOfficialReference = selectedAgreementStudents.reduce((sum, student) => sum + Number(student.annualFee || 0), 0);
+  const displayedOfficialReference = Number(agreementForm.customTotal || 0) || suggestedOfficialReference;
+  const displayedScholarshipAmount = Number(agreementForm.reductionAmount || 0) ||
+    Math.max(displayedOfficialReference - agreementInstallmentsTotal, 0);
   const matchingPlanCount = useMemo(() => {
     if (!catalog) return 0;
     return catalog.plans.filter((plan) => paymentOptionChoices.some((option) => option.value === plan.paymentOptionType)).length;
@@ -739,6 +768,10 @@ export function FinanceParentAdminPage() {
 
   const submitAssignment = async () => {
     if (!selectedParent) return;
+    if (isManualScholarshipPlan) {
+      await submitAgreement();
+      return;
+    }
     setAssignmentSubmitting(true);
     setSuccess(null);
     setError(null);
@@ -763,6 +796,9 @@ export function FinanceParentAdminPage() {
 
   const submitAgreement = async () => {
     if (!selectedParent) return;
+    const targetStudentId = isManualScholarshipPlan ? assignmentForm.studentId : agreementForm.studentId;
+    const agreementTitle = agreementForm.title.trim() || copy.scholarshipAgreementTitle;
+    const referenceTotal = Number(agreementForm.customTotal || 0) || suggestedOfficialReference;
     const installments = agreementForm.installments
       .filter((row) => row.label.trim() && row.dueDate.trim() && Number(row.amountDue) > 0)
       .map((row) => ({
@@ -772,7 +808,7 @@ export function FinanceParentAdminPage() {
         notes: row.notes.trim() || undefined
       }));
 
-    if (!agreementForm.title.trim() || Number(agreementForm.customTotal) <= 0 || installments.length === 0) {
+    if (!agreementTitle || referenceTotal <= 0 || installments.length === 0) {
       setError(copy.agreementValidationError);
       return;
     }
@@ -785,13 +821,13 @@ export function FinanceParentAdminPage() {
         method: "POST",
         body: JSON.stringify({
           parentId: selectedParent.id,
-          studentId: agreementForm.studentId || undefined,
-          title: agreementForm.title.trim(),
-          customTotal: Number(agreementForm.customTotal),
+          studentId: targetStudentId || undefined,
+          title: agreementTitle,
+          customTotal: referenceTotal,
           reductionAmount: Number(agreementForm.reductionAmount || 0),
           gradeGroup: agreementForm.gradeGroup,
-          status: agreementForm.status,
-          notes: agreementForm.notes.trim() || undefined,
+          status: isManualScholarshipPlan ? "APPROVED" : agreementForm.status,
+          notes: agreementForm.notes.trim() || copy.scholarshipAgreementHelp,
           privateNotes: agreementForm.privateNotes.trim() || undefined,
           installments
         })
@@ -1231,7 +1267,11 @@ export function FinanceParentAdminPage() {
                         <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">{copy.studentTarget}</label>
                         <select
                           value={assignmentForm.studentId}
-                          onChange={(event) => setAssignmentForm((current) => ({ ...current, studentId: event.target.value }))}
+                          onChange={(event) => {
+                            const nextStudentId = event.target.value;
+                            setAssignmentForm((current) => ({ ...current, studentId: nextStudentId }));
+                            setAgreementForm((current) => ({ ...current, studentId: nextStudentId }));
+                          }}
                           className="w-full"
                         >
                           <option value="">{copy.allParentStudents}</option>
@@ -1254,6 +1294,154 @@ export function FinanceParentAdminPage() {
                       </div>
                     </div>
 
+                    {isManualScholarshipPlan && (
+                      <div className="space-y-4 rounded-2xl border border-cyan-300/20 bg-cyan-500/10 p-4">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100">Bourse</p>
+                            <h3 className="mt-1 font-display text-xl font-bold text-white">{copy.scholarshipAgreementTitle}</h3>
+                            <p className="mt-1 text-sm text-ink-dim">{copy.scholarshipAgreementHelp}</p>
+                          </div>
+                          <span className="rounded-full border border-cyan-300/25 bg-slate-950/40 px-3 py-1 text-xs font-bold text-cyan-100">
+                            {money.format(displayedScholarshipAmount)}
+                          </span>
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-3">
+                          <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">{copy.officialReferenceAmount}</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={agreementForm.customTotal}
+                              onChange={(event) => setAgreementForm((current) => ({ ...current, customTotal: event.target.value }))}
+                              className="w-full"
+                              placeholder={suggestedOfficialReference ? String(suggestedOfficialReference) : "0"}
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">{copy.agreedTuitionTotal}</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={agreementInstallmentsTotal || ""}
+                              readOnly
+                              className="w-full opacity-80"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">{copy.scholarshipAmount}</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={agreementForm.reductionAmount}
+                              onChange={(event) => setAgreementForm((current) => ({ ...current, reductionAmount: event.target.value }))}
+                              className="w-full"
+                              placeholder={String(Math.max(displayedOfficialReference - agreementInstallmentsTotal, 0))}
+                            />
+                          </div>
+                          <div className="md:col-span-2">
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">{copy.title}</label>
+                            <input
+                              value={agreementForm.title}
+                              onChange={(event) => setAgreementForm((current) => ({ ...current, title: event.target.value }))}
+                              className="w-full"
+                              placeholder={copy.scholarshipAgreementTitle}
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">{copy.gradeGroup}</label>
+                            <select
+                              value={agreementForm.gradeGroup}
+                              onChange={(event) => setAgreementForm((current) => ({ ...current, gradeGroup: event.target.value }))}
+                              className="w-full"
+                            >
+                              {gradeGroupChoices.map((option) => <option key={option.value} value={option.value}>{copy[option.labelKey]}</option>)}
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">{copy.installments}</p>
+                              <p className="mt-1 text-xs text-ink-dim">{copy.scholarshipInstallmentsHelp}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setAgreementForm((current) => ({ ...current, installments: [...current.installments, emptyInstallment()] }))}
+                              className="inline-flex items-center gap-2 rounded-lg border border-brand-500/25 bg-brand-500/10 px-3 py-1.5 text-xs font-semibold text-brand-200"
+                            >
+                              <Plus className="h-3.5 w-3.5" />
+                              {copy.addInstallment}
+                            </button>
+                          </div>
+                          {agreementForm.installments.map((installment, index) => (
+                            <div key={`scholarship-installment-${index}`} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                              <div className="grid gap-3 md:grid-cols-3">
+                                <input
+                                  value={installment.label}
+                                  onChange={(event) => setAgreementForm((current) => ({
+                                    ...current,
+                                    installments: current.installments.map((row, rowIndex) => rowIndex === index ? { ...row, label: event.target.value } : row)
+                                  }))}
+                                  className="w-full"
+                                  placeholder={copy.label}
+                                />
+                                <input
+                                  type="date"
+                                  value={installment.dueDate}
+                                  onChange={(event) => setAgreementForm((current) => ({
+                                    ...current,
+                                    installments: current.installments.map((row, rowIndex) => rowIndex === index ? { ...row, dueDate: event.target.value } : row)
+                                  }))}
+                                  className="w-full"
+                                />
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={installment.amountDue}
+                                  onChange={(event) => setAgreementForm((current) => ({
+                                    ...current,
+                                    installments: current.installments.map((row, rowIndex) => rowIndex === index ? { ...row, amountDue: event.target.value } : row)
+                                  }))}
+                                  className="w-full"
+                                  placeholder={copy.amountDue}
+                                />
+                              </div>
+                              <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                                <input
+                                  value={installment.notes}
+                                  onChange={(event) => setAgreementForm((current) => ({
+                                    ...current,
+                                    installments: current.installments.map((row, rowIndex) => rowIndex === index ? { ...row, notes: event.target.value } : row)
+                                  }))}
+                                  className="w-full"
+                                  placeholder={copy.installmentNotesPlaceholder}
+                                />
+                                {agreementForm.installments.length > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setAgreementForm((current) => ({
+                                      ...current,
+                                      installments: current.installments.filter((_row, rowIndex) => rowIndex !== index)
+                                    }))}
+                                    className="rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-200"
+                                  >
+                                    {copy.remove}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <div>
                       <label className="mb-2 block text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">{copy.notes}</label>
                       <textarea
@@ -1275,11 +1463,13 @@ export function FinanceParentAdminPage() {
                       <button
                         type="button"
                         onClick={() => void submitAssignment()}
-                        disabled={assignmentSubmitting}
+                        disabled={assignmentSubmitting || agreementSubmitting}
                         className="inline-flex items-center justify-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-bold text-white transition-all hover:bg-brand-700 disabled:opacity-60"
                       >
                         <Save className="h-4 w-4" />
-                        {assignmentSubmitting ? copy.assigning : copy.assignPlanButton}
+                        {assignmentSubmitting || agreementSubmitting
+                          ? copy.assigning
+                          : isManualScholarshipPlan ? copy.saveAgreement : copy.assignPlanButton}
                       </button>
                     </div>
                   </div>

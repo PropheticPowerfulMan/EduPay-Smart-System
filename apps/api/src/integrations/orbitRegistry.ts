@@ -291,6 +291,9 @@ async function orbitRegistryRequest<T>(path: string, init: RequestInit): Promise
     },
   });
   const data = await response.json().catch(() => null) as T & { message?: string };
+  if (response.status === 409 && data && typeof (data as { orbitId?: unknown }).orbitId === "string") {
+    return data as T;
+  }
   if (!response.ok) {
     throw new Error(data?.message || `Orbit registry request failed with status ${response.status}`);
   }

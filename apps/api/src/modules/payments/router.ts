@@ -9,7 +9,7 @@ import { amountToWords } from "../../utils/amount-words";
 import { orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
 import { sendEmail, sendSms } from "../../utils/messaging";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
-import { applyPaymentToFinanceLedger, runOverdueTuitionReminderSweep } from "../finance/service";
+import { applyPaymentToFinanceLedger, cancelRegisteredPayment, runOverdueTuitionReminderSweep } from "../finance/service";
 
 const createPaymentSchema = z.object({
   parentFullName: z.string().optional().default(""),
@@ -113,11 +113,12 @@ function parseTuitionAllocationSummary(
 }
 
 function serializePayment(
-  payment: { parent?: { fullName: string } | null; students: Array<{ fullName: string }>; receipt?: { pdfBase64?: string | null } | null; amount?: number } & Record<string, unknown>,
+  payment: { parent?: { fullName: string } | null; students: Array<{ fullName: string; class?: { name?: string | null } | null }>; receipt?: { pdfBase64?: string | null } | null; amount?: number } & Record<string, unknown>,
   options: { fallbackParentName?: string; requestedStudentDisplayName?: string } = {}
 ) {
   const parentFullName = payment.parent?.fullName ?? options.fallbackParentName ?? "";
   const studentNames = payment.students.map((student) => student.fullName);
+  const studentClassNames = Array.from(new Set(payment.students.map((student) => student.class?.name).filter(Boolean)));
   const paymentSubjectName = options.requestedStudentDisplayName?.trim() || buildPaymentSubjectName(payment.students, parentFullName);
   const tuitionAllocationSummary = parseTuitionAllocationSummary(payment.receipt, Number(payment.amount || 0));
 
@@ -125,6 +126,7 @@ function serializePayment(
     ...payment,
     parentFullName,
     studentNames,
+    studentClassNames,
     paymentSubjectName,
     tuitionAllocationSummary,
   };
@@ -224,62 +226,118 @@ function generateReceiptPng() {
   return PNG.sync.write(png);
 }
 
-function getMethodLabel(method: string) {
-  const labels: Record<string, string> = {
-    CASH: "Cash / Especes",
-    AIRTEL_MONEY: "Airtel Money",
-    MPESA: "M-Pesa",
-    ORANGE_MONEY: "Orange Money"
+function getMethodLabel(method: string, language: "fr" | "en" = "fr") {
+  const labels: Record<string, Record<"fr" | "en", string>> = {
+    CASH: { fr: "Cash / Especes", en: "Cash" },
+    AIRTEL_MONEY: { fr: "Airtel Money", en: "Airtel Money" },
+    MPESA: { fr: "M-Pesa", en: "M-Pesa" },
+    ORANGE_MONEY: { fr: "Orange Money", en: "Orange Money" }
   };
-  return labels[method] ?? method;
+  return labels[method]?.[language] ?? method;
 }
 
 function getStatusLabel(status: string) {
   const labels: Record<string, string> = {
     COMPLETED: "Réglé",
     PENDING: "En attente",
-    FAILED: "Échoué"
+    FAILED: "Échoué",
+    CANCELLED: "Annulé"
   };
   return labels[status] ?? status;
+}
+
+function getLocalizedStatusLabel(status: string, language: "fr" | "en" = "fr") {
+  const labels: Record<string, Record<"fr" | "en", string>> = {
+    COMPLETED: { fr: "Regle", en: "Paid" },
+    PENDING: { fr: "En attente", en: "Pending" },
+    FAILED: { fr: "Echoue", en: "Failed" },
+    CANCELLED: { fr: "Annule", en: "Cancelled" }
+  };
+  return labels[status]?.[language] ?? getStatusLabel(status);
+}
+
+function normalizeMessageLanguage(language?: string | null): "fr" | "en" {
+  return String(language ?? "fr").toLowerCase().startsWith("en") ? "en" : "fr";
 }
 
 function buildPaymentNotificationMessages(input: {
   parent: { id: string; fullName: string; phone: string; email: string; preferredLanguage?: string | null };
   transactionNumber: string;
+  receiptNumber?: string | null;
   reason: string;
   amount: number;
   method: string;
   status: string;
   createdAt: Date;
   students: Array<{ fullName: string }>;
+  event?: "PAYMENT_RECORDED" | "RECEIPT_PRINTED";
 }) {
+  const language = normalizeMessageLanguage(input.parent.preferredLanguage);
+  const isReceiptPrint = input.event === "RECEIPT_PRINTED";
   const studentLines = input.students.length
     ? input.students.map((student) => `- ${student.fullName}`).join("\n")
-    : "- Aucun eleve precise";
+    : language === "en" ? "- No specific student" : "- Aucun eleve precise";
   const amount = `$ ${input.amount.toFixed(5)} USD`;
-  const date = input.createdAt.toLocaleString("fr-FR");
-  const subject = `Confirmation de paiement ${input.transactionNumber}`;
+  const date = input.createdAt.toLocaleString(language === "en" ? "en-US" : "fr-FR");
+
+  if (language === "en") {
+    const subject = isReceiptPrint
+      ? `EduPay receipt printed ${input.receiptNumber ?? input.transactionNumber}`
+      : `Payment confirmation ${input.transactionNumber}`;
+    const emailBody = [
+      `Hello ${input.parent.fullName},`,
+      "",
+      isReceiptPrint ? "An EduPay receipt has just been printed or opened for printing." : "A payment has just been recorded in EduPay.",
+      "",
+      `Transaction: ${input.transactionNumber}`,
+      input.receiptNumber ? `Receipt: ${input.receiptNumber}` : "",
+      `Date: ${date}`,
+      `Reason: ${input.reason}`,
+      `Amount: ${amount}`,
+      `Payment method: ${getMethodLabel(input.method, language)}`,
+      `Status: ${getLocalizedStatusLabel(input.status, language)}`,
+      "",
+      "Linked students:",
+      studentLines,
+      "",
+      isReceiptPrint
+        ? "If you did not request or expect this printed receipt, please contact the finance office."
+        : "Please keep this message as confirmation for your records."
+    ].filter(Boolean).join("\n");
+    const smsBody = isReceiptPrint
+      ? `EduPay: receipt ${input.receiptNumber ?? input.transactionNumber} printed/opened. Amount: ${amount}. Status: ${getLocalizedStatusLabel(input.status, language)}.`
+      : `EduPay: payment ${input.transactionNumber}. Reason: ${input.reason}. Amount: ${amount}. Status: ${getLocalizedStatusLabel(input.status, language)}.`;
+    return { subject, emailBody, smsBody, dashboardBody: emailBody };
+  }
+
+  const subject = isReceiptPrint
+    ? `Recu EduPay imprime ${input.receiptNumber ?? input.transactionNumber}`
+    : `Confirmation de paiement ${input.transactionNumber}`;
   const emailBody = [
     `Bonjour ${input.parent.fullName},`,
     "",
-    "Un paiement vient d'être enregistré dans EduPay.",
+    isReceiptPrint ? "Un recu EduPay vient d'etre imprime ou ouvert pour impression." : "Un paiement vient d'etre enregistre dans EduPay.",
     "",
     `Transaction: ${input.transactionNumber}`,
+    input.receiptNumber ? `Recu: ${input.receiptNumber}` : "",
     `Date: ${date}`,
     `Motif: ${input.reason}`,
     `Montant: ${amount}`,
-    `Mode de paiement: ${getMethodLabel(input.method)}`,
-    `Statut: ${getStatusLabel(input.status)}`,
+    `Mode de paiement: ${getMethodLabel(input.method, language)}`,
+    `Statut: ${getLocalizedStatusLabel(input.status, language)}`,
     "",
     "Eleves concernes:",
     studentLines,
     "",
-    "Merci de conserver ce message comme confirmation de suivi."
-  ].join("\n");
-  const smsBody = `EduPay: paiement ${input.transactionNumber}. Parent: ${input.parent.fullName}. Motif: ${input.reason}. Montant: ${amount}. Statut: ${getStatusLabel(input.status)}.`;
-  return { subject, emailBody, smsBody };
+    isReceiptPrint
+      ? "Si vous n'avez pas demande ou attendu cette impression, contactez le service financier."
+      : "Merci de conserver ce message comme confirmation de suivi."
+  ].filter(Boolean).join("\n");
+  const smsBody = isReceiptPrint
+    ? `EduPay: recu ${input.receiptNumber ?? input.transactionNumber} imprime/ouvert. Montant: ${amount}. Statut: ${getLocalizedStatusLabel(input.status, language)}.`
+    : `EduPay: paiement ${input.transactionNumber}. Motif: ${input.reason}. Montant: ${amount}. Statut: ${getLocalizedStatusLabel(input.status, language)}.`;
+  return { subject, emailBody, smsBody, dashboardBody: emailBody };
 }
-
 async function sendPaymentNotifications(input: {
   schoolId: string;
   parent: { id: string; fullName: string; phone: string; email: string; preferredLanguage?: string | null };
@@ -290,6 +348,8 @@ async function sendPaymentNotifications(input: {
   status: string;
   createdAt: Date;
   students: Array<{ fullName: string }>;
+  receiptNumber?: string | null;
+  event?: "PAYMENT_RECORDED" | "RECEIPT_PRINTED";
 }) {
   const messages = buildPaymentNotificationMessages(input);
   const status = {
@@ -308,7 +368,7 @@ async function sendPaymentNotifications(input: {
         schoolId: input.schoolId,
         parentId: input.parent.id,
         type: "CONFIRMATION",
-        language: input.parent.preferredLanguage || "fr",
+        language: normalizeMessageLanguage(input.parent.preferredLanguage),
         channel: "EMAIL",
         content: messages.emailBody,
         status: status.email
@@ -323,13 +383,25 @@ async function sendPaymentNotifications(input: {
         schoolId: input.schoolId,
         parentId: input.parent.id,
         type: "CONFIRMATION",
-        language: input.parent.preferredLanguage || "fr",
+        language: normalizeMessageLanguage(input.parent.preferredLanguage),
         channel: "SMS",
         content: messages.smsBody,
         status: status.sms
       }
     }).catch((error) => console.error("Payment SMS notification log failed", error));
   }
+
+  await prisma.notificationLog.create({
+    data: {
+      schoolId: input.schoolId,
+      parentId: input.parent.id,
+      type: "CONFIRMATION",
+      language: normalizeMessageLanguage(input.parent.preferredLanguage),
+      channel: "DASHBOARD",
+      content: messages.dashboardBody,
+      status: "OPEN"
+    }
+  }).catch((error) => console.error("Payment dashboard notification log failed", error));
 
   return status;
 }
@@ -466,7 +538,7 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
           ? { students: { connect: payload.studentIds.map((id) => ({ id })) } }
           : {})
       },
-      include: { parent: true, students: true }
+      include: { parent: true, students: { include: { class: true } } }
     });
 
     await applyPaymentToFinanceLedger({
@@ -571,7 +643,7 @@ paymentRouter.get("/", authorize("ADMIN", "ACCOUNTANT", "PARENT"), async (req: A
       where,
       include: {
         parent: true,
-        students: true,
+        students: { include: { class: true } },
         receipt: true
       },
       orderBy: { createdAt: "desc" }
@@ -581,6 +653,62 @@ paymentRouter.get("/", authorize("ADMIN", "ACCOUNTANT", "PARENT"), async (req: A
   } catch (error) {
     console.error("DB unavailable on payment list, returning empty list", error);
     return res.json([]);
+  }
+});
+
+paymentRouter.post("/:id/cancel", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
+  const payload = z.object({
+    reason: z.string().max(500).optional()
+  }).parse(req.body ?? {});
+
+  try {
+    const result = await cancelRegisteredPayment({
+      schoolId: req.user!.schoolId,
+      paymentId: req.params.id,
+      actorUserId: req.user!.sub,
+      reason: payload.reason
+    });
+
+    return res.json({
+      payment: serializePayment(result.payment),
+      snapshot: result.snapshot
+    });
+  } catch (error) {
+    console.error("Payment cancellation failed", error);
+    return res.status(400).json({
+      message: error instanceof Error ? error.message : "Impossible d'annuler ce paiement."
+    });
+  }
+});
+
+paymentRouter.post("/:id/receipt/printed", authorize("ADMIN", "ACCOUNTANT", "PARENT"), async (req: AuthenticatedRequest, res) => {
+  try {
+    const payment = await prisma.payment.findFirst({
+      where: req.user!.role === "PARENT"
+        ? { id: req.params.id, schoolId: req.user!.schoolId, parent: { userId: req.user!.sub } }
+        : { id: req.params.id, schoolId: req.user!.schoolId },
+      include: { parent: true, students: { include: { class: true } }, receipt: true }
+    });
+    if (!payment || !payment.parent) return res.status(404).json({ message: "Paiement introuvable." });
+
+    const notificationStatus = await sendPaymentNotifications({
+      schoolId: req.user!.schoolId,
+      parent: payment.parent,
+      transactionNumber: payment.transactionNumber,
+      receiptNumber: payment.receipt?.receiptNumber ?? null,
+      reason: payment.reason,
+      amount: payment.amount,
+      method: payment.method,
+      status: payment.status,
+      createdAt: new Date(),
+      students: payment.students,
+      event: "RECEIPT_PRINTED"
+    });
+
+    return res.json({ notificationStatus });
+  } catch (error) {
+    console.error("Receipt print notification failed", error);
+    return res.status(400).json({ message: "Impossible de notifier l'impression du recu." });
   }
 });
 

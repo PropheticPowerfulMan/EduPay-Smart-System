@@ -549,9 +549,17 @@ function deriveInstallmentStatus(amountDue: number, amountPaid: number, dueDate:
 
 const OVERDUE_REMINDER_STAGES = [
   { stage: 1, minDelayDays: 1, minDaysAfterPreviousNotice: 0, severity: "MEDIUM" },
-  { stage: 2, minDelayDays: 7, minDaysAfterPreviousNotice: 6, severity: "HIGH" },
-  { stage: 3, minDelayDays: 14, minDaysAfterPreviousNotice: 7, severity: "CRITICAL" }
+  { stage: 2, minDelayDays: 2, minDaysAfterPreviousNotice: 1, severity: "MEDIUM" },
+  { stage: 3, minDelayDays: 3, minDaysAfterPreviousNotice: 1, severity: "HIGH" },
+  { stage: 4, minDelayDays: 4, minDaysAfterPreviousNotice: 1, severity: "HIGH" },
+  { stage: 5, minDelayDays: 5, minDaysAfterPreviousNotice: 1, severity: "HIGH" },
+  { stage: 6, minDelayDays: 6, minDaysAfterPreviousNotice: 1, severity: "CRITICAL" },
+  { stage: 7, minDelayDays: 7, minDaysAfterPreviousNotice: 1, severity: "CRITICAL" }
 ] as const;
+
+function normalizeMessageLanguage(language?: string | null): "fr" | "en" {
+  return String(language ?? "fr").toLowerCase().startsWith("en") ? "en" : "fr";
+}
 
 function buildOverdueReminderMarker(installmentId: string, stage: number) {
   return `[OVERDUE_INSTALLMENT:${installmentId}:STAGE:${stage}]`;
@@ -569,12 +577,37 @@ function buildOverdueReminderMessages(input: {
   amountPaid: number;
   delayDays: number;
   marker: string;
+  language?: string | null;
 }) {
+  const language = normalizeMessageLanguage(input.language);
   const amount = formatAlertCurrency(input.balance);
   const dueDate = dayjs(input.dueDate).format("DD/MM/YYYY");
-  const subject = input.stage === 3
-    ? "Avertissement 3/3 - retard de tuition critique"
-    : `Rappel ${input.stage}/3 - echeance de tuition depassee`;
+  if (language === "en") {
+    const subject = input.stage >= 6
+      ? `Warning ${input.stage}/7 - critical tuition overdue`
+      : `Warning ${input.stage}/7 - tuition plan overdue`;
+    const emailBody = [
+      `Hello ${input.parentName},`,
+      "",
+      `Your installment "${input.installmentLabel}" for ${input.studentName} has been overdue for ${input.delayDays} day(s).`,
+      `Tuition plan: ${input.planName}`,
+      `Due date: ${dueDate}`,
+      `Expected amount: ${formatAlertCurrency(input.amountDue)}`,
+      `Amount already paid: ${formatAlertCurrency(input.amountPaid)}`,
+      `Balance to regularize: ${amount}`,
+      "",
+      "Please make this payment or contact the finance office if a payment arrangement is needed.",
+      "",
+      `EduPay reference: ${input.marker}`
+    ].join("\n");
+    const smsBody = `EduPay warning ${input.stage}/7: ${input.installmentLabel} is overdue for ${input.studentName}. Balance: ${amount}. Due date: ${dueDate}. Ref ${input.marker}`;
+    const dashboardBody = `Warning ${input.stage}/7: ${input.installmentLabel} is overdue for ${input.studentName}. Balance ${amount}. Due date ${dueDate}.`;
+    return { subject, emailBody, smsBody, dashboardBody };
+  }
+
+  const subject = input.stage >= 6
+    ? `Avertissement ${input.stage}/7 - retard de tuition critique`
+    : `Avertissement ${input.stage}/7 - echeance de tuition depassee`;
   const emailBody = [
     `Bonjour ${input.parentName},`,
     "",
@@ -589,8 +622,9 @@ function buildOverdueReminderMessages(input: {
     "",
     `Reference EduPay: ${input.marker}`
   ].join("\n");
-  const smsBody = `EduPay ${input.stage}/3: echeance ${input.installmentLabel} en retard pour ${input.studentName}. Solde: ${amount}. Date limite: ${dueDate}. Ref ${input.marker}`;
-  return { subject, emailBody, smsBody };
+  const smsBody = `EduPay avertissement ${input.stage}/7: echeance ${input.installmentLabel} en retard pour ${input.studentName}. Solde: ${amount}. Date limite: ${dueDate}. Ref ${input.marker}`;
+  const dashboardBody = `Avertissement ${input.stage}/7: echeance ${input.installmentLabel} en retard pour ${input.studentName}. Solde ${amount}. Date limite ${dueDate}.`;
+  return { subject, emailBody, smsBody, dashboardBody };
 }
 
 function canSendOverdueStage(input: {
@@ -773,7 +807,8 @@ export async function runOverdueTuitionReminderSweep(input: {
         amountDue,
         amountPaid,
         delayDays,
-        marker
+        marker,
+        language: installment.parent.preferredLanguage
       });
 
       if (installment.parent.email) {
@@ -786,9 +821,9 @@ export async function runOverdueTuitionReminderSweep(input: {
           data: {
             schoolId: input.schoolId,
             parentId: installment.parentId,
-            type: NotificationType.OVERDUE_INSTALLMENT,
-            language: installment.parent.preferredLanguage || "fr",
-            channel: NotificationChannel.EMAIL,
+          type: NotificationType.OVERDUE_INSTALLMENT,
+          language: normalizeMessageLanguage(installment.parent.preferredLanguage),
+          channel: NotificationChannel.EMAIL,
             content: messages.emailBody,
             status
           }
@@ -803,7 +838,7 @@ export async function runOverdueTuitionReminderSweep(input: {
             schoolId: input.schoolId,
             parentId: installment.parentId,
             type: NotificationType.OVERDUE_INSTALLMENT,
-            language: installment.parent.preferredLanguage || "fr",
+            language: normalizeMessageLanguage(installment.parent.preferredLanguage),
             channel: NotificationChannel.SMS,
             content: messages.smsBody,
             status
@@ -817,9 +852,9 @@ export async function runOverdueTuitionReminderSweep(input: {
           schoolId: input.schoolId,
           parentId: installment.parentId,
           type: NotificationType.OVERDUE_INSTALLMENT,
-          language: installment.parent.preferredLanguage || "fr",
+          language: normalizeMessageLanguage(installment.parent.preferredLanguage),
           channel: NotificationChannel.DASHBOARD,
-          content: `Finance dashboard alert ${marker}: ${messages.subject}`,
+          content: `${marker} ${messages.dashboardBody}`,
           status: "OPEN"
         }
       });
@@ -830,7 +865,7 @@ export async function runOverdueTuitionReminderSweep(input: {
           parentId: installment.parentId,
           installmentId: installment.id,
           type: FinancialAlertType.OVERDUE_INSTALLMENT,
-          title: { contains: `Avertissement ${stageConfig.stage}/3` }
+            title: { contains: `Avertissement ${stageConfig.stage}/7` }
         }
       });
       if (!existingAlert) {
@@ -843,8 +878,8 @@ export async function runOverdueTuitionReminderSweep(input: {
             installmentId: installment.id,
             debtId: debt.id,
             type: FinancialAlertType.OVERDUE_INSTALLMENT,
-            title: `Avertissement ${stageConfig.stage}/3 - retard tuition`,
-            message: `${installment.parent.fullName} a ${delayDays} jour(s) de retard sur "${installment.label}" (${installment.student?.fullName ?? "compte parent"}). Solde: ${formatAlertCurrency(balance)}. Le parent a ete notifie par email/SMS lorsque les coordonnees existent.`,
+            title: `Avertissement ${stageConfig.stage}/7 - retard tuition`,
+            message: messages.dashboardBody,
             severity: stageConfig.severity,
             status: "OPEN",
             channel: NotificationChannel.DASHBOARD,
@@ -1518,11 +1553,23 @@ export async function getReductionAnalytics(input: {
     .filter((reduction) => {
       const date = new Date(reduction.effectiveDate);
       return date >= bounds.start && date <= bounds.end;
+    })
+    .map((reduction) => {
+      const ownerSnapshot = parentSnapshots.find((snapshot) => snapshot.parent.id === reduction.parentId);
+      return {
+        ...reduction,
+        parentName: ownerSnapshot?.parent.fullName ?? null
+      };
     });
 
   const byScope = groupCurrencyTotals(reductions.map((reduction) => ({ key: String(reduction.scope ?? "UNKNOWN"), amount: reduction.amount })));
   const byGradeGroup = groupCurrencyTotals(reductions.map((reduction) => ({ key: String(reduction.gradeGroup ?? GradeGroup.CUSTOM), amount: reduction.amount })));
   const byPaymentOption = groupCurrencyTotals(reductions.map((reduction) => ({ key: String(reduction.paymentOptionType ?? PaymentOptionType.CUSTOM), amount: reduction.amount })));
+  const scholarships = reductions.filter((reduction) =>
+    reduction.scope === ReductionScope.MANUAL ||
+    reduction.title.toLowerCase().includes("bourse") ||
+    reduction.title.toLowerCase().includes("scholarship")
+  );
 
   return {
     academicYear: academicYear.name,
@@ -1530,9 +1577,14 @@ export async function getReductionAnalytics(input: {
     periodLabel: bounds.label,
     totalReductions: roundCurrency(reductions.reduce((sum, reduction) => sum + reduction.amount, 0)),
     reductionCount: reductions.length,
+    scholarshipTotal: roundCurrency(reductions.reduce((sum, reduction) => sum + reduction.amount, 0)),
+    scholarshipCount: reductions.length,
+    manualScholarshipTotal: roundCurrency(scholarships.reduce((sum, reduction) => sum + reduction.amount, 0)),
+    manualScholarshipCount: scholarships.length,
     byScope: byScope.map((entry) => ({ scope: entry.key, amount: entry.amount })),
     byGradeGroup: byGradeGroup.map((entry) => ({ gradeGroup: entry.key, amount: entry.amount })),
     byPaymentOption: byPaymentOption.map((entry) => ({ paymentOptionType: entry.key, amount: entry.amount })),
+    scholarships,
     reductions
   };
 }
@@ -1687,108 +1739,179 @@ export async function createSpecialFinancialAgreement(input: {
   installments: Array<{ label: string; dueDate: string; amountDue: number; notes?: string }>;
 }) {
   const { academicYear } = await getTargetAcademicYear(input.schoolId, input.academicYearName);
+  const installmentTotal = roundCurrency(input.installments.reduce((sum, row) => sum + Number(row.amountDue || 0), 0));
+  const effectiveReductionAmount = roundCurrency(
+    (input.reductionAmount ?? 0) > 0
+      ? Number(input.reductionAmount)
+      : Math.max(Number(input.customTotal || 0) - installmentTotal, 0)
+  );
+  const agreementBalanceDue = roundCurrency(input.customTotal - effectiveReductionAmount);
+
+  const targetInstallments = await prisma.paymentInstallment.findMany({
+    where: {
+      schoolId: input.schoolId,
+      parentId: input.parentId,
+      studentId: input.studentId ?? null,
+      academicYearId: academicYear.id
+    },
+    include: { allocations: true }
+  });
+  const hasLockedInstallments = targetInstallments.some((installment) =>
+    Number(installment.amountPaid || 0) > 0 || installment.allocations.length > 0
+  );
+  if (hasLockedInstallments) {
+    throw new Error("Ce dossier a deja des paiements alloues. Annulez ou regularisez les paiements avant de remplacer le plan par un accord manuel.");
+  }
+
   const profile = await prisma.parentFinancialProfile.upsert({
     where: { parentId_academicYearId: { parentId: input.parentId, academicYearId: academicYear.id } },
-    update: {},
+    update: {
+      totalDebt: agreementBalanceDue,
+      totalReduction: effectiveReductionAmount
+    },
     create: {
       schoolId: input.schoolId,
       parentId: input.parentId,
       academicYearId: academicYear.id,
-      totalDebt: roundCurrency(input.customTotal - (input.reductionAmount ?? 0)),
-      totalReduction: roundCurrency(input.reductionAmount ?? 0)
+      totalDebt: agreementBalanceDue,
+      totalReduction: effectiveReductionAmount
     }
   });
 
   const agreementStatus = input.status ?? AgreementStatus.PENDING_APPROVAL;
-  const agreement = await prisma.financialAgreement.create({
-    data: {
-      schoolId: input.schoolId,
-      parentId: input.parentId,
-      academicYearId: academicYear.id,
-      financialProfileId: profile.id,
-      approvedById: input.approvedById,
-      title: input.title,
-      paymentOptionType: PaymentOptionType.SPECIAL_OWNER_AGREEMENT,
-      gradeGroup: input.gradeGroup,
-      status: agreementStatus,
-      customTotal: roundCurrency(input.customTotal),
-      reductionAmount: roundCurrency(input.reductionAmount ?? 0),
-      balanceDue: roundCurrency(input.customTotal - (input.reductionAmount ?? 0)),
-      notes: input.notes ?? null,
-      privateNotes: input.privateNotes ?? null,
-      history: [
-        {
-          at: new Date().toISOString(),
-          event: "AGREEMENT_CREATED",
-          status: agreementStatus
-        }
-      ],
-      approvalRequestedAt: new Date(),
-      approvedAt: agreementStatus === AgreementStatus.APPROVED ? new Date() : null
-    }
-  });
+  const agreement = await prisma.$transaction(async (tx) => {
+    await tx.paymentInstallment.deleteMany({
+      where: {
+        schoolId: input.schoolId,
+        parentId: input.parentId,
+        studentId: input.studentId ?? null,
+        academicYearId: academicYear.id
+      }
+    });
+    await tx.discount.deleteMany({
+      where: {
+        schoolId: input.schoolId,
+        parentId: input.parentId,
+        studentId: input.studentId ?? null,
+        academicYearId: academicYear.id
+      }
+    });
 
-  await prisma.parentFinancialProfile.update({
-    where: { id: profile.id },
-    data: { activeAgreementId: agreement.id }
-  });
+    const createdAgreement = await tx.financialAgreement.create({
+      data: {
+        schoolId: input.schoolId,
+        parentId: input.parentId,
+        academicYearId: academicYear.id,
+        financialProfileId: profile.id,
+        approvedById: input.approvedById,
+        title: input.title,
+        paymentOptionType: PaymentOptionType.SPECIAL_OWNER_AGREEMENT,
+        gradeGroup: input.gradeGroup,
+        status: agreementStatus,
+        customTotal: roundCurrency(input.customTotal),
+        reductionAmount: effectiveReductionAmount,
+        balanceDue: agreementBalanceDue,
+        notes: input.notes ?? null,
+        privateNotes: input.privateNotes ?? null,
+        history: [
+          {
+            at: new Date().toISOString(),
+            event: "AGREEMENT_CREATED",
+            status: agreementStatus,
+            scholarshipAmount: effectiveReductionAmount
+          }
+        ],
+        approvalRequestedAt: new Date(),
+        approvedAt: agreementStatus === AgreementStatus.APPROVED ? new Date() : null
+      }
+    });
 
-  await prisma.parentPlanAssignment.create({
-    data: {
-      schoolId: input.schoolId,
-      parentId: input.parentId,
-      studentId: input.studentId ?? null,
-      academicYearId: academicYear.id,
+    await tx.parentFinancialProfile.update({
+      where: { id: profile.id },
+      data: {
+        activeTuitionPlanId: null,
+        activeAgreementId: createdAgreement.id,
+        totalDebt: agreementBalanceDue,
+        totalReduction: effectiveReductionAmount
+      }
+    });
+
+    const existingAssignment = await tx.parentPlanAssignment.findFirst({
+      where: {
+        academicYearId: academicYear.id,
+        parentId: input.parentId,
+        studentId: input.studentId ?? null
+      }
+    });
+    const assignmentData = {
       financialProfileId: profile.id,
-      financialAgreementId: agreement.id,
+      tuitionPlanId: null,
+      financialAgreementId: createdAgreement.id,
       gradeGroup: input.gradeGroup ?? GradeGroup.CUSTOM,
       paymentOptionType: PaymentOptionType.SPECIAL_OWNER_AGREEMENT,
       expectedTotal: roundCurrency(input.customTotal),
-      reductionTotal: roundCurrency(input.reductionAmount ?? 0),
-      remainingBalanceSnapshot: roundCurrency(input.customTotal - (input.reductionAmount ?? 0)),
-      notes: input.notes ?? null
+      reductionTotal: effectiveReductionAmount,
+      remainingBalanceSnapshot: agreementBalanceDue,
+      isActive: true,
+      notes: input.notes ?? "Accord manuel owner-parent classe dans Bourse"
+    };
+    if (existingAssignment) {
+      await tx.parentPlanAssignment.update({ where: { id: existingAssignment.id }, data: assignmentData });
+    } else {
+      await tx.parentPlanAssignment.create({
+        data: {
+          schoolId: input.schoolId,
+          parentId: input.parentId,
+          studentId: input.studentId ?? null,
+          academicYearId: academicYear.id,
+          ...assignmentData
+        }
+      });
     }
+
+    for (const [index, row] of input.installments.entries()) {
+      await tx.paymentInstallment.create({
+        data: {
+          schoolId: input.schoolId,
+          parentId: input.parentId,
+          studentId: input.studentId ?? null,
+          academicYearId: academicYear.id,
+          financialProfileId: profile.id,
+          financialAgreementId: createdAgreement.id,
+          label: row.label,
+          sequence: index + 1,
+          periodKey: `agreement-${createdAgreement.id}-${index + 1}`,
+          dueDate: new Date(row.dueDate),
+          amountDue: roundCurrency(row.amountDue),
+          reductionAmount: 0,
+          status: "SCHEDULED",
+          notes: row.notes ?? null
+        }
+      });
+    }
+
+    if (effectiveReductionAmount > 0) {
+      await tx.discount.create({
+        data: {
+          schoolId: input.schoolId,
+          parentId: input.parentId,
+          studentId: input.studentId ?? null,
+          academicYearId: academicYear.id,
+          financialProfileId: profile.id,
+          sourceAgreementId: createdAgreement.id,
+          approvedById: input.approvedById,
+          title: `Bourse - ${input.title}`,
+          scope: ReductionScope.MANUAL,
+          amount: effectiveReductionAmount,
+          paymentOptionType: PaymentOptionType.SPECIAL_OWNER_AGREEMENT,
+          gradeGroup: input.gradeGroup ?? GradeGroup.CUSTOM,
+          description: input.notes ?? "Bourse issue d'un accord personnel parent-owner."
+        }
+      });
+    }
+
+    return createdAgreement;
   });
-
-  for (const [index, row] of input.installments.entries()) {
-    await prisma.paymentInstallment.create({
-      data: {
-        schoolId: input.schoolId,
-        parentId: input.parentId,
-        studentId: input.studentId ?? null,
-        academicYearId: academicYear.id,
-        financialProfileId: profile.id,
-        financialAgreementId: agreement.id,
-        label: row.label,
-        sequence: index + 1,
-        periodKey: `agreement-${agreement.id}-${index + 1}`,
-        dueDate: new Date(row.dueDate),
-        amountDue: roundCurrency(row.amountDue),
-        reductionAmount: 0,
-        status: "SCHEDULED",
-        notes: row.notes ?? null
-      }
-    });
-  }
-
-  if ((input.reductionAmount ?? 0) > 0) {
-    await prisma.discount.create({
-      data: {
-        schoolId: input.schoolId,
-        parentId: input.parentId,
-        studentId: input.studentId ?? null,
-        academicYearId: academicYear.id,
-        financialProfileId: profile.id,
-        sourceAgreementId: agreement.id,
-        title: `${input.title} reduction`,
-        scope: ReductionScope.AGREEMENT,
-        amount: roundCurrency(input.reductionAmount ?? 0),
-        paymentOptionType: PaymentOptionType.SPECIAL_OWNER_AGREEMENT,
-        gradeGroup: input.gradeGroup ?? GradeGroup.CUSTOM,
-        description: input.notes ?? "Special owner agreement reduction"
-      }
-    });
-  }
 
   return {
     academicYear,
@@ -1920,6 +2043,7 @@ function calculateTuitionForStudent(input: {
   childrenCount: number;
   paymentOptionType: PaymentOptionType;
   academicYearName: string;
+  customAgreementFinalTuition?: number;
 }) {
   const gradeGroup = resolveGradeGroup({
     className: input.student.class?.name,
@@ -1931,8 +2055,15 @@ function calculateTuitionForStudent(input: {
   const familyDiscountAmount = roundCurrency(baseAnnualTuition * (familyDiscountRate / 100));
   const familyAdjustedTuition = roundCurrency(baseAnnualTuition - familyDiscountAmount);
   const planDiscountRate = PLAN_DISCOUNT_RATES[input.paymentOptionType] ?? 0;
-  const planDiscountAmount = roundCurrency(familyAdjustedTuition * (planDiscountRate / 100));
-  const finalTuition = roundCurrency(familyAdjustedTuition - planDiscountAmount);
+  const customAgreementFinalTuition = input.paymentOptionType === PaymentOptionType.SPECIAL_OWNER_AGREEMENT
+    && Number.isFinite(input.customAgreementFinalTuition)
+    && Number(input.customAgreementFinalTuition) >= 0
+    ? roundCurrency(Number(input.customAgreementFinalTuition))
+    : null;
+  const planDiscountAmount = customAgreementFinalTuition !== null
+    ? roundCurrency(Math.max(familyAdjustedTuition - customAgreementFinalTuition, 0))
+    : roundCurrency(familyAdjustedTuition * (planDiscountRate / 100));
+  const finalTuition = customAgreementFinalTuition ?? roundCurrency(familyAdjustedTuition - planDiscountAmount);
 
   return {
     studentId: input.student.id,
@@ -1983,6 +2114,7 @@ function summarizeTuitionMessage(input: {
 
 export function buildTuitionParentNotificationMessages(input: {
   parentName: string;
+  language?: string | null;
   transactionNumber: string;
   receiptNumber: string;
   paymentMethod: PaymentMethod | string;
@@ -1996,6 +2128,7 @@ export function buildTuitionParentNotificationMessages(input: {
     lines: TuitionAllocationLine[];
   };
 }) {
+  const language = normalizeMessageLanguage(input.language);
   const byStudent = input.allocationPreview.lines.reduce<Record<string, { allocated: number; remaining: number }>>((acc, line) => {
     const current = acc[line.studentName] ?? { allocated: 0, remaining: 0 };
     current.allocated = roundCurrency(current.allocated + line.allocated);
@@ -2006,12 +2139,49 @@ export function buildTuitionParentNotificationMessages(input: {
   const nextPayment = input.allocationPreview.lines
     .filter((line) => line.outstandingAfter > 0)
     .sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime())[0];
-  const allocationLines = Object.entries(byStudent).map(([studentName, summary]) =>
-    `- ${studentName}: paid ${formatAlertCurrency(summary.allocated)}, remaining ${formatAlertCurrency(summary.remaining)}`
+  const allocationLines = Object.entries(byStudent).map(([studentName, summary]) => language === "en"
+    ? `- ${studentName}: paid ${formatAlertCurrency(summary.allocated)}, remaining ${formatAlertCurrency(summary.remaining)}`
+    : `- ${studentName}: paye ${formatAlertCurrency(summary.allocated)}, reste ${formatAlertCurrency(summary.remaining)}`
   );
   const nextLine = nextPayment
-    ? `${nextPayment.studentName} - ${nextPayment.label}: ${formatAlertCurrency(nextPayment.outstandingAfter)} due by ${dayjs(nextPayment.dueDate).format("DD/MM/YYYY")}`
-    : "No next payment is currently required.";
+    ? language === "en"
+      ? `${nextPayment.studentName} - ${nextPayment.label}: ${formatAlertCurrency(nextPayment.outstandingAfter)} due by ${dayjs(nextPayment.dueDate).format("DD/MM/YYYY")}`
+      : `${nextPayment.studentName} - ${nextPayment.label}: ${formatAlertCurrency(nextPayment.outstandingAfter)} a payer avant le ${dayjs(nextPayment.dueDate).format("DD/MM/YYYY")}`
+    : language === "en" ? "No next payment is currently required." : "Aucun prochain paiement n'est requis actuellement.";
+  if (language === "fr") {
+    const subject = `Recu de tuition EduPay ${input.receiptNumber}`;
+    const emailBody = [
+      `Bonjour ${input.parentName},`,
+      "",
+      "EduPay a enregistre un paiement de tuition sur votre compte famille.",
+      "",
+      `Transaction: ${input.transactionNumber}`,
+      `Recu: ${input.receiptNumber}`,
+      `Mode de paiement: ${input.paymentMethod}`,
+      `Mode d'affectation: ${input.allocationMode}`,
+      `Montant recu: ${formatAlertCurrency(input.allocationPreview.totalReceived)}`,
+      `Montant impute: ${formatAlertCurrency(input.allocationPreview.allocatedTotal)}`,
+      `Solde restant: ${formatAlertCurrency(input.allocationPreview.missingAmount)}`,
+      `Avance conservee: ${formatAlertCurrency(input.allocationPreview.advanceBalance)}`,
+      "",
+      "Affectation par enfant:",
+      allocationLines.join("\n") || "- Aucune affectation appliquee.",
+      "",
+      `Prochain paiement: ${nextLine}`,
+      "",
+      `Note finance: ${input.allocationPreview.message}`,
+      "",
+      "Veuillez conserver ce message avec votre recu EduPay."
+    ].join("\n");
+    const smsBody = [
+      `EduPay ${input.receiptNumber}: recu ${formatAlertCurrency(input.allocationPreview.totalReceived)}`,
+      `impute ${formatAlertCurrency(input.allocationPreview.allocatedTotal)}`,
+      `reste ${formatAlertCurrency(input.allocationPreview.missingAmount)}.`,
+      `Prochain: ${nextLine}`
+    ].join(" ");
+    return { subject, emailBody, smsBody, dashboardBody: emailBody };
+  }
+
   const subject = `EduPay tuition receipt ${input.receiptNumber}`;
   const emailBody = [
     `Hello ${input.parentName},`,
@@ -2042,7 +2212,7 @@ export function buildTuitionParentNotificationMessages(input: {
     `remaining ${formatAlertCurrency(input.allocationPreview.missingAmount)}.`,
     `Next: ${nextLine}`
   ].join(" ");
-  return { subject, emailBody, smsBody };
+  return { subject, emailBody, smsBody, dashboardBody: emailBody };
 }
 
 export async function ensureParentTuitionEnginePlan(input: {
@@ -2284,10 +2454,14 @@ function buildAllocationPreviewFromInstallments(input: {
   const allocatedByInstallment = new Map<string, number>();
 
   if (input.mode === "MANUAL") {
+    let manualRemaining = roundCurrency(input.amount);
     for (const manual of input.manualAllocations ?? []) {
+      if (manualRemaining <= 0) break;
       const candidate = candidates.find((row) => row.installment.id === manual.installmentId);
       if (!candidate) continue;
-      allocatedByInstallment.set(manual.installmentId, roundCurrency(Math.min(manual.amount, candidate.outstandingBefore)));
+      const amount = roundCurrency(Math.max(0, Math.min(manual.amount, candidate.outstandingBefore, manualRemaining)));
+      allocatedByInstallment.set(manual.installmentId, amount);
+      manualRemaining = roundCurrency(manualRemaining - amount);
     }
   } else {
     let remaining = roundCurrency(input.amount);
@@ -2351,11 +2525,15 @@ function buildAllocationPreviewFromInstallments(input: {
   });
 
   const allocatedTotal = roundCurrency(lines.reduce((sum, line) => sum + line.allocated, 0));
+  const manualRequestedTotal = roundCurrency((input.manualAllocations ?? []).reduce((sum, row) => sum + Number(row.amount || 0), 0));
   const advanceBalance = roundCurrency(Math.max(input.amount - allocatedTotal, 0));
   const missingAmount = roundCurrency(lines.reduce((sum, line) => sum + line.outstandingAfter, 0));
   const warnings = [
-    input.mode === "MANUAL" && roundCurrency((input.manualAllocations ?? []).reduce((sum, row) => sum + Number(row.amount || 0), 0)) !== roundCurrency(input.amount)
-      ? "Manual allocation total must equal the payment amount before saving."
+    input.mode === "MANUAL" && manualRequestedTotal > roundCurrency(input.amount)
+      ? "Manual allocation total cannot exceed the received payment amount."
+      : "",
+    input.mode === "MANUAL" && allocatedTotal < roundCurrency(input.amount)
+      ? `Manual split leaves ${formatAlertCurrency(roundCurrency(input.amount - allocatedTotal))} as advance balance.`
       : "",
     ...lines.filter((line) => line.allocated > 0 && line.outstandingAfter > 0).map((line) => `${line.studentName} remains underpaid for ${line.label}.`),
     ...lines.filter((line) => line.dueBucket !== "FUTURE" && line.allocated === 0 && line.outstandingBefore > 0).map((line) => `${line.studentName} has an unpaid scheduled obligation: ${line.label}.`)
@@ -2448,8 +2626,8 @@ export async function recordTuitionEnginePayment(input: {
       mode: input.allocationMode,
       manualAllocations: input.manualAllocations
     });
-    if (input.allocationMode === "MANUAL" && preview.warnings.some((warning) => warning.includes("must equal"))) {
-      throw new Error("Manual allocation total must equal the payment amount.");
+    if (input.allocationMode === "MANUAL" && preview.warnings.some((warning) => warning.includes("cannot exceed"))) {
+      throw new Error("Manual allocation total cannot exceed the payment amount.");
     }
 
     const txNumber = input.transactionNumber || `TUITION-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -2577,6 +2755,7 @@ export async function recordTuitionEnginePayment(input: {
   if (parent) {
     const messages = buildTuitionParentNotificationMessages({
       parentName: parent.fullName,
+      language: parent.preferredLanguage,
       transactionNumber: result.payment.transactionNumber,
       receiptNumber: result.receipt.receiptNumber,
       paymentMethod: input.method,
@@ -2594,7 +2773,7 @@ export async function recordTuitionEnginePayment(input: {
           schoolId: input.schoolId,
           parentId: input.parentId,
           type: notificationType,
-          language: parent.preferredLanguage || "fr",
+          language: normalizeMessageLanguage(parent.preferredLanguage),
           channel: NotificationChannel.EMAIL,
           content: messages.emailBody,
           status
@@ -2608,13 +2787,24 @@ export async function recordTuitionEnginePayment(input: {
           schoolId: input.schoolId,
           parentId: input.parentId,
           type: notificationType,
-          language: parent.preferredLanguage || "fr",
+          language: normalizeMessageLanguage(parent.preferredLanguage),
           channel: NotificationChannel.SMS,
           content: messages.smsBody,
           status
         }
       }).catch((error) => console.error("Tuition parent SMS notification log failed", error));
     }
+    await prisma.notificationLog.create({
+      data: {
+        schoolId: input.schoolId,
+        parentId: input.parentId,
+        type: notificationType,
+        language: normalizeMessageLanguage(parent.preferredLanguage),
+        channel: NotificationChannel.DASHBOARD,
+        content: messages.dashboardBody,
+        status: "OPEN"
+      }
+    }).catch((error) => console.error("Tuition parent dashboard notification log failed", error));
   }
 
   return { ...setup, ...result, snapshot };
@@ -2624,7 +2814,17 @@ export function simulateTuitionEngineScenario(input: {
   academicYearName?: string;
   paymentOptionType: PaymentOptionType;
   amount: number;
-  children: Array<{ id: string; fullName: string; className: string; level?: string; alreadyPaidBySequence?: Record<number, number> }>;
+  allocationMode?: "AUTO" | "MANUAL";
+  manualAllocations?: Array<{ installmentId: string; amount: number }>;
+  children: Array<{
+    id: string;
+    fullName: string;
+    className: string;
+    level?: string;
+    paymentOptionType?: PaymentOptionType;
+    customAgreementFinalTuition?: number;
+    alreadyPaidBySequence?: Record<number, number>;
+  }>;
 }) {
   const academicYearName = input.academicYearName ?? OFFICIAL_ACADEMIC_YEAR_NAME;
   const calculations = input.children.map((child) => calculateTuitionForStudent({
@@ -2635,8 +2835,9 @@ export function simulateTuitionEngineScenario(input: {
       class: { name: child.className, level: child.level ?? child.className }
     },
     childrenCount: input.children.length,
-    paymentOptionType: input.paymentOptionType,
-    academicYearName
+    paymentOptionType: child.paymentOptionType ?? input.paymentOptionType,
+    academicYearName,
+    customAgreementFinalTuition: child.customAgreementFinalTuition
   }));
   const childLookup = new Map(input.children.map((child) => [child.id, child]));
   const installments = calculations.flatMap((calculation) =>
@@ -2654,7 +2855,8 @@ export function simulateTuitionEngineScenario(input: {
   const allocationPreview = buildAllocationPreviewFromInstallments({
     amount: input.amount,
     installments,
-    mode: "AUTO"
+    mode: input.allocationMode ?? "AUTO",
+    manualAllocations: input.manualAllocations
   });
   return {
     paymentOptionType: input.paymentOptionType,
@@ -2810,4 +3012,155 @@ export async function applyPaymentToFinanceLedger(input: {
   });
 
   return snapshot;
+}
+
+export async function cancelRegisteredPayment(input: {
+  schoolId: string;
+  paymentId: string;
+  actorUserId: string;
+  reason?: string;
+}) {
+  const payment = await prisma.payment.findFirst({
+    where: { id: input.paymentId, schoolId: input.schoolId },
+    include: {
+      parent: true,
+      students: true,
+      receipt: true,
+      academicYear: true,
+      allocations: {
+        include: {
+          installment: {
+            include: { allocations: true, student: true }
+          }
+        }
+      }
+    }
+  });
+
+  if (!payment) {
+    throw new Error("Paiement introuvable.");
+  }
+
+  if (String(payment.status) === "CANCELLED") {
+    throw new Error("Ce paiement est deja annule.");
+  }
+
+  const cancelledPayment = await prisma.$transaction(async (tx) => {
+    const affectedInstallmentIds = Array.from(new Set(payment.allocations.map((allocation) => allocation.installmentId)));
+
+    for (const allocation of payment.allocations) {
+      const installment = allocation.installment;
+      const updatedPaid = roundCurrency(Math.max(Number(installment.amountPaid || 0) - Number(allocation.amount || 0), 0));
+      await tx.paymentInstallment.update({
+        where: { id: installment.id },
+        data: {
+          amountPaid: updatedPaid,
+          status: deriveInstallmentStatus(Number(installment.amountDue || 0), updatedPaid, installment.dueDate)
+        }
+      });
+    }
+
+    if (payment.allocations.length > 0) {
+      await tx.paymentAllocation.deleteMany({ where: { paymentId: payment.id } });
+    }
+
+    for (const installmentId of affectedInstallmentIds) {
+      const installment = await tx.paymentInstallment.findUnique({
+        where: { id: installmentId },
+        include: { student: true }
+      });
+      if (!installment) continue;
+
+      const remainingBalance = roundCurrency(Math.max(Number(installment.amountDue || 0) - Number(installment.amountPaid || 0), 0));
+      const existingDebt = await tx.debt.findFirst({ where: { sourceInstallmentId: installment.id } });
+
+      if (existingDebt) {
+        await tx.debt.update({
+          where: { id: existingDebt.id },
+          data: {
+            amountRemaining: remainingBalance,
+            status: remainingBalance > 0 ? (Number(installment.amountPaid || 0) > 0 ? DebtStatus.PARTIALLY_PAID : DebtStatus.OPEN) : DebtStatus.CLEARED,
+            settledAt: remainingBalance === 0 ? new Date() : null,
+            dueDate: installment.dueDate,
+            sourcePaymentId: existingDebt.sourcePaymentId === payment.id ? null : existingDebt.sourcePaymentId
+          }
+        });
+      } else if (remainingBalance > 0 && installment.parentId) {
+        await tx.debt.create({
+          data: {
+            schoolId: input.schoolId,
+            parentId: installment.parentId,
+            studentId: installment.studentId,
+            academicYearId: installment.academicYearId,
+            financialProfileId: installment.financialProfileId,
+            sourceInstallmentId: installment.id,
+            title: `${installment.student?.fullName ?? "Parent"} installment balance`,
+            reason: `Outstanding balance after payment cancellation: ${installment.label}`,
+            originalAmount: roundCurrency(Number(installment.amountDue || 0)),
+            amountRemaining: remainingBalance,
+            status: Number(installment.amountPaid || 0) > 0 ? DebtStatus.PARTIALLY_PAID : DebtStatus.OPEN,
+            dueDate: installment.dueDate
+          }
+        });
+      }
+    }
+
+    const updatedPayment = await tx.payment.update({
+      where: { id: payment.id },
+      data: {
+        status: "CANCELLED" as never,
+        notes: [
+          payment.notes,
+          `Cancelled ${new Date().toISOString()} by ${input.actorUserId}${input.reason ? `: ${input.reason}` : ""}`
+        ].filter(Boolean).join("\n")
+      },
+      include: {
+        parent: true,
+        students: true,
+        receipt: true,
+        allocations: true
+      }
+    });
+
+    await tx.auditLog.create({
+      data: {
+        schoolId: input.schoolId,
+        userId: input.actorUserId,
+        action: "PAYMENT_CANCELLED",
+        metadata: {
+          paymentId: payment.id,
+          transactionNumber: payment.transactionNumber,
+          parentId: payment.parentId,
+          amount: payment.amount,
+          reason: input.reason ?? null,
+          affectedInstallmentIds
+        }
+      }
+    });
+
+    return updatedPayment;
+  });
+
+  const snapshot = await getParentFinancialSnapshot({
+    schoolId: input.schoolId,
+    parentId: payment.parentId,
+    academicYearName: payment.academicYear?.name
+  });
+
+  if (snapshot.profile.id) {
+    await prisma.parentFinancialProfile.update({
+      where: { id: snapshot.profile.id },
+      data: {
+        totalPaid: snapshot.profile.totalPaid,
+        totalDebt: snapshot.profile.totalDebt,
+        totalReduction: snapshot.profile.totalReduction,
+        carriedOverDebt: snapshot.profile.carriedOverDebt,
+        overdueInstallments: snapshot.profile.overdueInstallments,
+        paymentBehaviorScore: snapshot.profile.paymentBehaviorScore,
+        lastPaymentAt: snapshot.profile.lastPaymentAt ? new Date(snapshot.profile.lastPaymentAt) : null
+      }
+    });
+  }
+
+  return { payment: cancelledPayment, snapshot };
 }

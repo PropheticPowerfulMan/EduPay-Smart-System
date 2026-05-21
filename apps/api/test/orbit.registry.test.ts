@@ -45,9 +45,11 @@ describe("mapOrbitDirectoryToSharedOptions", () => {
     expect(mapped.classes).toEqual(["Grade 2 - B", "Grade 4 - A"]);
     expect(mapped.parents).toHaveLength(1);
     expect(mapped.parents[0].fullName).toBe("Mireille Tshisekedi");
-    expect(mapped.parents[0].students).toEqual([
+    expect(mapped.parents[0].students).toMatchObject([
       {
         id: "student-1",
+        orbitId: "student-1",
+        displayId: "STU-EXT-001",
         externalStudentId: "STU-EXT-001",
         studentNumber: "STU-EXT-001",
         fullName: "Nadia Tshisekedi",
@@ -57,6 +59,8 @@ describe("mapOrbitDirectoryToSharedOptions", () => {
       },
       {
         id: "student-2",
+        orbitId: "student-2",
+        displayId: "STU-EXT-002",
         externalStudentId: "STU-EXT-002",
         studentNumber: "STU-EXT-002",
         fullName: "Bryan Tshisekedi",

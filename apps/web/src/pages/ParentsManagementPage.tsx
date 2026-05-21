@@ -10,6 +10,7 @@ type Student = {
   id: string;
   displayId?: string;
   fullName: string;
+  gender?: "F" | "M" | "O" | "";
   classId: string;
   className: string;
   annualFee: number;
@@ -29,6 +30,7 @@ type Parent = {
   phone: string;
   email: string;
   photoUrl?: string;
+  preferredLanguage?: "fr" | "en";
   students: Student[];
   createdAt: string;
 };
@@ -121,6 +123,7 @@ type FinanceCatalog = {
 type StudentFormState = {
   id?: string;
   fullName: string;
+  gender: "F" | "M" | "O" | "";
   classId: string;
   annualFee: string;
   paymentOptionType: string;
@@ -133,6 +136,7 @@ type FormState = {
   phone: string;
   email: string;
   photoUrl: string;
+  preferredLanguage: "fr" | "en";
   defaultPaymentOptionType: string;
   notifyEmail: boolean;
   notifySms: boolean;
@@ -170,13 +174,14 @@ const EMPTY_FORM: FormState = {
   phone: "",
   email: "",
   photoUrl: "",
+  preferredLanguage: "fr",
   defaultPaymentOptionType: "STANDARD_MONTHLY",
   notifyEmail: true,
   notifySms: true,
   students: []
 };
 
-const EMPTY_STUDENT: StudentFormState = { fullName: "", classId: "", annualFee: "", paymentOptionType: "STANDARD_MONTHLY" };
+const EMPTY_STUDENT: StudentFormState = { fullName: "", gender: "", classId: "", annualFee: "", paymentOptionType: "STANDARD_MONTHLY" };
 
 const SCHOOL_SECTIONS: SchoolClass[] = [
   ...Array.from({ length: 3 }, (_v, index) => {
@@ -195,7 +200,7 @@ function getCanonicalSchoolClass(entry: SchoolClass): SchoolClass | null {
   if (kindergarten) return { ...entry, name: `K${kindergarten[1]}` };
 
   const grade = normalized.match(/\b(?:grade|g)\s*([1-9]|1[0-2])\b/) || entry.id.toLowerCase().match(/\b(?:grade|g)[-\s]*([1-9]|1[0-2])\b/);
-  if (grade) return { ...entry, name: `G${Number(grade[1])}` };
+  if (grade) return { ...entry, name: `Grade ${Number(grade[1])}` };
 
   return null;
 }
@@ -214,7 +219,8 @@ function getSchoolClassOptions(classes: SchoolClass[]) {
   return [...byName.values()].sort((a, b) => {
     const rank = (name: string) => {
       if (name.startsWith("K")) return Number(name.slice(1));
-      if (name.startsWith("G")) return 10 + Number(name.slice(1));
+      const grade = name.match(/^Grade\s+([1-9]|1[0-2])$/);
+      if (grade) return 10 + Number(grade[1]);
       return 100;
     };
     return rank(a.name) - rank(b.name);
@@ -1098,6 +1104,10 @@ function DetailModal({
 
     return Array.from(grouped.values()).sort((left, right) => right.year.localeCompare(left.year));
   }, [financeSnapshot]);
+  const financeStudentsById = useMemo(
+    () => new Map((financeSnapshot?.students ?? []).map((student) => [student.id, student])),
+    [financeSnapshot]
+  );
 
   const exportDisabled = financeLoading || Boolean(financeError) || pdfExporting;
 
@@ -1193,21 +1203,33 @@ function DetailModal({
                 <p className="text-sm text-ink-dim italic">{t("pmNoChildren")}</p>
               ) : (
                 <div className="space-y-2">
-                  {parent.students.map((st) => (
-                    <div key={st.id} className="flex flex-col gap-3 rounded-lg border border-slate-700/50 bg-slate-900/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="min-w-0">
-                        <p className="break-words text-sm font-semibold text-white">{st.fullName}</p>
-                        <p className="text-xs text-ink-dim">{st.className || st.classId}</p>
-                        <p className="mt-1 text-xs text-ink-dim">Inscrit le {formatDateTimeLabel(st.createdAt)}</p>
-                        {(st.tuitionPlanName || st.paymentOptionLabel) && (
-                          <p className="mt-1 text-xs text-cyan-300">{st.tuitionPlanName || st.paymentOptionLabel}</p>
-                        )}
+                  {parent.students.map((st) => {
+                    const financeRow = financeStudentsById.get(st.id);
+                    const expectedAmount = Number(financeRow?.expectedTotal ?? st.annualFee ?? 0);
+                    const enrolledAt = st.createdAt || parent.createdAt;
+
+                    return (
+                      <div key={st.id} className="flex flex-col gap-3 rounded-lg border border-slate-700/50 bg-slate-900/40 px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="break-words text-sm font-semibold text-white">{st.fullName}</p>
+                          <p className="text-xs text-ink-dim">{financeRow?.className || st.className || st.classId || "Classe non renseignée"}</p>
+                          <p className="mt-1 text-xs text-ink-dim">Inscrit le {formatDateTimeLabel(enrolledAt)}</p>
+                          {(st.tuitionPlanName || st.paymentOptionLabel) && (
+                            <p className="mt-1 text-xs text-cyan-300">{st.tuitionPlanName || st.paymentOptionLabel}</p>
+                          )}
+                          {financeRow ? (
+                            <p className="mt-1 text-xs text-ink-dim">
+                              Payé {formatMoney(financeRow.paid)} · Reste {formatMoney(financeRow.balance)}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="shrink-0 text-left sm:text-right">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-dim">Montant attendu</p>
+                          <p className="mt-1 text-sm font-bold text-emerald-300">{formatMoney(expectedAmount)}</p>
+                        </div>
                       </div>
-                      <span className="shrink-0 text-sm font-bold text-emerald-300">
-                        {formatMoney(st.annualFee)}
-                      </span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
@@ -1410,6 +1432,32 @@ function DeleteModal({ parent, onConfirm, onClose, t }: {
   );
 }
 
+function DuplicateParentDialog({ message, onClose }: { message: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-md" />
+      <section className="relative w-full max-w-lg rounded-2xl border border-amber-400/30 bg-slate-950 p-6 shadow-2xl animate-fadeInUp" onClick={(event) => event.stopPropagation()}>
+        <button onClick={onClose} className="absolute right-4 top-4 text-ink-dim hover:text-white transition-colors" aria-label="Fermer">
+          <XIcon />
+        </button>
+        <div className="flex items-start gap-4">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-amber-400/30 bg-amber-500/15 text-amber-200">
+            !
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-200">Famille deja existante</p>
+            <h3 className="mt-2 font-display text-2xl font-bold text-white">Enregistrement refuse</h3>
+            <p className="mt-3 text-sm leading-6 text-ink-dim">{message}</p>
+          </div>
+        </div>
+        <button onClick={onClose} className="mt-6 w-full rounded-xl bg-amber-500 px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-amber-400">
+          Compris
+        </button>
+      </section>
+    </div>
+  );
+}
+
 /* ─── Form Modal ─────────────────────────────────────────────────── */
 function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
   initial: Parent | null;
@@ -1428,12 +1476,14 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
       phone: initial.phone,
       email: initial.email,
       photoUrl: initial.photoUrl || "",
+      preferredLanguage: initial.preferredLanguage || "fr",
       defaultPaymentOptionType: initial.students[0]?.paymentOptionType || "STANDARD_MONTHLY",
       notifyEmail: true,
       notifySms: true,
       students: initial.students.map((s) => ({
         id: s.id,
         fullName: s.fullName,
+        gender: s.gender || "",
         classId: s.classId,
         annualFee: String(s.annualFee),
         paymentOptionType: s.paymentOptionType || "STANDARD_MONTHLY"
@@ -1658,6 +1708,31 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
           </div>
         </div>
 
+        <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 p-4">
+          <p className="text-sm font-bold text-white">Langue des messages EduPay</p>
+          <p className="mt-1 text-xs text-ink-dim">Les SMS, emails et messages dans le compte parent suivront cette langue.</p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            {[
+              { value: "fr", label: "Francais", detail: "Messages en francais" },
+              { value: "en", label: "English", detail: "Messages in English" }
+            ].map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => set("preferredLanguage", option.value)}
+                className={`rounded-xl border px-4 py-3 text-left transition-all ${
+                  form.preferredLanguage === option.value
+                    ? "border-brand-400/50 bg-brand-500/15 text-white"
+                    : "border-slate-700/50 bg-slate-950/30 text-ink-dim hover:border-brand-300/30 hover:text-white"
+                }`}
+              >
+                <span className="block text-sm font-bold">{option.label}</span>
+                <span className="mt-1 block text-xs">{option.detail}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         {!initial && (
           <div className="rounded-xl border border-brand-500/20 bg-brand-500/10 p-4">
             <div className="flex flex-col gap-1">
@@ -1744,10 +1819,19 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.1fr_0.9fr]">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.1fr_0.55fr_0.9fr]">
                 <div className="space-y-1">
                   <label className="text-xs text-ink-dim">{t("pmChildName")}</label>
                   <input value={st.fullName} onChange={(e) => setStudent(idx, "fullName", e.target.value)} className="w-full" placeholder={t("pmChildNamePlaceholder")} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-ink-dim">Sexe</label>
+                  <select value={st.gender} onChange={(e) => setStudent(idx, "gender", e.target.value)} className="w-full">
+                    <option value="">Choisir</option>
+                    <option value="F">Fille</option>
+                    <option value="M">Garcon</option>
+                    <option value="O">Autre / non precise</option>
+                  </select>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs text-ink-dim">{t("pmChildClass")}</label>
@@ -1946,6 +2030,7 @@ export function ParentsManagementPage() {
   const [financeSnapshot, setFinanceSnapshot] = useState<ParentFinanceSnapshot | null>(null);
   const [financeLoading, setFinanceLoading] = useState(false);
   const [financeError, setFinanceError] = useState<string | null>(null);
+  const [duplicateParentMessage, setDuplicateParentMessage] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -2069,6 +2154,9 @@ export function ParentsManagementPage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erreur API";
       setApiError(message);
+      if (!id && /existe deja|already exists|PARENT_ALREADY_EXISTS|famille existe/i.test(message)) {
+        setDuplicateParentMessage(message);
+      }
     }
   };
 
@@ -2131,6 +2219,7 @@ export function ParentsManagementPage() {
         />
       )}
       {credentials && <CredentialsModal credentials={credentials} onClose={() => setCredentials(null)} />}
+      {duplicateParentMessage && <DuplicateParentDialog message={duplicateParentMessage} onClose={() => setDuplicateParentMessage(null)} />}
       {deleteTarget && <DeleteModal parent={deleteTarget} onConfirm={handleDelete} onClose={() => setDeleteTarget(null)} t={t} />}
       {notificationTarget && (
         <AccessNotificationModal

@@ -414,12 +414,12 @@ function OperationsSubDialog({
   onClose: () => void;
 }) {
   return (
-    <div className="absolute inset-0 z-10 flex items-end justify-center bg-slate-950/72 p-3 backdrop-blur-md sm:items-center sm:p-5">
-      <button aria-label="Fermer le sous-dialogue" className="absolute inset-0" onClick={onClose} />
-      <section className="edupay-operations-submodal relative flex max-h-[86vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-slate-950/98 shadow-2xl">
-        <header className="flex items-start justify-between gap-4 border-b border-white/10 bg-white/[0.04] px-4 py-4 sm:px-5">
+    <div className="fixed inset-0 z-[60] grid place-items-center overflow-y-auto bg-slate-950/78 p-4 backdrop-blur-md sm:p-6">
+      <button aria-label="Fermer le sous-dialogue" className="fixed inset-0 cursor-default" onClick={onClose} />
+      <section className="edupay-operations-submodal relative my-auto flex max-h-[calc(100dvh-2rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-slate-950 shadow-2xl shadow-cyan-950/30">
+        <header className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-slate-950/95 px-4 py-4 backdrop-blur sm:px-6">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Sous-dialogue</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">Paie</p>
             <h3 className="mt-1 font-display text-xl font-bold text-white sm:text-2xl">{title}</h3>
             <p className="mt-1 text-sm text-ink-dim">{subtitle}</p>
           </div>
@@ -432,7 +432,7 @@ function OperationsSubDialog({
             <X className="h-5 w-5" />
           </button>
         </header>
-        <div className="edupay-scrollbar min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+        <div className="edupay-scrollbar min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
           {children}
         </div>
       </section>

@@ -10,7 +10,8 @@
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "test": "vitest run test/amount-words.test.ts test/orbit.integration.test.ts test/orbit.registry.test.ts",
+    "report:receipt-regeneration": "tsx src/scripts/reportReceiptRegeneration.ts",
+    "test": "vitest run test/amount-words.test.ts test/orbit.integration.test.ts test/orbit.registry.test.ts test/tuition-engine.test.ts",
     "lint": "echo \"No lint configured yet\""
   },
   "dependencies": {

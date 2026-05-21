@@ -2,8 +2,29 @@ import { schoolBranding } from "../config/branding";
 
 const DEFAULT_RECEIPT_VERIFICATION_BASE_URL = "/";
 
+function normalizeReceiptBaseUrl(baseUrl: string) {
+  const normalized = baseUrl.trim();
+  if (!normalized) return DEFAULT_RECEIPT_VERIFICATION_BASE_URL;
+  return normalized.endsWith("/") ? normalized : `${normalized}/`;
+}
+
+function resolveReceiptBaseUrl(
+  configuredBaseUrl: string,
+  locationLike: Pick<Location, "origin">
+) {
+  const baseCandidate = normalizeReceiptBaseUrl(
+    configuredBaseUrl || import.meta.env.BASE_URL || DEFAULT_RECEIPT_VERIFICATION_BASE_URL
+  );
+
+  try {
+    return new URL(baseCandidate, `${locationLike.origin}/`).toString();
+  } catch {
+    return `${locationLike.origin}${normalizeReceiptBaseUrl(DEFAULT_RECEIPT_VERIFICATION_BASE_URL)}`;
+  }
+}
+
 export type PaymentMethodCode = "CASH" | "AIRTEL_MONEY" | "MPESA" | "ORANGE_MONEY";
-export type PaymentStatusCode = "COMPLETED" | "PENDING" | "FAILED";
+export type PaymentStatusCode = "COMPLETED" | "PENDING" | "FAILED" | "CANCELLED";
 
 export type ReceiptVerificationInput = {
   transactionNumber: string;
@@ -66,7 +87,8 @@ export function getReceiptStatusLabel(status: PaymentStatusCode) {
   const statusLabel: Record<PaymentStatusCode, string> = {
     COMPLETED: "Réglé",
     PENDING: "En attente",
-    FAILED: "Échoué"
+    FAILED: "Échoué",
+    CANCELLED: "Annulé"
   };
   return statusLabel[status] ?? status;
 }
@@ -163,16 +185,19 @@ function decodeBase64Url(value: string) {
 
 export function buildReceiptVerificationUrl(
   input: ReceiptVerificationInput,
-  locationLike: Pick<Location, "origin" | "pathname"> = window.location
+  locationLike: Pick<Location, "origin"> = window.location,
+  configuredBaseUrlOverride?: string
 ) {
   const security = buildReceiptSecurity(input);
+  const token = encodeURIComponent(encodeBase64Url(JSON.stringify(buildReceiptVerificationRecord(input))));
   const tx = encodeURIComponent(input.transactionNumber);
   const code = encodeURIComponent(security.verificationCode);
-  const configuredBaseUrl = (import.meta.env.VITE_RECEIPT_VERIFICATION_BASE_URL || import.meta.env.VITE_PUBLIC_APP_URL || "").trim();
-  const currentAppBaseUrl = `${locationLike.origin}${locationLike.pathname}`.trim();
-  const rawBaseUrl = currentAppBaseUrl || configuredBaseUrl || DEFAULT_RECEIPT_VERIFICATION_BASE_URL;
-  const baseUrl = rawBaseUrl.endsWith("/") ? rawBaseUrl : `${rawBaseUrl}/`;
-  return `${baseUrl}#/receipt/verify?tx=${tx}&c=${code}`;
+  const configuredBaseUrl = (configuredBaseUrlOverride
+    ?? import.meta.env.VITE_RECEIPT_VERIFICATION_BASE_URL
+    ?? import.meta.env.VITE_PUBLIC_APP_URL
+    ?? "").trim();
+  const baseUrl = resolveReceiptBaseUrl(configuredBaseUrl, locationLike);
+  return `${baseUrl}#/receipt/verify?tx=${tx}&c=${code}&d=${token}`;
 }
 
 export function parseReceiptVerificationToken(token: string | null) {

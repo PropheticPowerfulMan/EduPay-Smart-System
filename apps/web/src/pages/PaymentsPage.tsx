@@ -5,6 +5,7 @@ import { SearchField } from "../components/SearchField";
 import { schoolBranding } from "../config/branding";
 import { useI18n } from "../i18n";
 import { api } from "../services/api";
+import { buildReceiptAllocationSnapshot } from "../utils/receiptAllocation";
 import { buildReceiptVerificationUrl } from "../utils/receiptVerification";
 import { exportWorkbook } from "../utils/financeExcel";
 
@@ -222,6 +223,7 @@ function getStatusLabel(status: string) {
     COMPLETED: "Réglé",
     PENDING: "En attente",
     FAILED: "Échoué",
+    CANCELLED: "Annulé",
   };
   return statusLabel[status] ?? status;
 }
@@ -299,19 +301,26 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
   const parentSecondaryLine = safe.parentCaption
     ? `<div class="value-sub"><span class="value-sub-badge">Parent concerne</span><span>${safe.parentCaption}</span></div>`
     : "";
-  const allocationSummaryHtml = r.tuitionAllocationSummary
+  const allocationSnapshot = r.tuitionAllocationSummary
+    ? buildReceiptAllocationSnapshot(r.tuitionAllocationSummary)
+    : null;
+  const allocationSummaryHtml = allocationSnapshot
     ? `<div class="allocation">
-        <div class="allocation-title">Repartition ${escapeHtml(r.tuitionAllocationSummary.mode === "AUTO" ? "automatique executee par le systeme" : "manuelle executee par le financier")}</div>
-        <div class="allocation-message">${escapeHtml(r.tuitionAllocationSummary.message)}</div>
+        <div class="allocation-head">
+          <div class="allocation-title">Ventilation du paiement</div>
+          <div class="allocation-pill">${escapeHtml(allocationSnapshot.modeLabel)}</div>
+        </div>
+        <div class="allocation-metrics">${allocationSnapshot.metrics.map((metric) => `<div class="allocation-metric"><span>${escapeHtml(metric.label)}</span><strong>$ ${formatMoney(metric.amount)}</strong></div>`).join("")}</div>
+        <div class="allocation-note">${escapeHtml(allocationSnapshot.statusNote)}</div>
         <table>
-          <thead><tr><th>Eleve</th><th>Applique</th><th>Reste</th><th>Details</th></tr></thead>
-          <tbody>${r.tuitionAllocationSummary.perChild.map((child) => `<tr>
+          <thead><tr><th>Beneficiaire</th><th>Montant impute</th><th>Solde restant</th></tr></thead>
+          <tbody>${allocationSnapshot.perChild.map((child) => `<tr>
             <td>${escapeHtml(child.studentName)}</td>
             <td>$ ${formatMoney(child.allocated)}</td>
             <td>$ ${formatMoney(child.remaining)}</td>
-            <td>${child.lines.map((line) => `${escapeHtml(line.label)}: avant $ ${formatMoney(line.outstandingBefore)}, applique $ ${formatMoney(line.allocated)}, reste $ ${formatMoney(line.outstandingAfter)} (${escapeHtml(getDueBucketLabel(line.dueBucket))})`).join("<br/>")}</td>
           </tr>`).join("")}</tbody>
         </table>
+        ${allocationSnapshot.overflowChildCount > 0 ? `<div class="allocation-overflow">+ ${allocationSnapshot.overflowChildCount} autre(s) dossier(s) figurent dans le detail complet.</div>` : ""}
       </div>`
     : "";
   return `<!DOCTYPE html>
@@ -365,11 +374,17 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
     .stamp-circle { width:17mm; height:17mm; border:1px dashed #123047; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:auto; background:#fff; color:#94a3b8; font-size:5.8px; font-weight:800; text-transform:uppercase; letter-spacing:.45px; }
     .warning { margin-top:2.2mm; border-left:2.4px solid #b45309; background:#fffbeb; color:#78350f; padding:1.5mm; font-size:7px; }
     .allocation { position:relative; margin-top:2.2mm; border:1px solid #cbd5e1; background:#f8fafc; padding:1.8mm; }
+    .allocation-head { display:flex; align-items:center; justify-content:space-between; gap:2mm; }
     .allocation-title { font-size:7px; font-weight:900; color:#123047; text-transform:uppercase; letter-spacing:.7px; }
-    .allocation-message { margin-top:.8mm; font-size:6.5px; color:#334155; line-height:1.35; }
-    .allocation table { width:100%; border-collapse:collapse; margin-top:1.2mm; font-size:6.2px; }
+    .allocation-pill { border:1px solid rgba(18,48,71,.18); border-radius:999px; padding:.45mm 1.6mm; background:#fff; color:#123047; font-size:6.2px; font-weight:900; text-transform:uppercase; letter-spacing:.45px; }
+    .allocation-metrics { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:1mm; margin-top:1mm; }
+    .allocation-metric { border:1px solid #dbe4ef; background:#fff; padding:.9mm 1.1mm; display:flex; align-items:center; justify-content:space-between; gap:1mm; font-size:6.1px; color:#475569; }
+    .allocation-metric strong { color:#123047; font-family:${fonts.mono}; font-size:6.6px; }
+    .allocation-note { margin-top:1mm; font-size:6.2px; font-weight:700; color:#334155; line-height:1.35; }
+    .allocation table { width:100%; border-collapse:collapse; margin-top:1.1mm; font-size:6.2px; }
     .allocation th, .allocation td { border-top:1px solid #e2e8f0; padding:.8mm; text-align:left; vertical-align:top; }
     .allocation th { color:#475569; text-transform:uppercase; letter-spacing:.45px; }
+    .allocation-overflow { margin-top:.8mm; font-size:6px; font-weight:700; color:#64748b; }
     .footer { margin-top:2.6mm; display:flex; justify-content:space-between; color:#64748b; font-size:7px; border-top:1px solid #dbe4ef; padding-top:1.4mm; }
     @media print { html, body { width:210mm; height:148mm; overflow:hidden; } body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } .receipt { margin:0; page-break-inside:avoid; break-inside:avoid; } }
   </style>
@@ -482,7 +497,8 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
   const statusLabel: Record<string, string> = {
     COMPLETED: "Réglé",
     PENDING: "En attente",
-    FAILED: "Échoué"
+    FAILED: "Échoué",
+    CANCELLED: "Annulé"
   };
 
   const brand = {
@@ -722,6 +738,9 @@ function printHtml(html: string) {
 
 async function printReceiptDocument(payment: PaymentRecord, lang: string) {
   printHtml(await buildReceiptHtml(payment, lang));
+  await api(`/api/payments/${payment.id}/receipt/printed`, { method: "POST" }).catch((error) => {
+    console.warn("Receipt print notification failed", error);
+  });
 }
 
 function exportReceiptExcel(payment: PaymentRecord) {
@@ -805,11 +824,12 @@ type PaymentRecord = {
   parentFullName: string;
   paymentSubjectName?: string;
   studentNames?: string[];
+  studentClassNames?: string[];
   reason: string;
   amount: number;
   amountWords: string;
   method: "CASH" | "AIRTEL_MONEY" | "MPESA" | "ORANGE_MONEY";
-  status: "COMPLETED" | "PENDING" | "FAILED";
+  status: "COMPLETED" | "PENDING" | "FAILED" | "CANCELLED";
   tuitionAllocationSummary?: {
     mode: "AUTO" | "MANUAL";
     message: string;
@@ -839,7 +859,7 @@ type FormState = {
   reason: string;
   amount: string;
   method: "CASH" | "AIRTEL_MONEY" | "MPESA" | "ORANGE_MONEY";
-  status: "COMPLETED" | "PENDING" | "FAILED";
+  status: "COMPLETED" | "PENDING" | "FAILED" | "CANCELLED";
 };
 
 type ParentStudentOption = {
@@ -1145,15 +1165,47 @@ function getProductSearchTags(reason: string) {
     .map(([product]) => product);
 }
 
+function getStatusSearchTags(status: PaymentRecord["status"]) {
+  const tags: Record<PaymentRecord["status"], string[]> = {
+    COMPLETED: ["paye", "payes", "regle", "regles", "paid", "completed"],
+    PENDING: ["attente", "pending", "non regle", "unpaid"],
+    FAILED: ["echoue", "failed", "refuse"],
+    CANCELLED: ["annule", "cancelled"]
+  };
+  return tags[status] ?? [];
+}
+
+function buildPaymentSearchText(payment: PaymentRecord) {
+  const allocationStudents = payment.tuitionAllocationSummary?.perChild.flatMap((child) => [
+    child.studentName,
+    ...child.lines.map((line) => line.label)
+  ]) ?? [];
+  return normalizeSearchText([
+    getPaymentSubjectName(payment),
+    payment.parentFullName,
+    ...(payment.studentNames ?? []),
+    ...(payment.studentClassNames ?? []),
+    ...allocationStudents,
+    payment.reason,
+    payment.transactionNumber,
+    payment.method.replace(/_/g, " "),
+    payment.status,
+    ...getStatusSearchTags(payment.status),
+    ...getProductSearchTags(payment.reason)
+  ].join(" "));
+}
+
 /* --- Badge statut --------------------------------------------------------- */
 function StatusBadge({ status }: { status: string }) {
   const cfg: Record<string, string> = {
     COMPLETED: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
     PENDING:   "bg-amber-500/15 text-amber-300 border-amber-500/30",
     FAILED:    "bg-red-500/15 text-red-300 border-red-500/30",
+    CANCELLED: "bg-slate-500/15 text-slate-300 border-slate-500/30",
   };
   const lbl: Record<string, string> = {
     COMPLETED: "Réglé", PENDING: "En attente", FAILED: "Échoué",
+    CANCELLED: "Annule",
   };
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border ${cfg[status] ?? "bg-slate-700 text-slate-300 border-slate-600"}`}>
@@ -1273,27 +1325,39 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
               <strong>En toutes lettres:</strong> {receipt.amountWords}
             </p>
           </div>
-          {receipt.tuitionAllocationSummary && (
-            <div className="mt-3 border border-slate-300 bg-slate-50 p-3">
-              <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">
-                Repartition {receipt.tuitionAllocationSummary.mode === "AUTO" ? "automatique executee par le systeme" : "manuelle executee par le financier"}
-              </p>
-              <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-600">{receipt.tuitionAllocationSummary.message}</p>
-              <div className="mt-2 space-y-2">
-                {receipt.tuitionAllocationSummary.perChild.map((child) => (
-                  <div key={child.studentName} className="rounded-md border border-slate-200 bg-white p-2 text-[11px]">
-                    <div className="flex justify-between gap-3 font-bold text-slate-900">
-                      <span>{child.studentName}</span>
-                      <span>Applique $ {formatMoney(child.allocated)} - Reste $ {formatMoney(child.remaining)}</span>
+          {receipt.tuitionAllocationSummary && (() => {
+            const allocationSnapshot = buildReceiptAllocationSnapshot(receipt.tuitionAllocationSummary);
+            return (
+              <div className="mt-3 border border-slate-300 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Ventilation du paiement</p>
+                  <span className="rounded-full border border-slate-300 bg-white px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-slate-700">{allocationSnapshot.modeLabel}</span>
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+                  {allocationSnapshot.metrics.map((metric) => (
+                    <div key={metric.label} className="rounded-md border border-slate-200 bg-white px-2 py-2 text-slate-600">
+                      <p className="font-black uppercase tracking-[0.12em] text-slate-400">{metric.label}</p>
+                      <p className="mt-1 font-mono font-black text-slate-900">$ {formatMoney(metric.amount)}</p>
                     </div>
-                    <div className="mt-1 text-slate-600">
-                      {child.lines.map((line) => `${line.label}: avant $ ${formatMoney(line.outstandingBefore)}, applique $ ${formatMoney(line.allocated)}, reste $ ${formatMoney(line.outstandingAfter)} (${getDueBucketLabel(line.dueBucket)})`).join(" | ")}
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] font-semibold leading-5 text-slate-600">{allocationSnapshot.statusNote}</p>
+                <div className="mt-2 space-y-2">
+                  {allocationSnapshot.perChild.map((child) => (
+                    <div key={child.studentName} className="rounded-md border border-slate-200 bg-white p-2 text-[11px]">
+                      <div className="flex justify-between gap-3 font-bold text-slate-900">
+                        <span>{child.studentName}</span>
+                        <span>Impute $ {formatMoney(child.allocated)} - Solde $ {formatMoney(child.remaining)}</span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+                {allocationSnapshot.overflowChildCount > 0 ? (
+                  <p className="mt-2 text-[11px] font-semibold text-slate-500">+ {allocationSnapshot.overflowChildCount} autre(s) dossier(s) dans le detail complet.</p>
+                ) : null}
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
 
         <div>
@@ -1430,13 +1494,7 @@ export function PaymentsPage() {
 
   const filteredPayments = useMemo(() => payments.filter((p) => {
     const query = normalizeSearchText(searchQuery);
-    const searchableText = normalizeSearchText([
-      getPaymentSubjectName(p),
-      p.parentFullName,
-      p.reason,
-      p.transactionNumber,
-      ...getProductSearchTags(p.reason)
-    ].join(" "));
+    const searchableText = buildPaymentSearchText(p);
     const matchQ = !query || query.split(/\s+/).every((token) => searchableText.includes(token));
     return matchQ
       && (filterStatus === "ALL" || p.status === filterStatus)
@@ -1588,6 +1646,24 @@ export function PaymentsPage() {
     .map(([installmentId, amount]) => ({ installmentId, amount: Number(amount || 0) }))
     .filter((row) => row.amount > 0);
 
+  const manualAllocationTotal = useMemo(
+    () => roundMoney(Object.values(manualAllocations).reduce((sum, amount) => sum + Number(amount || 0), 0)),
+    [manualAllocations]
+  );
+
+  const fillManualAllocationFromPreview = () => {
+    if (!tuitionPreview) return;
+    let remaining = amountNum;
+    const next: Record<string, string> = {};
+    for (const line of tuitionPreview.allocationPreview.lines) {
+      if (remaining <= 0) break;
+      const amount = roundMoney(Math.min(line.outstandingBefore, remaining));
+      if (amount > 0) next[line.installmentId] = String(amount);
+      remaining = roundMoney(remaining - amount);
+    }
+    setManualAllocations(next);
+  };
+
   const buildReceiptAllocationSummary = (preview: TuitionAllocationPreview, mode: AllocationMode): PaymentRecord["tuitionAllocationSummary"] => {
     type ReceiptAllocationChild = NonNullable<PaymentRecord["tuitionAllocationSummary"]>["perChild"][number];
     const grouped = preview.lines.reduce<Record<string, ReceiptAllocationChild>>((acc, line) => {
@@ -1663,6 +1739,14 @@ export function PaymentsPage() {
       setApiError("Previsualisez d'abord la repartition automatique ou manuelle avant de confirmer le paiement tuition.");
       return;
     }
+    if (allocationMode === "MANUAL" && manualAllocationTotal <= 0) {
+      setApiError("Saisissez au moins une ligne dans la repartition manuelle avant de confirmer.");
+      return;
+    }
+    if (allocationMode === "MANUAL" && manualAllocationTotal > roundMoney(amountNum)) {
+      setApiError(`La repartition manuelle ne peut pas depasser le montant recu (${fmtUsd(amountNum)}). Total saisi: ${fmtUsd(manualAllocationTotal)}.`);
+      return;
+    }
     setTuitionEngineBusy(true);
     setSaving(true);
     setApiError(null);
@@ -1691,6 +1775,7 @@ export function PaymentsPage() {
         parentFullName: parentName,
         paymentSubjectName: subjectName,
         studentNames: result.calculations.map((row) => row.studentName),
+        studentClassNames: Array.from(new Set((selectedParent?.students ?? []).map((student) => student.className).filter(Boolean))),
         reason: form.reason || `Tuition - ${TUITION_PLAN_OPTIONS.find((plan) => plan.value === tuitionPlan)?.label ?? tuitionPlan}`,
         amount: amountNum,
         amountWords: amountToWords(amountNum, lang as "fr" | "en"),
@@ -1752,6 +1837,7 @@ export function PaymentsPage() {
       parentFullName: form.parentFullName.trim(),
       paymentSubjectName,
       studentNames: selectedStudents.map((student) => student.fullName),
+      studentClassNames: Array.from(new Set(selectedStudents.map((student) => student.className).filter(Boolean))),
       parentId: form.parentId || undefined,
       reason: form.reason.trim(),
       amount: finalAmount,
@@ -1780,6 +1866,7 @@ export function PaymentsPage() {
       record.id = created?.payment?.id ?? record.id;
       record.paymentSubjectName = created?.payment?.paymentSubjectName ?? record.paymentSubjectName;
       record.studentNames = created?.payment?.studentNames ?? record.studentNames;
+      record.studentClassNames = created?.payment?.studentClassNames ?? record.studentClassNames;
       record.parentFullName = created?.payment?.parentFullName ?? record.parentFullName;
       if (created?.notificationStatus) {
         setNotificationStatus(`${record.parentFullName} - Email: ${created.notificationStatus.email ?? "SKIPPED"} | SMS: ${created.notificationStatus.sms ?? "SKIPPED"}`);
@@ -1794,8 +1881,30 @@ export function PaymentsPage() {
     setFieldErrors({});
   };
 
-  const deletePayment = (id: string) =>
-    setPayments((prev) => prev.filter((p) => p.id !== id));
+  const cancelPayment = async (payment: PaymentRecord) => {
+    if (payment.status === "CANCELLED") return;
+    const reason = window.prompt(`Motif d'annulation du paiement ${payment.transactionNumber}`, "Erreur de saisie ou paiement enregistre par erreur");
+    if (reason === null) return;
+
+    try {
+      const result = await api<{ payment: Partial<PaymentRecord> & { id: string } }>(`/api/payments/${payment.id}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({ reason })
+      });
+      setPayments((prev) => prev.map((item) => (
+        item.id === payment.id
+          ? { ...item, ...result.payment, status: "CANCELLED" }
+          : item
+      )));
+      setApiError("");
+      setNotificationStatus(`Paiement ${payment.transactionNumber} annule. Les compteurs parent, eleve et finance ont ete recalcules.`);
+      if (currentReceipt?.id === payment.id) {
+        setCurrentReceipt((current) => current ? { ...current, ...result.payment, status: "CANCELLED" } : current);
+      }
+    } catch (error) {
+      setApiError(error instanceof Error ? error.message : "Impossible d'annuler ce paiement.");
+    }
+  };
 
   const changeStatus = (id: string, status: PaymentRecord["status"]) =>
     setPayments((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
@@ -2017,7 +2126,7 @@ export function PaymentsPage() {
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-ink-dim block mb-2">Recherche</label>
               <SearchField
-                placeholder="Nom, produit, motif, numero..."
+                placeholder="Ex: Grade 5 paye, parent Kabongo, frais scolaires..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 inputClassName="text-sm"
@@ -2039,7 +2148,7 @@ export function PaymentsPage() {
                 ))}
               </div>
               <p className="mt-2 text-xs text-ink-dim">
-                Recherche intelligente par eleve, parent, numero, motif ou produit scolaire: inscription, uniforme, frais scolaires, transport, cantine...
+                Recherche intelligente par eleve, parent, classe, statut paye/non paye, numero, motif ou produit scolaire.
               </p>
             </div>
             <div>
@@ -2085,19 +2194,22 @@ export function PaymentsPage() {
                       <div className="min-w-[220px]">
                         <p className="font-semibold text-white">{getPaymentSubjectName(p)}</p>
                         {getPaymentParentCaption(p) ? <p className="mt-0.5 text-xs text-ink-dim">Parent: {getPaymentParentCaption(p)}</p> : null}
-                        {p.tuitionAllocationSummary && (
-                          <div className="mt-2 rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-2 text-xs text-emerald-50">
-                            <p className="font-black uppercase tracking-[0.12em]">Repartition {p.tuitionAllocationSummary.mode}</p>
-                            {p.tuitionAllocationSummary.perChild.slice(0, 4).map((child) => (
-                              <p key={child.studentName} className="mt-1">
-                                {child.studentName}: applique {fmtUsd(child.allocated)} - reste {fmtUsd(child.remaining)}
-                              </p>
-                            ))}
-                            {p.tuitionAllocationSummary.perChild.length > 4 && (
-                              <p className="mt-1 text-emerald-100/80">+ {p.tuitionAllocationSummary.perChild.length - 4} autre(s) enfant(s)</p>
-                            )}
-                          </div>
-                        )}
+                        {p.tuitionAllocationSummary && (() => {
+                          const allocationSnapshot = buildReceiptAllocationSnapshot(p.tuitionAllocationSummary);
+                          return (
+                            <div className="mt-2 rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-2 text-xs text-emerald-50">
+                              <p className="font-black uppercase tracking-[0.12em]">{allocationSnapshot.modeLabel}</p>
+                              {allocationSnapshot.perChild.map((child) => (
+                                <p key={child.studentName} className="mt-1">
+                                  {child.studentName}: impute {fmtUsd(child.allocated)} - solde {fmtUsd(child.remaining)}
+                                </p>
+                              ))}
+                              {allocationSnapshot.overflowChildCount > 0 && (
+                                <p className="mt-1 text-emerald-100/80">+ {allocationSnapshot.overflowChildCount} autre(s) dossier(s)</p>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </td>
                     <td className="py-3 px-3 text-ink-dim max-w-[140px] truncate" title={p.reason}>{p.reason}</td>
@@ -2128,17 +2240,20 @@ export function PaymentsPage() {
                         <select
                           value={p.status}
                           onChange={(e) => changeStatus(p.id, e.target.value as PaymentRecord["status"])}
+                          disabled={p.status === "CANCELLED"}
                           className="text-xs rounded px-1.5 py-1 bg-slate-700 border-slate-600 text-white"
                           title="Changer le statut"
                         >
+                          {p.status === "CANCELLED" ? <option value="CANCELLED">Annule</option> : null}
                           {STATUS_OPTIONS.map((o) => (
                             <option key={o.value} value={o.value}>{o.label}</option>
                           ))}
                         </select>
                         <button
-                          title="Supprimer"
-                          onClick={() => { if (window.confirm("Supprimer ce paiement ?")) deletePayment(p.id); }}
-                          className="p-1.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/40 transition-colors"
+                          title="Annuler ce paiement et recalculer les compteurs"
+                          onClick={() => void cancelPayment(p)}
+                          disabled={p.status === "CANCELLED"}
+                          className="p-1.5 rounded bg-red-500/20 text-red-400 hover:bg-red-500/40 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                             <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
@@ -2188,8 +2303,9 @@ export function PaymentsPage() {
      VUE ÉTAT DES PAIEMENTS
   ------------------------------------------------------------------------ */
   if (view === "report") {
+    const normalizedReportSearch = normalizeSearchText(reportSearch);
     const reportPayments = reportSearch
-      ? payments.filter((p) => getPaymentSubjectName(p).toLowerCase().includes(reportSearch.toLowerCase()))
+      ? payments.filter((p) => normalizedReportSearch.split(/\s+/).every((token) => buildPaymentSearchText(p).includes(token)))
       : payments;
 
     const bySubject = reportPayments.reduce<Record<string, PaymentRecord[]>>((acc, p) => {
@@ -2228,14 +2344,14 @@ export function PaymentsPage() {
             />
           </div>
           <button
-            onClick={() => printHtml(buildReportHtml(payments, reportSearch || undefined))}
+            onClick={() => printHtml(buildReportHtml(reportPayments))}
             className="flex items-center gap-2 px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold transition-all active:scale-95 shadow-lg shadow-brand-500/20 whitespace-nowrap"
           >
             <PrintIcon className="w-5 h-5" />
             {reportSearch ? `Imprimer l'état de ${reportSearch}` : "Imprimer l'état général"}
           </button>
           <button
-            onClick={() => exportPaymentsExcel(`etat-paiements-${(reportSearch || "general").toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}`, payments, reportSearch || undefined)}
+            onClick={() => exportPaymentsExcel(`etat-paiements-${(reportSearch || "general").toLowerCase().replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}`, reportPayments)}
             className="flex items-center gap-2 px-6 py-3 rounded-xl border border-emerald-500/40 bg-emerald-500/10 text-emerald-200 hover:bg-emerald-500/20 font-bold transition-all active:scale-95 whitespace-nowrap"
           >
             <ExcelIcon className="w-5 h-5" />
@@ -2445,18 +2561,20 @@ export function PaymentsPage() {
               <label className="text-sm font-semibold text-ink-dim uppercase tracking-wide">
                 Parent destinataire email/SMS
               </label>
-              <select
-                value={form.parentId}
-                onChange={(event) => setParentTarget(event.target.value)}
-                className="w-full"
-              >
-                <option value="">Choisir un parent inscrit</option>
-                {parents.map((parent) => (
-                  <option key={parent.id} value={parent.id}>
-                    {parent.fullName} {parent.phone ? `- ${parent.phone}` : ""}
-                  </option>
-                ))}
-              </select>
+              <div className="max-w-full overflow-hidden rounded-xl">
+                <select
+                  value={form.parentId}
+                  onChange={(event) => setParentTarget(event.target.value)}
+                  className="w-full max-w-full truncate"
+                >
+                  <option value="">Choisir un parent inscrit</option>
+                  {parents.map((parent) => (
+                    <option key={parent.id} value={parent.id}>
+                      {[parent.fullName, parent.phone].filter(Boolean).join(" - ")}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <p className="text-xs text-ink-dim">
                 Les notifications partent uniquement vers ce parent cible.
               </p>
@@ -2666,9 +2784,19 @@ export function PaymentsPage() {
                             </div>
                           )}
                           {allocationMode === "MANUAL" && (
-                            <p className="mt-2 rounded-lg border border-amber-300/20 bg-amber-300/10 p-2 text-xs font-semibold text-amber-50">
-                              Saisissez les montants par ligne, puis cliquez sur Recalculer manuel avant de confirmer.
-                            </p>
+                            <div className="mt-2 rounded-lg border border-amber-300/20 bg-amber-300/10 p-3 text-xs font-semibold text-amber-50">
+                              <p>Saisissez les montants par ligne. Si le total saisi est inferieur au montant recu, le reste sera conserve en avance.</p>
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={fillManualAllocationFromPreview}
+                                  className="rounded-lg border border-amber-200/30 bg-amber-200/10 px-3 py-1.5 text-[11px] font-bold text-amber-50 hover:bg-amber-200/20"
+                                >
+                                  Remplir jusqu'au montant recu
+                                </button>
+                                <span className="font-mono">Saisi {fmtUsd(manualAllocationTotal)} / {fmtUsd(amountNum)}</span>
+                              </div>
+                            </div>
                           )}
                         </div>
                         <div className="text-right text-xs">

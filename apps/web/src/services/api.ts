@@ -25,6 +25,7 @@ const DEMO_EXPENSE_ITEMS_KEY = "edupay_demo_expense_items_v1";
 const DEMO_SALARY_PROFILES_KEY = "edupay_demo_salary_profiles_v1";
 const DEMO_PAYROLL_RUNS_KEY = "edupay_demo_payroll_runs_v1";
 const DEMO_EMPLOYEES_KEY = "edupay_demo_employees_v1";
+const API_RESPONSE_CACHE_PREFIX = "edupay_api_cache_v1:";
 const DEMO_FALLBACK_ENABLED = (import.meta.env.VITE_ENABLE_DEMO_FALLBACK ?? "").trim().toLowerCase() === "true";
 const STATIC_APP_FALLBACK_ENABLED = ["demo", "github-pages", "pages"].includes((import.meta.env.VITE_ENVIRONMENT ?? "").trim().toLowerCase());
 const PLACEHOLDER_API_URL = /MON-BACKEND|example\.com/i.test(API_BASE_URL);
@@ -33,11 +34,10 @@ const LOCAL_API_FALLBACK_ENABLED =
   !PRODUCTION_MODE && (
     DEMO_FALLBACK_ENABLED ||
     STATIC_APP_FALLBACK_ENABLED ||
-    PLACEHOLDER_API_URL ||
-    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(API_BASE_URL)
+    PLACEHOLDER_API_URL
   );
 
-type DemoStudent = { id: string; fullName: string; classId: string; className: string; annualFee: number; createdAt?: string; payments?: DemoPayment[] };
+type DemoStudent = { id: string; fullName: string; gender?: "F" | "M" | "O" | ""; classId: string; className: string; annualFee: number; createdAt?: string; payments?: DemoPayment[] };
 type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
 type DemoTuitionAllocationLine = {
   installmentId: string;
@@ -222,7 +222,7 @@ type DemoEmployee = {
 
 const demoClasses = [
   ...Array.from({ length: 3 }, (_v, index) => ({ id: `section-k${index + 3}`, name: `K${index + 3}` })),
-  ...Array.from({ length: 12 }, (_v, index) => ({ id: `section-grade-${index + 1}`, name: `G${index + 1}` }))
+  ...Array.from({ length: 12 }, (_v, index) => ({ id: `section-grade-${index + 1}`, name: `Grade ${index + 1}` }))
 ];
 
 const seedParents: DemoParent[] = [
@@ -236,8 +236,8 @@ const seedParents: DemoParent[] = [
     email: "rachel.kabongo@kcs.local",
     createdAt: new Date().toISOString(),
     students: [
-      { id: "STU-KCS-ELISE-KABONGO", fullName: "Elise Kabongo", classId: "section-grade-11", className: "Grade 11A", annualFee: 2200, createdAt: "2026-01-12T08:15:00.000Z" },
-      { id: "STU-KCS-DAVID-KABONGO", fullName: "David Kabongo", classId: "section-grade-8", className: "Grade 8B", annualFee: 1800, createdAt: "2026-01-12T08:18:00.000Z" }
+      { id: "STU-KCS-ELISE-KABONGO", fullName: "Elise Kabongo", gender: "F", classId: "section-grade-11", className: "Grade 11A", annualFee: 2200, createdAt: "2026-01-12T08:15:00.000Z" },
+      { id: "STU-KCS-DAVID-KABONGO", fullName: "David Kabongo", gender: "M", classId: "section-grade-8", className: "Grade 8B", annualFee: 1800, createdAt: "2026-01-12T08:18:00.000Z" }
     ]
   },
   {
@@ -250,7 +250,7 @@ const seedParents: DemoParent[] = [
     email: "mireille.mbuyi@kcs.local",
     createdAt: new Date().toISOString(),
     students: [
-      { id: "STU-KCS-AMANI-MBUYI", fullName: "Amani Mbuyi", classId: "section-grade-10", className: "Grade 10A", annualFee: 2400, createdAt: "2026-02-03T09:42:00.000Z" }
+      { id: "STU-KCS-AMANI-MBUYI", fullName: "Amani Mbuyi", gender: "O", classId: "section-grade-10", className: "Grade 10A", annualFee: 2400, createdAt: "2026-02-03T09:42:00.000Z" }
     ]
   }
 ];
@@ -288,6 +288,33 @@ function readJson<T>(key: string, fallback: T): T {
 
 function writeJson(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value));
+}
+
+function isCacheableRequest(path: string, init?: RequestInit) {
+  return path.startsWith("/api/") && (init?.method ?? "GET").toUpperCase() === "GET";
+}
+
+function cacheKeyFor(path: string) {
+  return `${API_RESPONSE_CACHE_PREFIX}${path}`;
+}
+
+function readCachedResponse<T>(path: string): T | null {
+  try {
+    const raw = localStorage.getItem(cacheKeyFor(path));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { value: T };
+    return parsed.value;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedResponse(path: string, value: unknown) {
+  try {
+    localStorage.setItem(cacheKeyFor(path), JSON.stringify({ cachedAt: new Date().toISOString(), value }));
+  } catch {
+    // Storage may be full or unavailable; live API response still wins.
+  }
 }
 
 function buildReadableEntityId(prefix: "PAR" | "STU", fullName: string) {
@@ -1462,7 +1489,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     if (allocationMode === "MANUAL") {
       for (const manual of manualAllocations) {
         const candidate = candidates.find((line) => line.installmentId === manual.installmentId);
-        if (candidate) allocatedByInstallment.set(manual.installmentId, roundAmount(Math.min(manual.amount, candidate.outstandingBefore)));
+        if (candidate) allocatedByInstallment.set(manual.installmentId, roundAmount(Math.max(0, Math.min(manual.amount, candidate.outstandingBefore))));
       }
     } else {
       let remaining = amount;
@@ -1516,7 +1543,8 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
         missingAmount,
         message: buildDemoAllocationMessage({ amount, lines, advanceBalance }),
         warnings: [
-          allocationMode === "MANUAL" && manualTotal !== amount ? "Manual allocation total must equal the payment amount before saving." : "",
+          allocationMode === "MANUAL" && manualTotal > amount ? "Manual allocation total cannot exceed the received payment amount." : "",
+          allocationMode === "MANUAL" && allocatedTotal < amount ? `Manual split leaves $ ${roundAmount(amount - allocatedTotal).toFixed(2)} as advance balance.` : "",
           ...lines.filter((line) => line.allocated > 0 && line.outstandingAfter > 0).map((line) => `${line.studentName} remains underpaid for ${line.label}.`),
           ...lines.filter((line) => line.dueBucket !== "FUTURE" && line.allocated === 0 && line.outstandingBefore > 0).map((line) => `${line.studentName} has an unpaid scheduled obligation: ${line.label}.`)
         ].filter(Boolean),
@@ -1611,21 +1639,25 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const targetStudents = studentId
       ? [studentId]
       : (parents.find((parent) => parent.id === parentId)?.students ?? []).map((student) => student.id);
+    const rawInstallments = Array.isArray(body.installments)
+      ? body.installments.map((row) => ({
+          label: String((row as Record<string, unknown>).label ?? "Installment"),
+          dueDate: String((row as Record<string, unknown>).dueDate ?? new Date().toISOString()),
+          amountDue: Number((row as Record<string, unknown>).amountDue ?? 0),
+          notes: String((row as Record<string, unknown>).notes ?? "")
+        }))
+      : [];
+    const customTotal = Number(body.customTotal ?? 0);
+    const installmentTotal = rawInstallments.reduce((sum, row) => sum + Number(row.amountDue || 0), 0);
+    const reductionAmount = Number(body.reductionAmount ?? 0) || Math.max(customTotal - installmentTotal, 0);
     const agreement = {
       title: String(body.title ?? "Custom owner agreement"),
-      customTotal: Number(body.customTotal ?? 0),
-      reductionAmount: Number(body.reductionAmount ?? 0),
+      customTotal,
+      reductionAmount,
       status: String(body.status ?? "PENDING_APPROVAL"),
       privateNotes: String(body.privateNotes ?? ""),
       notes: String(body.notes ?? ""),
-      installments: Array.isArray(body.installments)
-        ? body.installments.map((row) => ({
-            label: String((row as Record<string, unknown>).label ?? "Installment"),
-            dueDate: String((row as Record<string, unknown>).dueDate ?? new Date().toISOString()),
-            amountDue: Number((row as Record<string, unknown>).amountDue ?? 0),
-            notes: String((row as Record<string, unknown>).notes ?? "")
-          }))
-        : []
+      installments: rawInstallments
     };
 
     for (const targetStudentId of targetStudents) {
@@ -1702,6 +1734,21 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     return { payment, receipt: { id: `receipt-${Date.now()}` }, notificationStatus: { email: "SIMULATED", sms: "SIMULATED" } } as T;
   }
 
+  const cancelPaymentMatch = normalizedPath.match(/^\/api\/payments\/([^/]+)\/cancel$/);
+  if (cancelPaymentMatch && method === "POST") {
+    const payments = getDemoPayments();
+    const payment = payments.find((item) => item.id === cancelPaymentMatch[1]);
+    if (!payment) throw new Error("Paiement introuvable.");
+    const cancelled = { ...payment, status: "CANCELLED" };
+    writeJson(DEMO_PAYMENTS_KEY, payments.map((item) => item.id === payment.id ? cancelled : item));
+    return { payment: cancelled, snapshot: financeProfile(payment.parentId ?? null) } as T;
+  }
+
+  const receiptPrintedMatch = normalizedPath.match(/^\/api\/payments\/([^/]+)\/receipt\/printed$/);
+  if (receiptPrintedMatch && method === "POST") {
+    return { notificationStatus: { email: "SIMULATED", sms: "SIMULATED", dashboard: "SIMULATED" } } as T;
+  }
+
   if (normalizedPath === "/api/shared-directory" && method === "GET") {
     const parents = getDemoParents();
     const teachers = getDemoEmployees();
@@ -1718,6 +1765,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
           studentNumber: student.id,
           externalStudentId: student.id,
           fullName: student.fullName,
+          gender: student.gender || "",
           classId: student.classId,
           className: student.className,
           createdAt: student.createdAt,
@@ -1807,6 +1855,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       updatedStudent = {
         ...currentStudent,
         fullName: String(body.fullName ?? currentStudent.fullName),
+        gender: String(body.gender ?? currentStudent.gender ?? "") as DemoStudent["gender"],
         classId: String(body.classId ?? currentStudent.classId),
         className: className || currentStudent.className,
         annualFee: Number(body.annualFee ?? currentStudent.annualFee)
@@ -1841,6 +1890,22 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const existingParents = getDemoParents();
     const overrides = getDemoFinanceOverrides();
     const parentFullName = String(body.fullName ?? `${body.nom ?? ""} ${body.prenom ?? ""}`).trim() || "Nouveau parent";
+    const normalizedEmail = String(body.email ?? "").trim().toLowerCase();
+    const normalizedPhone = String(body.phone ?? "").replace(/\s+/g, "");
+    const normalizedFullName = parentFullName.toLowerCase();
+    const duplicateParent = existingParents.find((parent) =>
+      parent.email.trim().toLowerCase() === normalizedEmail
+      || parent.phone.replace(/\s+/g, "") === normalizedPhone
+      || parent.fullName.trim().toLowerCase() === normalizedFullName
+    );
+    if (duplicateParent) {
+      const reasons = [
+        duplicateParent.email.trim().toLowerCase() === normalizedEmail ? `email deja utilise (${duplicateParent.email})` : "",
+        duplicateParent.phone.replace(/\s+/g, "") === normalizedPhone ? `telephone deja utilise (${duplicateParent.phone})` : "",
+        duplicateParent.fullName.trim().toLowerCase() === normalizedFullName ? `nom de famille deja enregistre (${duplicateParent.fullName})` : ""
+      ].filter(Boolean);
+      throw new Error(`Cette famille existe deja dans EduPay. Raison: ${reasons.join(", ") || "dossier parent similaire trouve"}.`);
+    }
     const id = buildUniqueDemoEntityId("PAR", parentFullName, existingParents.map((parent) => parent.id));
     const existingStudentIds = existingParents.flatMap((parent) => parent.students.map((student) => student.id));
     const parent: DemoParent = {
@@ -1857,6 +1922,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
         ? (body.students as Array<DemoStudent & { paymentOptionType?: DemoPaymentOptionType }>).map((student) => ({
             ...student,
             id: buildUniqueDemoEntityId("STU", student.fullName || "Student", existingStudentIds),
+            gender: student.gender || "",
             createdAt: student.createdAt || new Date().toISOString(),
             paymentOptionType: student.paymentOptionType ?? "STANDARD_MONTHLY"
           }))
@@ -1989,6 +2055,8 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       }
     });
   } catch {
+    const cached = isCacheableRequest(path, init) ? readCachedResponse<T>(path) : null;
+    if (cached !== null) return cached;
     if (LOCAL_API_FALLBACK_ENABLED && canFallbackToDemo(path, init)) return demoApi<T>(path, init);
     throw new Error("Impossible de joindre l'API. Verifiez que le backend est demarre.");
   }
@@ -2001,6 +2069,11 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       clearLocalSession();
       window.location.replace(`${import.meta.env.BASE_URL}#/login`);
       throw new Error("Session expiree. Veuillez vous reconnecter.");
+    }
+
+    if (isCacheableRequest(path, init) && response.status >= 500) {
+      const cached = readCachedResponse<T>(path);
+      if (cached !== null) return cached;
     }
 
     if (((LOCAL_API_FALLBACK_ENABLED && canFallbackToDemo(path, init)) || canUseParentSessionFallback(path, init)) && (response.status >= 500 || response.status === 404)) {
@@ -2020,7 +2093,9 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (!text) return undefined as T;
 
   try {
-    return JSON.parse(text) as T;
+    const parsed = JSON.parse(text) as T;
+    if (isCacheableRequest(path, init)) writeCachedResponse(path, parsed);
+    return parsed;
   } catch {
     return undefined as T;
   }

@@ -28,6 +28,7 @@ async function generateUniqueParentAccessCode(tx: typeof prisma) {
 const studentInputSchema = z.object({
   id: z.string().optional(),
   fullName: z.string().min(1),
+  gender: z.enum(["F", "M", "O", ""]).optional().default(""),
   classId: z.string().min(1),
   annualFee: z.union([z.string(), z.number()]).transform((v) => parseFloat(String(v))),
   paymentOptionType: z.nativeEnum(PaymentOptionType).optional().default(PaymentOptionType.STANDARD_MONTHLY)
@@ -121,15 +122,45 @@ async function generateUniqueStudentId(tx: typeof prisma, schoolId: string, full
   return `${baseId}-${Date.now().toString().slice(-6)}`;
 }
 
+function normalizeMessageLanguage(language?: string | null): "fr" | "en" {
+  return String(language ?? "fr").toLowerCase().startsWith("en") ? "en" : "fr";
+}
+
 function buildParentWelcomeMessages(parent: any, temporaryPassword: string, loginEmail: string) {
+  const language = normalizeMessageLanguage(parent.preferredLanguage);
   const students = (parent.students || []).map((student: any) => ({
     fullName: student.fullName,
-    className: student.class?.name ?? student.className ?? student.classId ?? "Classe non renseignee",
+    className: student.class?.name ?? student.className ?? student.classId ?? (language === "en" ? "Class not provided" : "Classe non renseignee"),
     annualFee: Number(student.annualFee || 0)
   }));
   const studentLines = students.length
-    ? students.map((student: any) => `- ${student.fullName} | Classe: ${student.className} | Frais annuels: $ ${student.annualFee.toLocaleString("en-US", { maximumFractionDigits: 2 })}`).join("\n")
-    : "- Aucun eleve rattache pour le moment";
+    ? students.map((student: any) => language === "en"
+      ? `- ${student.fullName} | Class: ${student.className} | Annual fees: $ ${student.annualFee.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+      : `- ${student.fullName} | Classe: ${student.className} | Frais annuels: $ ${student.annualFee.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
+    ).join("\n")
+    : language === "en" ? "- No linked student yet" : "- Aucun eleve rattache pour le moment";
+
+  if (language === "en") {
+    const subject = "Your EduPay access";
+    const emailBody = [
+      `Hello ${parent.fullName},`,
+      "",
+      "Your EduPay parent account has just been created by the school administration.",
+      "",
+      `Parent ID: ${parent.id}`,
+      `Access code: ${parent.accessCode || "Not provided"}`,
+      `Phone: ${parent.phone || "Not provided"}`,
+      `Login identifier: ${loginEmail}`,
+      `Temporary password: ${temporaryPassword}`,
+      "",
+      "Linked children:",
+      studentLines,
+      "",
+      "For your security, please sign in and change this temporary password from your profile."
+    ].join("\n");
+    const smsBody = `EduPay: account created for ${parent.fullName}. Code: ${parent.accessCode || "N/A"}. Login: ${loginEmail}. Temporary password: ${temporaryPassword}. Change it after signing in.`;
+    return { subject, emailBody, smsBody };
+  }
 
   const subject = "Vos acces EduPay";
   const emailBody = [
@@ -256,15 +287,29 @@ function enrichParent(p: any) {
     nom: p.nom || parts[0] || "",
     postnom: p.postnom || parts[1] || "",
     prenom: p.prenom || parts[2] || "",
-    students: (p.students || []).map((s: any) => ({
-      ...s,
-      className: s.class?.name ?? s.className ?? "",
-      paymentOptionType: s.planAssignments?.[0]?.paymentOptionType ?? s.paymentOptionType ?? null,
-      paymentOptionLabel: s.planAssignments?.[0]?.paymentOptionType
-        ? getPaymentOptionLabel(s.planAssignments[0].paymentOptionType)
-        : s.paymentOptionLabel ?? "",
-      tuitionPlanName: s.planAssignments?.[0]?.tuitionPlan?.name ?? s.tuitionPlanName ?? ""
-    }))
+    students: (p.students || []).map((s: any) => {
+      const assignment = s.planAssignments?.[0] ?? null;
+      const netAnnualFee = Number(
+        assignment?.remainingBalanceSnapshot ??
+        assignment?.expectedTotal ??
+        assignment?.tuitionPlan?.finalAmount ??
+        s.annualFee ??
+        0
+      );
+      return {
+        ...s,
+        createdAt: s.createdAt ?? p.createdAt ?? new Date(0),
+        annualFee: netAnnualFee,
+        grossAnnualFee: Number(s.annualFee || 0),
+        reductionTotal: Number(assignment?.reductionTotal ?? assignment?.tuitionPlan?.reductionAmount ?? 0),
+        className: s.class?.name ?? s.className ?? "",
+        paymentOptionType: assignment?.paymentOptionType ?? s.paymentOptionType ?? null,
+        paymentOptionLabel: assignment?.paymentOptionType
+          ? getPaymentOptionLabel(assignment.paymentOptionType)
+          : s.paymentOptionLabel ?? "",
+        tuitionPlanName: assignment?.tuitionPlan?.name ?? s.tuitionPlanName ?? ""
+      };
+    })
   };
 }
 
@@ -283,9 +328,75 @@ function fallbackClassNameFromId(classId: string) {
   const normalized = classId.trim().toLowerCase();
   const kindergarten = normalized.match(/k([3-5])/);
   if (kindergarten) return `K${kindergarten[1]}`;
-  const grade = normalized.match(/grade[-\s]?([1-9]|1[0-2])/);
+  const grade = normalized.match(/(?:section-)?(?:grade|g)[-\s]?([1-9]|1[0-2])/);
   if (grade) return `Grade ${Number(grade[1])}`;
   return classId;
+}
+
+function fallbackClassLevelFromId(classId: string) {
+  const normalized = classId.trim().toLowerCase();
+  if (/k[3-5]/.test(normalized)) return "Kindergarten";
+  if (/(?:section-)?(?:grade|g)[-\s]?([1-9]|1[0-2])/.test(normalized)) return "Grade";
+  return "Custom";
+}
+
+function isStandardFallbackClassId(classId: string) {
+  const normalized = classId.trim().toLowerCase();
+  return /^section-k[3-5]$/.test(normalized)
+    || /^k[3-5]$/.test(normalized)
+    || /^(?:section-)?(?:grade|g)[-\s]?([1-9]|1[0-2])$/.test(normalized);
+}
+
+async function resolveStudentClassIds(
+  schoolId: string,
+  students: Array<{ classId: string }>
+) {
+  const classIdResolution = new Map<string, string>();
+  const rawClassIds = [...new Set(students.map((student) => student.classId.trim()).filter(Boolean))];
+  if (rawClassIds.length === 0) return classIdResolution;
+
+  rawClassIds.forEach((classId) => classIdResolution.set(classId, classId));
+
+  const existingById = await prisma.class.findMany({
+    where: { schoolId, id: { in: rawClassIds } },
+    select: { id: true, name: true }
+  });
+  const existingIdSet = new Set(existingById.map((classRow) => classRow.id));
+
+  for (const classInput of rawClassIds.filter((classId) => !existingIdSet.has(classId))) {
+    const className = fallbackClassNameFromId(classInput);
+    const classLevel = fallbackClassLevelFromId(classInput);
+    const existingByName = await prisma.class.findFirst({
+      where: { schoolId, name: { equals: className, mode: "insensitive" } },
+      select: { id: true }
+    });
+
+    if (existingByName) {
+      classIdResolution.set(classInput, existingByName.id);
+      continue;
+    }
+
+    if (!isStandardFallbackClassId(classInput)) {
+      throw new Error("Une ou plusieurs classes sont introuvables.");
+    }
+
+    const created = await prisma.class.create({
+      data: {
+        id: classInput.toLowerCase().startsWith("section-")
+          ? classInput
+          : className.startsWith("Grade ")
+            ? `section-grade-${className.replace("Grade ", "")}`
+            : `section-${className.toLowerCase()}`,
+        schoolId,
+        name: className,
+        level: classLevel
+      },
+      select: { id: true }
+    });
+    classIdResolution.set(classInput, created.id);
+  }
+
+  return classIdResolution;
 }
 
 function splitPersonName(fullName: string) {
@@ -492,17 +603,44 @@ parentRouter.put("/me/photo", authorize("PARENT"), async (req: AuthenticatedRequ
 parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
   const payload = parentSchema.parse(req.body);
   const temporaryPassword = generateTemporaryPassword();
+  const normalizedEmail = payload.email.trim().toLowerCase();
+  const normalizedPhone = payload.phone.replace(/\s+/g, "");
+  const normalizedFullName = payload.fullName.trim().toLowerCase();
+
+  const existingParent = await prisma.parent.findFirst({
+    where: {
+      schoolId: req.user!.schoolId,
+      OR: [
+        { email: { equals: normalizedEmail, mode: "insensitive" } },
+        { phone: normalizedPhone },
+        { fullName: { equals: normalizedFullName, mode: "insensitive" } }
+      ]
+    },
+    select: { id: true, fullName: true, email: true, phone: true }
+  }).catch(() => null);
+
+  if (existingParent) {
+    const reasons = [
+      existingParent.email?.toLowerCase() === normalizedEmail ? `email deja utilise (${existingParent.email})` : "",
+      existingParent.phone?.replace(/\s+/g, "") === normalizedPhone ? `telephone deja utilise (${existingParent.phone})` : "",
+      existingParent.fullName.trim().toLowerCase() === normalizedFullName ? `nom de famille deja enregistre (${existingParent.fullName})` : ""
+    ].filter(Boolean);
+    return res.status(409).json({
+      code: "PARENT_ALREADY_EXISTS",
+      message: `Cette famille existe deja dans EduPay. Raison: ${reasons.join(", ") || "dossier parent similaire trouve"}. Ouvrez le dossier existant au lieu d'en creer un nouveau.`,
+      existingParent
+    });
+  }
 
   if (orbitRegistryIsEnabled()) {
     try {
       const accessCode = await generateUniqueParentAccessCode(prisma);
-      const classRows = await prisma.class.findMany({
-        where: {
-          schoolId: req.user!.schoolId,
-          id: { in: payload.students.map((student) => student.classId) },
-        },
+      const classIdResolution = await resolveStudentClassIds(req.user!.schoolId, payload.students);
+      const resolvedClassRows = await prisma.class.findMany({
+        where: { schoolId: req.user!.schoolId, id: { in: [...new Set(classIdResolution.values())] } },
+        select: { id: true, name: true }
       });
-      const classNameById = new Map(classRows.map((classRow) => [classRow.id, classRow.name]));
+      const classNameById = new Map(resolvedClassRows.map((classRow) => [classRow.id, classRow.name]));
       const { firstName, lastName } = splitPersonName(payload.fullName);
 
       const orbitResult = await createOrbitParent({
@@ -515,7 +653,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
         mustChangePassword: true,
         students: payload.students.map((student) => ({
           fullName: student.fullName,
-          className: classNameById.get(student.classId) || fallbackClassNameFromId(student.classId),
+          className: classNameById.get(classIdResolution.get(student.classId) ?? student.classId) || fallbackClassNameFromId(student.classId),
           mustChangePassword: true,
         })),
       });
@@ -551,7 +689,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       const unmatchedLocalStudents = [...(localParent?.students || [])];
       const createdStudents: Array<{ id: string; fullName: string; annualFee: number; paymentOptionType: PaymentOptionType }> = [];
       for (const requestedStudent of payload.students) {
-        const expectedClassName = classNameById.get(requestedStudent.classId) || fallbackClassNameFromId(requestedStudent.classId);
+        const expectedClassName = classNameById.get(classIdResolution.get(requestedStudent.classId) ?? requestedStudent.classId) || fallbackClassNameFromId(requestedStudent.classId);
         const matchIndex = unmatchedLocalStudents.findIndex((student) => (
           student.fullName.trim().toLowerCase() === requestedStudent.fullName.trim().toLowerCase()
           && student.class.name === expectedClassName
@@ -561,7 +699,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
         const [student] = unmatchedLocalStudents.splice(fallbackIndex, 1);
         await prisma.student.update({
           where: { id: student.id },
-          data: { annualFee: requestedStudent.annualFee },
+          data: { annualFee: requestedStudent.annualFee, gender: requestedStudent.gender || null },
         });
         createdStudents.push({
           id: student.id,
@@ -602,12 +740,15 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
     } catch (error) {
       console.error("Orbit parent create failed", error);
       return res.status(502).json({
-        message: "EduPay n'a pas pu creer cette famille dans le registre partage Orbit.",
+        message: error instanceof Error
+          ? `EduPay n'a pas pu creer cette famille dans le registre partage Orbit: ${error.message}`
+          : "EduPay n'a pas pu creer cette famille dans le registre partage Orbit.",
       });
     }
   }
 
   try {
+    const classIdResolution = await resolveStudentClassIds(req.user!.schoolId, payload.students);
     const parent = await prisma.$transaction(async (tx) => {
       const passwordHash = await bcrypt.hash(temporaryPassword, 10);
       const parentId = await generateUniqueParentId(tx as typeof prisma, req.user!.schoolId, payload.fullName);
@@ -641,7 +782,8 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
           data: {
             id: studentId,
             fullName: st.fullName,
-            classId: st.classId,
+            gender: st.gender || null,
+            classId: classIdResolution.get(st.classId) ?? st.classId,
             annualFee: st.annualFee,
             parentId: p.id,
             schoolId: req.user!.schoolId
@@ -672,6 +814,9 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
     });
   } catch (error) {
     console.error("DB unavailable on parent create", error);
+    if (error instanceof Error && error.message.includes("classes sont introuvables")) {
+      return res.status(404).json({ message: error.message });
+    }
     if (!demoDataFallbackEnabled()) {
       return res.status(503).json({ message: "Creation parent temporairement indisponible. Verifiez la base de donnees." });
     }
@@ -690,6 +835,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       students: payload.students.map((s, i) => ({
         id: `${buildReadableEntityId("STU", s.fullName)}-${String(i + 1).padStart(2, "0")}`,
         fullName: s.fullName,
+        gender: s.gender || "",
         classId: s.classId,
         className: "Classe",
         annualFee: s.annualFee,
@@ -779,18 +925,7 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
     });
     if (!parentExists) return res.status(404).json({ message: "Parent non trouve" });
 
-    const classIds = payload.students.map((student) => student.classId);
-    if (classIds.length) {
-      const classCount = await prisma.class.count({
-        where: {
-          schoolId: req.user!.schoolId,
-          id: { in: classIds }
-        }
-      });
-      if (classCount !== new Set(classIds).size) {
-        return res.status(404).json({ message: "Une ou plusieurs classes sont introuvables." });
-      }
-    }
+    const classIdResolution = await resolveStudentClassIds(req.user!.schoolId, payload.students);
 
     const updatedStudentAssignments: Array<{ id: string; fullName: string; annualFee: number; paymentOptionType: PaymentOptionType }> = [];
     await prisma.$transaction(async (tx) => {
@@ -829,7 +964,7 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
             where: { id: student.id },
             data: {
               fullName: student.fullName,
-              classId: student.classId,
+              classId: classIdResolution.get(student.classId) ?? student.classId,
               annualFee: student.annualFee
             },
             select: { id: true, fullName: true, annualFee: true }
@@ -843,7 +978,7 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
           data: {
             id: studentId,
             fullName: student.fullName,
-            classId: student.classId,
+            classId: classIdResolution.get(student.classId) ?? student.classId,
             annualFee: student.annualFee,
             parentId: id,
             schoolId: req.user!.schoolId
@@ -867,6 +1002,9 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
     return res.json(enrichParent({ ...parent, nom: payload.nom, postnom: payload.postnom, prenom: payload.prenom }));
   } catch (error) {
     console.error("DB unavailable on parent update", error);
+    if (error instanceof Error && error.message.includes("classes sont introuvables")) {
+      return res.status(404).json({ message: error.message });
+    }
     if (!demoDataFallbackEnabled()) {
       return res.status(503).json({ message: "Mise a jour parent temporairement indisponible." });
     }

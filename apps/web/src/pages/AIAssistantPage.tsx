@@ -27,7 +27,14 @@ type FinanceOverview = {
 };
 
 type Student = {
+  id?: string;
+  fullName?: string;
+  className?: string;
   annualFee?: number;
+  expectedTotal?: number;
+  paid?: number;
+  balance?: number;
+  paymentStatus?: string;
 };
 
 type Parent = {
@@ -42,6 +49,7 @@ type Payment = {
   id: string;
   parentId?: string;
   parentFullName?: string;
+  studentNames?: string[];
   amount: number;
   status: string;
   createdAt?: string;
@@ -63,7 +71,7 @@ type AssistantContext = {
       paymentBehaviorScore: number;
       completionRate: number;
     };
-    students: Array<{ id: string; fullName: string; expectedTotal: number; paid: number; balance: number }>;
+    students: Array<{ id: string; fullName: string; className?: string | null; expectedTotal: number; paid: number; balance: number }>;
     alerts: Array<{ id: string; title: string; severity: string }>;
   }>;
 };
@@ -89,7 +97,15 @@ function asNumber(value: unknown) {
 }
 
 function normalize(value: string | undefined) {
-  return (value ?? "").trim().toLowerCase();
+  return (value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function hasAny(value: string, needles: string[]) {
+  return needles.some((needle) => value.includes(needle));
 }
 
 function parseDate(payment: Payment) {
@@ -229,11 +245,143 @@ function findMentionedParent(query: string, context: AssistantContext) {
   });
 }
 
+function buildStudentPaymentRows(context: AssistantContext) {
+  const parentById = new Map(context.parents.map((parent) => [parent.id, parent]));
+  const paidByStudentName = new Map<string, number>();
+  for (const payment of context.payments.filter((item) => item.status === "COMPLETED")) {
+    for (const studentName of payment.studentNames ?? []) {
+      const key = normalize(studentName);
+      if (key) paidByStudentName.set(key, (paidByStudentName.get(key) ?? 0) + payment.amount);
+    }
+  }
+
+  const rows = context.parentProfiles.length > 0
+    ? context.parentProfiles.flatMap((profile) => {
+        const parentRecord = parentById.get(profile.parent.id);
+        return profile.students.map((student) => {
+          const parentStudent = parentRecord?.students?.find((item) => item.id === student.id || normalize(item.fullName) === normalize(student.fullName));
+          const expected = asNumber(student.expectedTotal) || asNumber(parentStudent?.expectedTotal) || asNumber(parentStudent?.annualFee);
+          const paid = asNumber(student.paid) || asNumber(parentStudent?.paid) || asNumber(paidByStudentName.get(normalize(student.fullName)));
+          const balance = Math.max(asNumber(student.balance) || expected - paid, 0);
+          return {
+            id: student.id,
+            name: student.fullName,
+            parentName: profile.parent.fullName,
+            parentPhone: profile.parent.phone,
+            parentEmail: profile.parent.email,
+            className: student.className || parentStudent?.className || "Classe non renseignee",
+            expected,
+            paid,
+            balance,
+            status: parentStudent?.paymentStatus
+          };
+        });
+      })
+    : context.parents.flatMap((parent) => (parent.students ?? []).map((student) => {
+        const expected = asNumber(student.expectedTotal) || asNumber(student.annualFee);
+        const paid = asNumber(student.paid) || asNumber(paidByStudentName.get(normalize(student.fullName)));
+        const balance = Math.max(asNumber(student.balance) || expected - paid, 0);
+        return {
+          id: student.id,
+          name: student.fullName ?? "Eleve sans nom",
+          parentName: parent.fullName,
+          parentPhone: parent.phone,
+          parentEmail: parent.email,
+          className: student.className ?? "Classe non renseignee",
+          expected,
+          paid,
+          balance,
+          status: student.paymentStatus
+        };
+      }));
+
+  return rows.sort((a, b) => b.balance - a.balance || a.className.localeCompare(b.className) || a.name.localeCompare(b.name));
+}
+
+function extractMentionedClass(query: string, rows: ReturnType<typeof buildStudentPaymentRows>) {
+  const q = normalize(query);
+  const classNames = [...new Set(rows.map((row) => row.className).filter(Boolean))];
+  return classNames.find((className) => {
+    const normalized = normalize(className);
+    return normalized && (q.includes(normalized) || q.includes(`classe ${normalized}`));
+  });
+}
+
+function formatStudentPaymentLine(row: ReturnType<typeof buildStudentPaymentRows>[number]) {
+  const contact = row.parentPhone || row.parentEmail || "contact non renseigne";
+  return `${row.name} - ${row.className} - parent ${row.parentName} (${contact}) - attendu ${USD.format(row.expected)}, paye ${USD.format(row.paid)}, reste ${USD.format(row.balance)}.`;
+}
+
 function localAssistantReply(query: string, lang: "fr" | "en", context: AssistantContext): AssistantResponse {
   const q = normalize(query);
   const insights = buildInsights(context);
   const topParent = insights.parentsWithDebt[0];
   const mentionedParent = findMentionedParent(query, context);
+  const studentRows = buildStudentPaymentRows(context);
+  const mentionedClass = extractMentionedClass(query, studentRows);
+  const asksForStudentList = hasAny(q, ["liste", "list", "eleve", "student", "classe", "class"]);
+  const asksForUnpaid = hasAny(q, [
+    "impay",
+    "non pay",
+    "pas pay",
+    "pas encore pay",
+    "n ont pas pay",
+    "n'ont pas pay",
+    "sans paiement",
+    "unpaid",
+    "not paid",
+    "did not pay",
+    "didnt pay",
+    "debt",
+    "retard"
+  ]);
+
+  if (asksForUnpaid && asksForStudentList) {
+    const wantsNoPaymentYet = hasAny(q, ["pas encore pay", "jamais pay", "sans paiement", "not paid yet", "no payment"]);
+    const scopedRows = mentionedClass
+      ? studentRows.filter((row) => normalize(row.className) === normalize(mentionedClass))
+      : studentRows;
+    const targetRows = scopedRows.filter((row) => wantsNoPaymentYet ? row.paid <= 0 : row.balance > 0);
+    const totalBalance = targetRows.reduce((sum, row) => sum + row.balance, 0);
+    const totalExpected = targetRows.reduce((sum, row) => sum + row.expected, 0);
+    const totalPaid = targetRows.reduce((sum, row) => sum + row.paid, 0);
+    const shownRows = targetRows.slice(0, 25).map(formatStudentPaymentLine);
+    const hiddenCount = Math.max(0, targetRows.length - shownRows.length);
+
+    return {
+      answer: lang === "fr"
+        ? targetRows.length > 0
+          ? `Voici la liste precise des eleves ${wantsNoPaymentYet ? "sans aucun paiement enregistre" : "qui ont encore un solde a payer"}${mentionedClass ? ` dans la classe ${mentionedClass}` : ""}.`
+          : `Aucun eleve ${wantsNoPaymentYet ? "sans paiement enregistre" : "avec solde restant"} n'apparait dans les donnees actuellement chargees${mentionedClass ? ` pour la classe ${mentionedClass}` : ""}.`
+        : targetRows.length > 0
+          ? `Here is the precise list of students ${wantsNoPaymentYet ? "with no recorded payment yet" : "who still have a balance to pay"}${mentionedClass ? ` in ${mentionedClass}` : ""}.`
+          : `No student ${wantsNoPaymentYet ? "with no recorded payment" : "with remaining balance"} appears in the currently loaded data${mentionedClass ? ` for ${mentionedClass}` : ""}.`,
+      facts: lang === "fr"
+        ? [
+            `${targetRows.length} eleve(s) concerne(s)${mentionedClass ? ` dans ${mentionedClass}` : ""}.`,
+            `Total attendu sur cette selection : ${USD.format(totalExpected)}.`,
+            `Total deja encaisse : ${USD.format(totalPaid)}.`,
+            `Solde restant : ${USD.format(totalBalance)}.`,
+            ...(shownRows.length > 0 ? shownRows : ["Aucune ligne eleve a afficher."]),
+            ...(hiddenCount > 0 ? [`${hiddenCount} autre(s) eleve(s) non affiche(s) dans cette synthese.`] : [])
+          ]
+        : [
+            `${targetRows.length} student(s) concerned${mentionedClass ? ` in ${mentionedClass}` : ""}.`,
+            `Expected total for this selection: ${USD.format(totalExpected)}.`,
+            `Already collected: ${USD.format(totalPaid)}.`,
+            `Remaining balance: ${USD.format(totalBalance)}.`,
+            ...(shownRows.length > 0 ? shownRows : ["No student row to display."]),
+            ...(hiddenCount > 0 ? [`${hiddenCount} other student(s) not shown in this summary.`] : [])
+          ],
+      actions: lang === "fr"
+        ? ["Relancer les parents de cette liste avec le montant exact.", "Verifier les paiements PENDING avant sanction.", "Exporter ou filtrer par classe pour traitement financier."]
+        : ["Follow up with these parents using the exact amount.", "Check PENDING payments before escalation.", "Export or filter by class for finance processing."],
+      confidence: lang === "fr" ? FR_CONFIDENCE : EN_CONFIDENCE,
+      suggestions: lang === "fr"
+        ? ["Afficher les parents avec solde restant", "Lister les paiements en attente", "Voir les cas critiques par classe"]
+        : ["Show parents with remaining balance", "List pending payments", "Show critical cases by class"]
+    };
+  }
 
   if (mentionedParent) {
     const parentDebt = insights.parentsWithDebt.find((parent) => parent.id === mentionedParent.id);
@@ -447,6 +595,27 @@ function isGenericAssistantResponse(data: AssistantResponse | null | undefined) 
     answer.includes("detailed analytics are available");
 }
 
+function isPrecisionFinanceQuestion(query: string) {
+  const q = normalize(query);
+  const asksForList = hasAny(q, ["liste", "list", "eleve", "student", "parent", "classe", "class", "qui"]);
+  const asksForPaymentState = hasAny(q, [
+    "impay",
+    "non pay",
+    "pas pay",
+    "pas encore pay",
+    "n ont pas pay",
+    "n'ont pas pay",
+    "sans paiement",
+    "solde",
+    "reste",
+    "unpaid",
+    "not paid",
+    "balance",
+    "debt"
+  ]);
+  return asksForList && asksForPaymentState;
+}
+
 function ResponseSections({ response }: { response: { answer?: string; text?: string; facts?: string[]; actions?: string[]; confidence?: string } }) {
   const answer = response.answer ?? response.text ?? "";
   return (
@@ -530,7 +699,7 @@ export function AIAssistantPage() {
         method: "POST",
         body: JSON.stringify({ query: askedQuestion, context })
       });
-      const finalResult = isGenericAssistantResponse(data) ? localResult : data;
+      const finalResult = isGenericAssistantResponse(data) || isPrecisionFinanceQuestion(askedQuestion) ? localResult : data;
       setResult(finalResult);
       setMessages((current) => [...current, {
         id: `assistant-${Date.now()}`,
@@ -541,7 +710,7 @@ export function AIAssistantPage() {
         actions: finalResult.actions,
         confidence: finalResult.confidence
       }]);
-      if (isGenericAssistantResponse(data)) setError(t("aiUnavailable"));
+      if (isGenericAssistantResponse(data)) setError(null);
     } catch {
       setResult(localResult);
       setMessages((current) => [...current, {
@@ -553,7 +722,7 @@ export function AIAssistantPage() {
         actions: localResult.actions,
         confidence: localResult.confidence
       }]);
-      setError(t("aiUnavailable"));
+      setError(null);
     } finally {
       setLoading(false);
       setQuery("");

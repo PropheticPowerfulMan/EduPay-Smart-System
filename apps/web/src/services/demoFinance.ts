@@ -759,7 +759,7 @@ function buildAgreementStudentSnapshot(parent: DemoParent, student: DemoStudent,
     reductions: [{
       id: `demo-agreement-reduction-${student.id}`,
       source: "AGREEMENT",
-      title: `${agreement.title} reduction`,
+      title: `Bourse - ${agreement.title}`,
       amount: roundCurrency(agreement.reductionAmount),
       percentage: null,
       parentId: parent.id,
@@ -768,7 +768,7 @@ function buildAgreementStudentSnapshot(parent: DemoParent, student: DemoStudent,
       academicYearName: ACADEMIC_YEAR.name,
       gradeGroup,
       paymentOptionType: "SPECIAL_OWNER_AGREEMENT",
-      scope: "AGREEMENT",
+      scope: "MANUAL",
       effectiveDate: ACADEMIC_YEAR.startDate,
       studentName: student.fullName
     }],
@@ -978,7 +978,10 @@ function groupCurrencyTotals<T extends string>(entries: Array<{ key: T; amount: 
 export function buildDemoReductionAnalytics(parents: DemoParent[], payments: DemoPayment[], periodType: ReportType = "CUMULATIVE") {
   const bounds = resolvePeriodBounds(periodType);
   const reductions: DemoReduction[] = parents
-    .flatMap((parent) => buildDemoParentFinanceProfile(parent.id, parents, payments).reductions)
+    .flatMap((parent) => buildDemoParentFinanceProfile(parent.id, parents, payments).reductions.map((reduction) => ({
+      ...reduction,
+      parentName: parent.fullName
+    })))
     .filter((reduction) => {
       const effectiveDate = new Date(String(reduction.effectiveDate));
       return effectiveDate >= bounds.start && effectiveDate <= bounds.end;
@@ -987,6 +990,11 @@ export function buildDemoReductionAnalytics(parents: DemoParent[], payments: Dem
   const byScope = groupCurrencyTotals(reductions.map((reduction) => ({ key: String(reduction.scope ?? "UNKNOWN"), amount: Number(reduction.amount || 0) })));
   const byGradeGroup = groupCurrencyTotals(reductions.map((reduction) => ({ key: String(reduction.gradeGroup ?? "CUSTOM"), amount: Number(reduction.amount || 0) })));
   const byPaymentOption = groupCurrencyTotals(reductions.map((reduction) => ({ key: String(reduction.paymentOptionType ?? "CUSTOM"), amount: Number(reduction.amount || 0) })));
+  const scholarships = reductions.filter((reduction) =>
+    reduction.scope === "MANUAL" ||
+    reduction.title.toLowerCase().includes("bourse") ||
+    reduction.title.toLowerCase().includes("scholarship")
+  );
 
   return {
     academicYear: ACADEMIC_YEAR.name,
@@ -994,9 +1002,14 @@ export function buildDemoReductionAnalytics(parents: DemoParent[], payments: Dem
     periodLabel: bounds.label,
     totalReductions: roundCurrency(reductions.reduce((sum, reduction) => sum + Number(reduction.amount || 0), 0)),
     reductionCount: reductions.length,
+    scholarshipTotal: roundCurrency(reductions.reduce((sum, reduction) => sum + Number(reduction.amount || 0), 0)),
+    scholarshipCount: reductions.length,
+    manualScholarshipTotal: roundCurrency(scholarships.reduce((sum, reduction) => sum + Number(reduction.amount || 0), 0)),
+    manualScholarshipCount: scholarships.length,
     byScope: byScope.map((entry) => ({ scope: entry.key, amount: entry.amount })),
     byGradeGroup: byGradeGroup.map((entry) => ({ gradeGroup: entry.key, amount: entry.amount })),
     byPaymentOption: byPaymentOption.map((entry) => ({ paymentOptionType: entry.key, amount: entry.amount })),
+    scholarships,
     reductions
   };
 }

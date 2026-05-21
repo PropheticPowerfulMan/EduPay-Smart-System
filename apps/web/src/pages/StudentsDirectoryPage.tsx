@@ -198,7 +198,7 @@ const SCHOOL_SECTIONS: SchoolClass[] = [
     const name = `K${index + 3}`;
     return { id: `section-${name.toLowerCase()}`, name };
   }),
-  ...Array.from({ length: 12 }, (_v, index) => ({ id: `section-grade-${index + 1}`, name: `G${index + 1}` }))
+  ...Array.from({ length: 12 }, (_v, index) => ({ id: `section-grade-${index + 1}`, name: `Grade ${index + 1}` }))
 ];
 
 function getCanonicalSchoolClass(entry: SchoolClass): SchoolClass | null {
@@ -207,7 +207,7 @@ function getCanonicalSchoolClass(entry: SchoolClass): SchoolClass | null {
   if (kindergarten) return { ...entry, name: `K${kindergarten[1]}` };
 
   const grade = normalized.match(/\b(?:grade|g)\s*([1-9]|1[0-2])\b/) || entry.id.toLowerCase().match(/\b(?:grade|g)[-\s]*([1-9]|1[0-2])\b/);
-  if (grade) return { ...entry, name: `G${Number(grade[1])}` };
+  if (grade) return { ...entry, name: `Grade ${Number(grade[1])}` };
 
   return null;
 }
@@ -722,7 +722,7 @@ function StudentDetailModal({ student, parent, onClose }: { student: SharedDirec
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-6xl rounded-2xl border border-white/10 bg-slate-950 p-5 shadow-2xl">
+      <div className="edupay-scrollbar relative w-full max-w-6xl rounded-2xl border border-white/10 glass p-5 shadow-2xl">
         <button type="button" onClick={onClose} className="absolute right-4 top-4 rounded-lg p-2 text-ink-dim hover:bg-white/10 hover:text-white">
           <X className="h-4 w-4" />
         </button>
@@ -985,7 +985,7 @@ function StudentEditModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl rounded-2xl border border-white/10 bg-slate-950 p-5 shadow-2xl">
+      <div className="relative w-full max-w-2xl rounded-2xl border border-white/10 glass p-5 shadow-2xl">
         <button type="button" onClick={onClose} className="absolute right-4 top-4 rounded-lg p-2 text-ink-dim hover:bg-white/10 hover:text-white">
           <X className="h-4 w-4" />
         </button>
@@ -1024,7 +1024,7 @@ function StudentDeleteModal({ student, deleting, onConfirm, onClose }: { student
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md rounded-2xl border border-danger/30 bg-slate-950 p-5 shadow-2xl">
+      <div className="relative w-full max-w-md rounded-2xl border border-danger/30 glass p-5 shadow-2xl">
         <h2 className="font-display text-xl font-bold text-white">Supprimer l'eleve</h2>
         <p className="mt-3 text-sm text-ink-dim">Cette action supprimera {student.fullName} de la liste des eleves.</p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">

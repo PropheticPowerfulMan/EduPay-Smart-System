@@ -69,9 +69,15 @@ type RevenueOverviewResponse = {
   reductionStatistics: {
     totalReductions: number;
     reductionCount: number;
+    scholarshipTotal?: number;
+    scholarshipCount?: number;
+    manualScholarshipTotal?: number;
+    manualScholarshipCount?: number;
     byScope: Array<{ scope: string; amount: number }>;
     byGradeGroup: Array<{ gradeGroup: string; amount: number }>;
     byPaymentOption: Array<{ paymentOptionType: string; amount: number }>;
+    scholarships?: Array<{ id: string; title: string; amount: number; parentName?: string | null; studentName?: string | null; scope?: string | null; source?: string | null; gradeGroup?: string | null; paymentOptionType?: string | null; percentage?: number | null; effectiveDate?: string }>;
+    reductions?: Array<{ id: string; title: string; amount: number; parentName?: string | null; studentName?: string | null; scope?: string | null; source?: string | null; gradeGroup?: string | null; paymentOptionType?: string | null; percentage?: number | null; effectiveDate?: string }>;
     periodLabel: string;
   };
   financialHealthIndicators: {
@@ -171,7 +177,7 @@ type ExpenseOverviewResponse = {
   }>;
 };
 
-type FinanceErpModule = "health" | "forecast" | "revenue" | "expenses" | "budgets" | "payroll";
+type FinanceErpModule = "health" | "forecast" | "revenue" | "scholarships" | "expenses" | "budgets" | "payroll";
 
 const expenseStatusTone: Record<string, string> = {
   APPROVED: "border-emerald-500/25 bg-emerald-500/10 text-emerald-200",
@@ -300,6 +306,23 @@ function clampScore(value: number) {
   return Math.max(0, Math.min(100, value));
 }
 
+function reductionOrigin(scope?: string | null, title?: string | null) {
+  const normalizedScope = String(scope ?? "").toUpperCase();
+  const normalizedTitle = String(title ?? "").toLowerCase();
+  if (normalizedScope === "PARENT" || normalizedTitle.includes("family")) return "Familiale";
+  if (normalizedScope === "STUDENT") return "Individuelle";
+  if (normalizedScope === "PAYMENT_OPTION") return "Option de paiement";
+  if (normalizedScope === "GRADE_GROUP") return "Niveau / classe";
+  if (normalizedScope === "AGREEMENT") return "Accord special";
+  if (normalizedScope === "MANUAL" || normalizedTitle.includes("bourse") || normalizedTitle.includes("scholarship")) return "Bourse manuelle";
+  if (normalizedScope === "ACADEMIC_YEAR") return "Annee academique";
+  return "Autre reduction";
+}
+
+function formatCodeLabel(value?: string | null) {
+  return String(value ?? "Non defini").replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (letter: string) => letter.toUpperCase());
+}
+
 export function FinanceDashboardPage() {
   const { lang } = useI18n();
   const locale = lang === "fr" ? "fr-FR" : "en-US";
@@ -403,6 +426,23 @@ export function FinanceDashboardPage() {
   const healthTone = healthScore >= 78 ? "text-emerald-300" : healthScore >= 58 ? "text-amber-300" : "text-red-300";
   const healthLabel = healthScore >= 78 ? L("Stable", "Stable") : healthScore >= 58 ? L("Sous surveillance", "Under watch") : L("Critique", "Critical");
   const riskIndex = clampScore(100 - healthScore);
+  const allReductionRows = revenueOverview.reductionStatistics.reductions ?? revenueOverview.reductionStatistics.scholarships ?? [];
+  const manualScholarshipRows = revenueOverview.reductionStatistics.scholarships ?? [];
+  const scholarshipRows = allReductionRows;
+  const scholarshipTotal = revenueOverview.reductionStatistics.scholarshipTotal ?? revenueOverview.reductionStatistics.totalReductions;
+  const scholarshipCount = revenueOverview.reductionStatistics.scholarshipCount ?? revenueOverview.reductionStatistics.reductionCount;
+  const manualScholarshipTotal = revenueOverview.reductionStatistics.manualScholarshipTotal ?? manualScholarshipRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const manualScholarshipCount = revenueOverview.reductionStatistics.manualScholarshipCount ?? manualScholarshipRows.length;
+  const reductionsByOrigin = Array.from(scholarshipRows.reduce<Map<string, { origin: string; amount: number; count: number }>>((acc, row) => {
+    const origin = reductionOrigin(row.scope, row.title);
+    const current = acc.get(origin) ?? { origin, amount: 0, count: 0 };
+    current.amount += Number(row.amount || 0);
+    current.count += 1;
+    acc.set(origin, current);
+    return acc;
+  }, new Map()).values())
+    .map((entry) => ({ ...entry, amount: Math.round((entry.amount + Number.EPSILON) * 100) / 100 }))
+    .sort((left, right) => right.amount - left.amount);
   const activeModuleMeta = activeModule ? {
     health: {
       title: L("Santé financière globale", "Global financial health"),
@@ -415,6 +455,10 @@ export function FinanceDashboardPage() {
     revenue: {
       title: L("Revenus, parents et recouvrement", "Revenue, parents and collection"),
       subtitle: L("Lecture des encaissements, des dettes parentales, des réductions et des segments scolaires.", "View collections, parent debts, discounts and school segments.")
+    },
+    scholarships: {
+      title: L("Bourses et reductions detaillees", "Scholarships and detailed reductions"),
+      subtitle: L("Rubrique visible pour le financier: reductions familiales, individuelles, options de paiement, accords owner-parent et toutes les provenances.", "Finance-visible section: family reductions, individual reductions, payment-option reductions, owner-parent agreements and all sources.")
     },
     expenses: {
       title: L("Dépenses et contrôle opérationnel", "Expenses and operational control"),
@@ -465,6 +509,15 @@ export function FinanceDashboardPage() {
       signal: L(`${revenueOverview.overdueParents} parent(s) en retard`, `${revenueOverview.overdueParents} overdue parents`),
       icon: WalletCards,
       tone: "border-brand-300/20 bg-brand-500/10 text-brand-100"
+    },
+    {
+      id: "scholarships",
+      title: L("Bourses", "Scholarships"),
+      description: L("Toutes les reductions accordees: familiales, individuelles, plans, arrangements et bourses.", "All granted reductions: family, individual, plans, arrangements and scholarships."),
+      metric: money.format(scholarshipTotal),
+      signal: L(`${scholarshipCount} reduction(s)`, `${scholarshipCount} reduction(s)`),
+      icon: HandCoins,
+      tone: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100"
     },
     {
       id: "expenses",
@@ -530,13 +583,20 @@ export function FinanceDashboardPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <MetricCard
           label="Encaissements"
           value={money.format(revenueOverview.collectedRevenue)}
           detail={`${formatPercent(revenueOverview.paymentCompletionRate)} du net attendu`}
           icon={WalletCards}
           tone="border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+        />
+        <MetricCard
+          label="Bourses"
+          value={money.format(scholarshipTotal)}
+          detail={`${scholarshipCount} reduction(s), dont ${manualScholarshipCount} accord(s) manuel(s)`}
+          icon={HandCoins}
+          tone="border-cyan-500/30 bg-cyan-500/10 text-cyan-300"
         />
         <MetricCard
           label="Depenses approuvees"
@@ -1121,6 +1181,79 @@ export function FinanceDashboardPage() {
                     </div>
                     <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
                       <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-cyan-400" style={{ width: barWidth(row.collectionRate) }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeModule === "scholarships" && (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <ScienceIndicator label="Total bourses" value={money.format(scholarshipTotal)} detail="Somme de toutes les reductions du systeme." tone="text-cyan-300" />
+                <ScienceIndicator label="Lignes analysees" value={String(scholarshipCount)} detail="Reductions familiales, individuelles, plans et accords." tone="text-brand-100" />
+                <ScienceIndicator label="Accords manuels" value={money.format(manualScholarshipTotal)} detail={`${manualScholarshipCount} arrangement(s) owner-parent.`} tone="text-emerald-300" />
+                <ScienceIndicator label="Impact revenu" value={formatPercent(revenueOverview.financialHealthIndicators.reductionLoad)} detail="Poids des reductions sur le revenu attendu." tone="text-amber-300" />
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-100">Provenance par type</p>
+                  <div className="mt-4 space-y-3">
+                    {reductionsByOrigin.map((entry) => (
+                      <div key={entry.origin}>
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="font-semibold text-white">{entry.origin}</span>
+                          <span className="font-mono text-cyan-200">{money.format(entry.amount)} · {entry.count}</span>
+                        </div>
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
+                          <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-brand-400" style={{ width: barWidth((entry.amount / Math.max(scholarshipTotal, 1)) * 100) }} />
+                        </div>
+                      </div>
+                    ))}
+                    {reductionsByOrigin.length === 0 ? <p className="text-sm text-ink-dim">Aucune provenance disponible.</p> : null}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-100">Ventilation comptable</p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {revenueOverview.reductionStatistics.byScope.map((entry) => (
+                      <div key={entry.scope} className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                        <p className="text-xs uppercase tracking-[0.12em] text-ink-dim">{formatCodeLabel(entry.scope)}</p>
+                        <p className="mt-2 font-mono text-sm font-bold text-white">{money.format(entry.amount)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {scholarshipRows.length === 0 && (
+                  <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4 text-sm text-ink-dim">
+                    {L("Aucune reduction n'est encore enregistree.", "No reduction is recorded yet.")}
+                  </div>
+                )}
+                {scholarshipRows.map((row) => (
+                  <div key={row.id} className="rounded-xl border border-cyan-300/20 bg-cyan-500/10 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-100">{reductionOrigin(row.scope, row.title)}</p>
+                        <p className="mt-1 font-semibold text-white">{row.title}</p>
+                        <p className="mt-1 text-xs text-ink-dim">
+                          {row.parentName || L("Parent non precise", "Parent not specified")} · {row.studentName || L("Compte parent", "Parent account")}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-ink-dim">
+                          <span className="rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1">Scope: {formatCodeLabel(row.scope)}</span>
+                          <span className="rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1">Plan: {formatCodeLabel(row.paymentOptionType)}</span>
+                          <span className="rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1">Niveau: {formatCodeLabel(row.gradeGroup)}</span>
+                          {row.percentage ? <span className="rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1">Taux: {formatPercent(row.percentage)}</span> : null}
+                          <span className="rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1">Poids: {formatPercent((Number(row.amount || 0) / Math.max(scholarshipTotal, 1)) * 100)}</span>
+                        </div>
+                        {row.effectiveDate ? <p className="mt-1 text-xs text-cyan-100">{new Date(row.effectiveDate).toLocaleDateString(locale)}</p> : null}
+                      </div>
+                      <span className="rounded-full border border-cyan-300/25 bg-slate-950/40 px-3 py-1 text-xs font-bold text-cyan-100">{money.format(row.amount)}</span>
                     </div>
                   </div>
                 ))}

@@ -218,7 +218,7 @@ async function ensureDefaultExpenseCatalog(schoolId: string, client: DbClient = 
 async function getPreferredPeriod(schoolId: string, periodId: string | undefined, client: DbClient = prisma) {
   const catalog = await ensureDefaultExpenseCatalog(schoolId, client);
   if (!periodId) return catalog.monthlyPeriod;
-  return client.financialPeriod.findFirst({ where: { id: periodId, schoolId } }) ?? catalog.monthlyPeriod;
+  return (await client.financialPeriod.findFirst({ where: { id: periodId, schoolId } })) ?? catalog.monthlyPeriod;
 }
 
 export async function getExpenseOverview(input: { schoolId: string; client?: DbClient }) {
@@ -492,6 +492,44 @@ export async function listExpenses(input: { schoolId: string; status?: ExpenseSt
   });
 }
 
+export async function listAccountingEntries(input: { schoolId: string }) {
+  return prisma.accountingEntry.findMany({
+    where: { schoolId: input.schoolId },
+    include: {
+      expense: { select: { id: true, title: true, department: true, status: true } },
+      payrollRun: { select: { id: true, title: true, department: true, status: true } },
+      payrollItem: {
+        select: {
+          id: true,
+          salarySlipNumber: true,
+          netSalary: true,
+          salaryProfile: { select: { id: true, fullName: true, employeeCode: true, department: true, position: true } }
+        }
+      }
+    },
+    orderBy: [{ entryDate: "desc" }, { createdAt: "desc" }]
+  });
+}
+
+export async function listCashflowEntries(input: { schoolId: string }) {
+  return prisma.cashflowEntry.findMany({
+    where: { schoolId: input.schoolId },
+    include: {
+      expense: { select: { id: true, title: true, department: true, status: true } },
+      payrollRun: { select: { id: true, title: true, department: true, status: true } },
+      payrollItem: {
+        select: {
+          id: true,
+          salarySlipNumber: true,
+          netSalary: true,
+          salaryProfile: { select: { id: true, fullName: true, employeeCode: true, department: true, position: true } }
+        }
+      }
+    },
+    orderBy: [{ referenceDate: "desc" }, { createdAt: "desc" }]
+  });
+}
+
 export async function createExpense(input: {
   schoolId: string;
   submittedById?: string;
@@ -595,7 +633,7 @@ export async function processExpenseApproval(input: {
   expenseId: string;
   userId: string;
   userRole: Role;
-  status: ApprovalStepStatus.APPROVED | ApprovalStepStatus.REJECTED;
+  status: ApprovalStepStatus;
   comments?: string;
 }) {
   return prisma.$transaction(async (tx) => {
