@@ -247,8 +247,8 @@ function EditIcon() {
   );
 }
 function TrashIcon() {
+  return (
     <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
       <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" />
       <path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
     </svg>
@@ -256,7 +256,7 @@ function TrashIcon() {
 }
 function EyeIcon() {
   return (
-    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+    <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
       <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
       <circle cx="12" cy="12" r="3" />
     </svg>
