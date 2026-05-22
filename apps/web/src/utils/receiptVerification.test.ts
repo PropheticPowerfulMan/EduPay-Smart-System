@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildReceiptVerificationUrl, type ReceiptVerificationInput } from "./receiptVerification";
+import { buildReceiptVerificationQrUrl, buildReceiptVerificationUrl, type ReceiptVerificationInput } from "./receiptVerification";
 
 const sampleReceipt: ReceiptVerificationInput = {
   transactionNumber: "TX-1001",
@@ -38,5 +38,13 @@ describe("buildReceiptVerificationUrl", () => {
     );
 
     expect(url).toMatch(/^https:\/\/edupay.example.com\/EduPay-Smart-System\/#\/receipt\/verify\?tx=TX-1001&c=EDP-22FB-4D92&d=/);
+  });
+});
+
+describe("buildReceiptVerificationQrUrl", () => {
+  it("génère un QR court avec seulement la transaction et le code", () => {
+    const url = buildReceiptVerificationQrUrl(sampleReceipt, { origin: "http://localhost:5174" });
+
+    expect(url).toBe("http://localhost:5174/EduPay-Smart-System/#/receipt/verify?tx=TX-1001&c=EDP-22FB-4D92");
   });
 });

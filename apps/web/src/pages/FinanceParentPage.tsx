@@ -225,7 +225,7 @@ function getPaymentOptionLabel(paymentOptionType: string) {
     case "STANDARD_MONTHLY":
       return "Mensualité standard";
     case "SPECIAL_OWNER_AGREEMENT":
-      return "Accord spécial propriétaire";
+      return "Accord spécial parent-école";
     case "ANNUAL":
       return "Paiement annuel";
     default:

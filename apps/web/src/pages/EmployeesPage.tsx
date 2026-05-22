@@ -13,6 +13,7 @@ type Employee = {
   fullName: string;
   phone?: string | null;
   email?: string | null;
+  physicalAddress?: string | null;
   accessCode?: string | null;
   subject?: string | null;
   employeeId?: string | null;
@@ -28,6 +29,7 @@ type EmployeeFormState = {
   fullName: string;
   phone: string;
   email: string;
+  physicalAddress: string;
   accessCode: string;
   subject: string;
   employeeId: string;
@@ -106,6 +108,7 @@ const EMPTY_FORM: EmployeeFormState = {
   fullName: "",
   phone: "",
   email: "",
+  physicalAddress: "",
   accessCode: "",
   subject: "",
   employeeId: "",
@@ -191,6 +194,7 @@ function toFormState(employee: Employee): EmployeeFormState {
     fullName: employee.fullName || "",
     phone: employee.phone || "",
     email: employee.email || "",
+    physicalAddress: employee.physicalAddress || "",
     accessCode: employee.accessCode || "",
     subject: employee.subject || "",
     employeeId: employee.employeeId || employee.displayId || "",
@@ -685,6 +689,7 @@ export function EmployeesPage() {
       employee.employeeId,
       employee.email,
       employee.phone,
+      employee.physicalAddress,
       employee.department,
       employee.jobTitle,
       employee.subject,
@@ -725,6 +730,7 @@ export function EmployeesPage() {
           fullName: form.fullName.trim(),
           phone: form.phone.trim() ? form.phone.trim() : null,
           email: form.email.trim() ? form.email.trim() : null,
+          physicalAddress: form.physicalAddress.trim() ? form.physicalAddress.trim() : null,
           accessCode: form.accessCode.trim() ? form.accessCode.trim() : null,
           subject: form.subject.trim() ? form.subject.trim() : null,
           employeeType: form.employeeType.trim() ? form.employeeType.trim() : null,
@@ -967,6 +973,10 @@ export function EmployeesPage() {
               <p className="text-xs uppercase tracking-[0.18em] text-ink-dim">Téléphone</p>
               <p className="mt-2 text-sm font-semibold text-white">{infoValue(selectedEmployee.phone)}</p>
             </div>
+            <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4 md:col-span-2">
+              <p className="text-xs uppercase tracking-[0.18em] text-ink-dim">Adresse physique</p>
+              <p className="mt-2 text-sm font-semibold text-white">{infoValue(selectedEmployee.physicalAddress)}</p>
+            </div>
             <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
               <p className="text-xs uppercase tracking-[0.18em] text-ink-dim">Matière ou spécialité</p>
               <p className="mt-2 text-sm font-semibold text-white">{infoValue(selectedEmployee.subject)}</p>
@@ -1106,6 +1116,10 @@ export function EmployeesPage() {
             <label className="space-y-2">
               <span className="text-sm font-medium text-white">Téléphone</span>
               <input className="w-full" value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} placeholder="+243 ..." />
+            </label>
+            <label className="space-y-2 md:col-span-2">
+              <span className="text-sm font-medium text-white">Adresse physique</span>
+              <input className="w-full" value={form.physicalAddress} onChange={(event) => setForm((current) => ({ ...current, physicalAddress: event.target.value }))} placeholder="Avenue, quartier, commune, ville" />
             </label>
             <label className="space-y-2">
               <span className="text-sm font-medium text-white">Matricule employé</span>

@@ -181,7 +181,7 @@ const PAYMENT_OPTION_LABELS: Record<PaymentOptionType, string> = {
   TWO_INSTALLMENTS: "Two-installment payment",
   THREE_INSTALLMENTS: "Three-installment payment",
   STANDARD_MONTHLY: "Standard monthly payment",
-  SPECIAL_OWNER_AGREEMENT: "Special owner agreement",
+  SPECIAL_OWNER_AGREEMENT: "Parent-school special agreement",
   CUSTOM: "Custom"
 };
 

@@ -23,7 +23,7 @@ function resolveReceiptBaseUrl(
   }
 }
 
-export type PaymentMethodCode = "CASH" | "AIRTEL_MONEY" | "MPESA" | "ORANGE_MONEY";
+export type PaymentMethodCode = "CASH" | "AIRTEL_MONEY" | "MPESA" | "ORANGE_MONEY" | "BANK_TRANSFER";
 export type PaymentStatusCode = "COMPLETED" | "PENDING" | "FAILED" | "CANCELLED";
 
 export type ReceiptVerificationInput = {
@@ -78,7 +78,8 @@ export function getReceiptMethodLabel(method: PaymentMethodCode) {
     CASH: "Cash / Espèces",
     AIRTEL_MONEY: "Airtel Money",
     MPESA: "M-Pesa",
-    ORANGE_MONEY: "Orange Money"
+    ORANGE_MONEY: "Orange Money",
+    BANK_TRANSFER: "Virement bancaire"
   };
   return methodLabel[method] ?? method;
 }
@@ -198,6 +199,22 @@ export function buildReceiptVerificationUrl(
     ?? "").trim();
   const baseUrl = resolveReceiptBaseUrl(configuredBaseUrl, locationLike);
   return `${baseUrl}#/receipt/verify?tx=${tx}&c=${code}&d=${token}`;
+}
+
+export function buildReceiptVerificationQrUrl(
+  input: ReceiptVerificationInput,
+  locationLike: Pick<Location, "origin"> = window.location,
+  configuredBaseUrlOverride?: string
+) {
+  const security = buildReceiptSecurity(input);
+  const tx = encodeURIComponent(input.transactionNumber);
+  const code = encodeURIComponent(security.verificationCode);
+  const configuredBaseUrl = (configuredBaseUrlOverride
+    ?? import.meta.env.VITE_RECEIPT_VERIFICATION_BASE_URL
+    ?? import.meta.env.VITE_PUBLIC_APP_URL
+    ?? "").trim();
+  const baseUrl = resolveReceiptBaseUrl(configuredBaseUrl, locationLike);
+  return `${baseUrl}#/receipt/verify?tx=${tx}&c=${code}`;
 }
 
 export function parseReceiptVerificationToken(token: string | null) {

@@ -170,7 +170,7 @@ function getPaymentOptionLabel(paymentOptionType: string) {
     case "STANDARD_MONTHLY":
       return "Mensualité standard";
     case "SPECIAL_OWNER_AGREEMENT":
-      return "Accord spécial propriétaire";
+      return "Accord spécial parent-école";
     case "ANNUAL":
       return "Paiement annuel";
     default:
@@ -364,8 +364,8 @@ const pageCopy = {
     optionTwoInstallments: "Paiement en deux tranches",
     optionThreeInstallments: "Paiement en trois tranches",
     optionStandardMonthly: "Paiement mensuel standard",
-    optionSpecialOwnerAgreement: "Bourse / accord manuel propriétaire",
-    scholarshipAgreementTitle: "Accord manuel propriétaire-parent",
+    optionSpecialOwnerAgreement: "Bourse / accord manuel parent-école",
+    scholarshipAgreementTitle: "Accord manuel parent-école",
     scholarshipAgreementHelp: "Cette 5e possibilité est déterminée manuellement par le financier. La différence entre le montant officiel et le montant accepté est classée comme bourse.",
     officialReferenceAmount: "Montant officiel de référence",
     agreedTuitionTotal: "Total accepté par l'école",
@@ -537,8 +537,8 @@ const pageCopy = {
     optionTwoInstallments: "Two-installment payment",
     optionThreeInstallments: "Three-installment payment",
     optionStandardMonthly: "Standard monthly payment",
-    optionSpecialOwnerAgreement: "Scholarship / manual owner agreement",
-    scholarshipAgreementTitle: "Manual owner-parent agreement",
+    optionSpecialOwnerAgreement: "Scholarship / manual parent-school agreement",
+    scholarshipAgreementTitle: "Manual parent-school agreement",
     scholarshipAgreementHelp: "This 5th option is set manually by finance. The difference between the official amount and the accepted amount is stored under Scholarship.",
     officialReferenceAmount: "Official reference amount",
     agreedTuitionTotal: "Total accepted by the school",
@@ -1430,7 +1430,7 @@ export function FinanceParentAdminPage() {
 
                     {isManualScholarshipPlan && (
                       <div className="rounded-2xl border border-cyan-300/20 bg-cyan-500/10 p-4">
-                        <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100">Accord spécial propriétaire</p>
+                        <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100">Accord spécial parent-école</p>
                         <h3 className="mt-1 font-display text-xl font-bold text-white">{copy.scholarshipAgreementTitle}</h3>
                         <p className="mt-1 text-sm text-ink-dim">{copy.scholarshipAgreementHelp}</p>
                         <button

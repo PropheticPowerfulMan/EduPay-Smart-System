@@ -28,6 +28,7 @@ type OrbitSharedDirectory = {
     organizationId?: string | null;
     phone?: string | null;
     email?: string | null;
+    physicalAddress?: string | null;
     accessCode?: string | null;
     mustChangePassword?: boolean;
     studentIds: string[];
@@ -61,6 +62,7 @@ type OrbitSharedDirectory = {
     lastName?: string;
     phone?: string | null;
     email?: string | null;
+    physicalAddress?: string | null;
     accessCode?: string | null;
     subject?: string | null;
     employeeId?: string | null;
@@ -101,6 +103,7 @@ export type SharedParentOption = {
   fullName: string;
   phone: string;
   email: string;
+  physicalAddress?: string | null;
   students: SharedStudentOption[];
 };
 
@@ -114,6 +117,7 @@ export type SharedTeacherOption = {
   lastName?: string;
   phone?: string | null;
   email?: string | null;
+  physicalAddress?: string | null;
   accessCode?: string | null;
   subject?: string | null;
   employeeId?: string | null;
@@ -215,6 +219,7 @@ export function mapOrbitDirectoryToSharedOptions(directory: OrbitSharedDirectory
       fullName: parent.fullName,
       phone: parent.phone || "",
       email: parent.email || "",
+      physicalAddress: parent.physicalAddress || "",
       students,
     };
   });
@@ -230,6 +235,7 @@ export function mapOrbitDirectoryToSharedOptions(directory: OrbitSharedDirectory
     lastName: teacher.lastName,
     phone: teacher.phone,
     email: teacher.email,
+    physicalAddress: teacher.physicalAddress,
     accessCode: teacher.accessCode,
     subject: teacher.subject,
     employeeId: teacher.employeeId,
@@ -306,6 +312,7 @@ export async function createOrbitParent(payload: {
   lastName?: string;
   email?: string;
   phone?: string;
+  physicalAddress?: string;
   accessCode?: string;
   mustChangePassword?: boolean;
   students?: Array<{ fullName: string; className?: string; accessCode?: string; studentNumber?: string; mustChangePassword?: boolean }>;
@@ -324,6 +331,7 @@ export async function createOrbitParent(payload: {
           lastName: payload.lastName || parentLastNameParts.join(" ") || "Parent",
           email: payload.email,
           phone: payload.phone,
+          physicalAddress: payload.physicalAddress,
           accessCode: payload.accessCode,
           mustChangePassword: payload.mustChangePassword ?? true,
         },
@@ -352,13 +360,14 @@ export async function createOrbitParent(payload: {
       lastName: payload.lastName,
       email: payload.email,
       phone: payload.phone,
+      physicalAddress: payload.physicalAddress,
       accessCode: payload.accessCode,
       mustChangePassword: payload.mustChangePassword ?? true,
     }),
   });
 }
 
-export async function updateOrbitParent(identifier: string, payload: { fullName?: string; firstName?: string; lastName?: string; email?: string; phone?: string }) {
+export async function updateOrbitParent(identifier: string, payload: { fullName?: string; firstName?: string; lastName?: string; email?: string; phone?: string; physicalAddress?: string | null }) {
   return orbitRegistryRequest<{ orbitId: string; updated: boolean }>(`/api/integration/registry/parent/${encodeURIComponent(identifier)}?identifierType=orbitId`, {
     method: "PUT",
     body: JSON.stringify(payload),
@@ -372,6 +381,7 @@ export async function updateOrbitTeacher(identifier: string, payload: {
   lastName?: string | null;
   email?: string | null;
   phone?: string | null;
+  physicalAddress?: string | null;
   accessCode?: string | null;
   subject?: string | null;
   employeeType?: string | null;
@@ -453,6 +463,7 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
           fullName: parent.fullName,
           phone: parent.phone,
           email: parent.email,
+          physicalAddress: parent.physicalAddress || null,
         },
       })
       : await prisma.parent.create({
@@ -461,6 +472,7 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
           fullName: parent.fullName,
           phone: parent.phone,
           email: parent.email,
+          physicalAddress: parent.physicalAddress || null,
           preferredLanguage: "fr",
         },
       });
@@ -559,7 +571,19 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
         schoolId,
         id: { in: activeParentIds },
       },
-      include: { students: { include: { class: true } } },
+      select: {
+        id: true,
+        createdAt: true,
+        fullName: true,
+        phone: true,
+        email: true,
+        physicalAddress: true,
+        students: {
+          include: {
+            class: true,
+          },
+        },
+      },
     })
     : [];
 
@@ -582,48 +606,36 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
     : [];
 
   return {
-    parents: orderedParents.map((parent) => ({
-      id: parent.id,
-      orbitId: mappedParentByLookupKey.get(buildParentLookupKey({
+    parents: orderedParents.map((parent) => {
+      const orbitParent = mappedParentByLookupKey.get(buildParentLookupKey({
         fullName: parent.fullName,
         email: parent.email,
         phone: parent.phone,
-      }))?.orbitId,
-      displayId: mappedParentByLookupKey.get(buildParentLookupKey({
+      }));
+      return {
+        id: parent.id,
+        orbitId: orbitParent?.orbitId,
+        displayId: orbitParent?.displayId || parent.id,
+        createdAt: parent.createdAt,
         fullName: parent.fullName,
-        email: parent.email,
         phone: parent.phone,
-      }))?.displayId || parent.id,
-      createdAt: parent.createdAt,
-      fullName: parent.fullName,
-      phone: parent.phone,
-      email: parent.email,
-      accessCode: mappedParentByLookupKey.get(buildParentLookupKey({
-        fullName: parent.fullName,
         email: parent.email,
-        phone: parent.phone,
-      }))?.accessCode,
-      mustChangePassword: mappedParentByLookupKey.get(buildParentLookupKey({
-        fullName: parent.fullName,
-        email: parent.email,
-        phone: parent.phone,
-      }))?.mustChangePassword,
-      students: parent.students.map((student) => ({
-        id: student.id,
-        displayId: student.externalStudentId || student.id,
-        externalStudentId: student.externalStudentId || undefined,
-        studentNumber: student.externalStudentId || undefined,
-        accessCode: mappedParentByLookupKey.get(buildParentLookupKey({
-          fullName: parent.fullName,
-          email: parent.email,
-          phone: parent.phone,
-        }))?.students.find((entry) => entry.externalStudentId === (student.externalStudentId || undefined) || entry.fullName === student.fullName)?.accessCode,
-        fullName: student.fullName,
-        classId: student.classId,
-        className: student.class.name,
-        annualFee: student.annualFee,
-      })),
-    })),
+        physicalAddress: orbitParent?.physicalAddress || null,
+        accessCode: orbitParent?.accessCode,
+        mustChangePassword: orbitParent?.mustChangePassword,
+        students: parent.students.map((student) => ({
+          id: student.id,
+          displayId: student.externalStudentId || student.id,
+          externalStudentId: student.externalStudentId || undefined,
+          studentNumber: student.externalStudentId || undefined,
+          accessCode: orbitParent?.students.find((entry) => entry.externalStudentId === (student.externalStudentId || undefined) || entry.fullName === student.fullName)?.accessCode,
+          fullName: student.fullName,
+          classId: student.classId,
+          className: student.class.name,
+          annualFee: student.annualFee,
+        })),
+      };
+    }),
     classes,
     teachers: mapped.teachers,
     counts: {

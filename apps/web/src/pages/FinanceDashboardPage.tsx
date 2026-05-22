@@ -22,9 +22,11 @@ import {
   CheckCircle2,
   CirclePercent,
   ClipboardList,
+  FileSpreadsheet,
   Gauge,
   HandCoins,
   Landmark,
+  Printer,
   Scale,
   ShieldAlert,
   Target,
@@ -34,6 +36,7 @@ import {
 } from "lucide-react";
 import { api } from "../services/api";
 import { useI18n } from "../i18n";
+import { exportWorkbook } from "../utils/financeExcel";
 
 type RevenueOverviewResponse = {
   academicYear: { id: string; name: string; startDate: string; endDate: string };
@@ -178,6 +181,7 @@ type ExpenseOverviewResponse = {
 };
 
 type FinanceErpModule = "health" | "forecast" | "revenue" | "scholarships" | "expenses" | "budgets" | "payroll";
+type ScholarshipRow = NonNullable<RevenueOverviewResponse["reductionStatistics"]["reductions"]>[number];
 
 function uniqueReductionRows<T extends { parentName?: string | null; studentName?: string | null; scope?: string | null; paymentOptionType?: string | null; amount: number; title: string }>(rows: T[]) {
   return Array.from(rows.reduce((acc, row) => {
@@ -338,6 +342,166 @@ function formatCodeLabel(value?: string | null) {
   return String(value ?? "Non defini").replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (letter: string) => letter.toUpperCase());
 }
 
+function slugifyScholarshipFilename(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "bourses";
+}
+
+function plainPrintText(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildScholarshipReportHtml(input: {
+  rows: ScholarshipRow[];
+  title: string;
+  scopeLabel: string;
+  locale: string;
+}) {
+  const money = new Intl.NumberFormat(input.locale, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+  const total = input.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+
+  const rowsHtml = input.rows.map((row) => `
+    <tr>
+      <td>${plainPrintText(row.title)}</td>
+      <td>${plainPrintText(row.parentName || "Parent non precise")}</td>
+      <td>${plainPrintText(row.studentName || "Compte parent")}</td>
+      <td>${plainPrintText(reductionOrigin(row.scope, row.title))}</td>
+      <td>${plainPrintText(formatCodeLabel(row.scope))}</td>
+      <td>${plainPrintText(formatCodeLabel(row.paymentOptionType))}</td>
+      <td>${plainPrintText(formatCodeLabel(row.gradeGroup))}</td>
+      <td>${row.effectiveDate ? plainPrintText(new Date(row.effectiveDate).toLocaleDateString(input.locale)) : "-"}</td>
+      <td style="text-align:right">${plainPrintText(money.format(Number(row.amount || 0)))}</td>
+    </tr>`).join("");
+
+  return `<!DOCTYPE html>
+  <html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>${plainPrintText(input.title)}</title>
+    <style>
+      @page { size: A4 portrait; margin: 12mm; }
+      * { box-sizing: border-box; }
+      body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; background: #fff; }
+      .shell { padding: 12px; }
+      .hero { border: 2px solid #082f49; background: linear-gradient(135deg, rgba(8,47,73,.04), rgba(6,182,212,.06)); padding: 16px 18px; border-radius: 16px; }
+      .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #0f766e; font-weight: 700; }
+      h1 { margin: 8px 0 6px; font-size: 24px; color: #082f49; }
+      .scope { font-size: 12px; color: #475569; }
+      .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 16px 0; }
+      .metric { border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px; background: #f8fafc; }
+      .metric-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; }
+      .metric-value { margin-top: 6px; font-size: 18px; font-weight: 700; color: #0f172a; }
+      table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+      th, td { border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; vertical-align: top; }
+      th { background: #e2e8f0; text-transform: uppercase; letter-spacing: .6px; text-align: left; color: #334155; }
+      tr:nth-child(even) td { background: #f8fafc; }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <div class="hero">
+        <div class="eyebrow">EduPay Finance</div>
+        <h1>${plainPrintText(input.title)}</h1>
+        <div class="scope">${plainPrintText(input.scopeLabel)}</div>
+      </div>
+      <div class="metrics">
+        <div class="metric"><div class="metric-label">Lignes visibles</div><div class="metric-value">${input.rows.length}</div></div>
+        <div class="metric"><div class="metric-label">Montant visible</div><div class="metric-value">${plainPrintText(money.format(total))}</div></div>
+        <div class="metric"><div class="metric-label">Date d'édition</div><div class="metric-value">${plainPrintText(new Date().toLocaleString(input.locale))}</div></div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Bourse / réduction</th>
+            <th>Famille</th>
+            <th>Élève</th>
+            <th>Origine</th>
+            <th>Scope</th>
+            <th>Plan</th>
+            <th>Niveau</th>
+            <th>Date</th>
+            <th>Montant</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml || `<tr><td colspan="9">Aucune ligne visible pour ce filtre.</td></tr>`}</tbody>
+      </table>
+    </div>
+  </body>
+  </html>`;
+}
+
+function printScholarshipReport(html: string) {
+  const popup = window.open("", "_blank", "noopener,noreferrer,width=1200,height=900");
+  if (!popup) return;
+  popup.document.open();
+  popup.document.write(html);
+  popup.document.close();
+
+  const triggerPrint = () => {
+    popup.focus();
+    popup.print();
+  };
+
+  if (popup.document.fonts?.ready) {
+    void popup.document.fonts.ready.then(triggerPrint).catch(triggerPrint);
+    return;
+  }
+
+  window.setTimeout(triggerPrint, 250);
+}
+
+function exportScholarshipRowsExcel(filename: string, rows: ScholarshipRow[], scopeLabel: string, locale: string) {
+  const money = new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+  const total = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  exportWorkbook(filename, [
+    {
+      name: "Synthese",
+      rows: [{
+        "Portee": scopeLabel,
+        "Lignes visibles": rows.length,
+        "Montant visible": total,
+        "Montant visible formatte": money.format(total),
+        "Genere le": new Date().toLocaleString(locale)
+      }]
+    },
+    {
+      name: "Bourses",
+      rows: rows.map((row) => ({
+        "Bourse / reduction": row.title,
+        "Famille": row.parentName || "Parent non precise",
+        "Eleve": row.studentName || "Compte parent",
+        "Origine": reductionOrigin(row.scope, row.title),
+        "Scope": formatCodeLabel(row.scope),
+        "Plan": formatCodeLabel(row.paymentOptionType),
+        "Niveau": formatCodeLabel(row.gradeGroup),
+        "Source": row.source || "-",
+        "Date effective": row.effectiveDate ? new Date(row.effectiveDate).toLocaleDateString(locale) : "-",
+        "Pourcentage": row.percentage ?? "-",
+        "Montant USD": Number(row.amount || 0)
+      }))
+    }
+  ]);
+}
+
 export function FinanceDashboardPage() {
   const { lang } = useI18n();
   const locale = lang === "fr" ? "fr-FR" : "en-US";
@@ -346,6 +510,11 @@ export function FinanceDashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeModule, setActiveModule] = useState<FinanceErpModule | null>(null);
+  const [scholarshipSearch, setScholarshipSearch] = useState("");
+  const [scholarshipScopeFilter, setScholarshipScopeFilter] = useState("ALL");
+  const [scholarshipOriginFilter, setScholarshipOriginFilter] = useState("ALL");
+  const [scholarshipDateFrom, setScholarshipDateFrom] = useState("");
+  const [scholarshipDateTo, setScholarshipDateTo] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -458,6 +627,58 @@ export function FinanceDashboardPage() {
   }, new Map()).values())
     .map((entry) => ({ ...entry, amount: Math.round((entry.amount + Number.EPSILON) * 100) / 100 }))
     .sort((left, right) => right.amount - left.amount);
+  const scholarshipScopeOptions = Array.from(new Set(scholarshipRows.map((row) => String(row.scope ?? "UNKNOWN")))).sort();
+  const scholarshipOriginOptions = Array.from(new Set(scholarshipRows.map((row) => reductionOrigin(row.scope, row.title)))).sort();
+  const filteredScholarshipRows = useMemo(() => {
+    const normalizedSearch = scholarshipSearch.trim().toLowerCase();
+    return scholarshipRows.filter((row) => {
+      const rowOrigin = reductionOrigin(row.scope, row.title);
+      const effectiveDate = row.effectiveDate ? new Date(row.effectiveDate) : null;
+      const matchesSearch = !normalizedSearch || [
+        row.title,
+        row.parentName,
+        row.studentName,
+        row.scope,
+        row.source,
+        row.gradeGroup,
+        row.paymentOptionType,
+        rowOrigin
+      ].some((value) => String(value ?? "").toLowerCase().includes(normalizedSearch));
+      const matchesScope = scholarshipScopeFilter === "ALL" || String(row.scope ?? "UNKNOWN") === scholarshipScopeFilter;
+      const matchesOrigin = scholarshipOriginFilter === "ALL" || rowOrigin === scholarshipOriginFilter;
+      const matchesDateFrom = !scholarshipDateFrom || (effectiveDate && effectiveDate >= new Date(`${scholarshipDateFrom}T00:00:00`));
+      const matchesDateTo = !scholarshipDateTo || (effectiveDate && effectiveDate <= new Date(`${scholarshipDateTo}T23:59:59`));
+      return matchesSearch && matchesScope && matchesOrigin && matchesDateFrom && matchesDateTo;
+    });
+  }, [scholarshipDateFrom, scholarshipDateTo, scholarshipOriginFilter, scholarshipRows, scholarshipScopeFilter, scholarshipSearch]);
+  const filteredScholarshipTotal = filteredScholarshipRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const filteredManualScholarshipRows = filteredScholarshipRows.filter((row) => {
+    const normalizedScope = String(row.scope ?? "").toUpperCase();
+    const normalizedTitle = String(row.title ?? "").toLowerCase();
+    return normalizedScope === "MANUAL" || normalizedTitle.includes("bourse") || normalizedTitle.includes("scholarship");
+  });
+  const filteredReductionsByOrigin = Array.from(filteredScholarshipRows.reduce<Map<string, { origin: string; amount: number; count: number }>>((acc, row) => {
+    const origin = reductionOrigin(row.scope, row.title);
+    const current = acc.get(origin) ?? { origin, amount: 0, count: 0 };
+    current.amount += Number(row.amount || 0);
+    current.count += 1;
+    acc.set(origin, current);
+    return acc;
+  }, new Map()).values())
+    .map((entry) => ({ ...entry, amount: Math.round((entry.amount + Number.EPSILON) * 100) / 100 }))
+    .sort((left, right) => right.amount - left.amount);
+  const filteredScholarshipsByScope = Array.from(filteredScholarshipRows.reduce<Map<string, number>>((acc, row) => {
+    const scope = formatCodeLabel(row.scope);
+    acc.set(scope, (acc.get(scope) ?? 0) + Number(row.amount || 0));
+    return acc;
+  }, new Map()).entries()).map(([scope, amount]) => ({ scope, amount }));
+  const scholarshipFilterScopeLabel = [
+    scholarshipSearch ? `Recherche: ${scholarshipSearch}` : "Recherche: toutes",
+    scholarshipScopeFilter !== "ALL" ? `Scope: ${formatCodeLabel(scholarshipScopeFilter)}` : "Scope: tous",
+    scholarshipOriginFilter !== "ALL" ? `Origine: ${scholarshipOriginFilter}` : "Origine: toutes",
+    scholarshipDateFrom ? `Du: ${new Date(`${scholarshipDateFrom}T00:00:00`).toLocaleDateString(locale)}` : "Du: début",
+    scholarshipDateTo ? `Au: ${new Date(`${scholarshipDateTo}T00:00:00`).toLocaleDateString(locale)}` : "Au: fin"
+  ].join(" | ");
   const activeModuleMeta = activeModule ? {
     health: {
       title: L("Santé financière globale", "Global financial health"),
@@ -1205,52 +1426,129 @@ export function FinanceDashboardPage() {
 
           {activeModule === "scholarships" && (
             <div className="space-y-4">
+              <div className="rounded-2xl border border-cyan-300/20 bg-slate-950/45 p-4">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                  <div className="grid flex-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-100">Recherche ciblée</span>
+                      <input
+                        value={scholarshipSearch}
+                        onChange={(event) => setScholarshipSearch(event.target.value)}
+                        placeholder="Famille, élève, bourse, source..."
+                        className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-300/40"
+                      />
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-100">Scope</span>
+                      <select value={scholarshipScopeFilter} onChange={(event) => setScholarshipScopeFilter(event.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-300/40">
+                        <option value="ALL">Tous les scopes</option>
+                        {scholarshipScopeOptions.map((scope) => <option key={scope} value={scope}>{formatCodeLabel(scope)}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-100">Origine</span>
+                      <select value={scholarshipOriginFilter} onChange={(event) => setScholarshipOriginFilter(event.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-300/40">
+                        <option value="ALL">Toutes les origines</option>
+                        {scholarshipOriginOptions.map((origin) => <option key={origin} value={origin}>{origin}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-100">Date min</span>
+                      <input type="date" value={scholarshipDateFrom} onChange={(event) => setScholarshipDateFrom(event.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-300/40" />
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-100">Date max</span>
+                      <input type="date" value={scholarshipDateTo} onChange={(event) => setScholarshipDateTo(event.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-300/40" />
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => printScholarshipReport(buildScholarshipReportHtml({
+                        rows: filteredScholarshipRows,
+                        title: "Etat filtré des bourses et reductions",
+                        scopeLabel: scholarshipFilterScopeLabel,
+                        locale
+                      }))}
+                      className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/15"
+                    >
+                      <Printer className="h-4 w-4" /> PDF / Imprimer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => exportScholarshipRowsExcel(`bourses-filtrees-${slugifyScholarshipFilename(scholarshipSearch || scholarshipOriginFilter || scholarshipScopeFilter)}-${new Date().toISOString().slice(0, 10)}`, filteredScholarshipRows, scholarshipFilterScopeLabel, locale)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/15"
+                    >
+                      <FileSpreadsheet className="h-4 w-4" /> Excel
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-dim">
+                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">{filteredScholarshipRows.length} ligne(s) visibles</span>
+                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">Montant visible: {money.format(filteredScholarshipTotal)}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScholarshipSearch("");
+                      setScholarshipScopeFilter("ALL");
+                      setScholarshipOriginFilter("ALL");
+                      setScholarshipDateFrom("");
+                      setScholarshipDateTo("");
+                    }}
+                    className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 font-semibold text-white transition hover:bg-white/[0.08]"
+                  >
+                    Réinitialiser les filtres
+                  </button>
+                </div>
+              </div>
+
               <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <ScienceIndicator label="Total bourses" value={money.format(scholarshipTotal)} detail="Somme de toutes les reductions du systeme." tone="text-cyan-300" />
-                <ScienceIndicator label="Lignes analysees" value={String(scholarshipCount)} detail="Reductions familiales, individuelles, plans et accords." tone="text-brand-100" />
-                <ScienceIndicator label="Accords manuels" value={money.format(manualScholarshipTotal)} detail={`${manualScholarshipCount} arrangement(s) owner-parent.`} tone="text-emerald-300" />
-                <ScienceIndicator label="Impact revenu" value={formatPercent(revenueOverview.financialHealthIndicators.reductionLoad)} detail="Poids des reductions sur le revenu attendu." tone="text-amber-300" />
+                <ScienceIndicator label="Lignes visibles" value={String(filteredScholarshipRows.length)} detail={`Sur ${scholarshipCount} reduction(s) analysee(s).`} tone="text-brand-100" />
+                <ScienceIndicator label="Accords manuels visibles" value={money.format(filteredManualScholarshipRows.reduce((sum, row) => sum + Number(row.amount || 0), 0))} detail={`${filteredManualScholarshipRows.length} arrangement(s) owner-parent.`} tone="text-emerald-300" />
+                <ScienceIndicator label="Impact revenu filtre" value={formatPercent(revenueOverview.expectedRevenue > 0 ? (filteredScholarshipTotal / revenueOverview.expectedRevenue) * 100 : 0)} detail="Poids du sous-ensemble visible sur le revenu attendu." tone="text-amber-300" />
               </div>
 
               <div className="grid gap-3 lg:grid-cols-2">
                 <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-100">Provenance par type</p>
                   <div className="mt-4 space-y-3">
-                    {reductionsByOrigin.map((entry) => (
+                    {filteredReductionsByOrigin.map((entry) => (
                       <div key={entry.origin}>
                         <div className="flex items-center justify-between gap-3 text-sm">
                           <span className="font-semibold text-white">{entry.origin}</span>
                           <span className="font-mono text-cyan-200">{money.format(entry.amount)} · {entry.count}</span>
                         </div>
                         <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
-                          <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-brand-400" style={{ width: barWidth((entry.amount / Math.max(scholarshipTotal, 1)) * 100) }} />
+                          <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-brand-400" style={{ width: barWidth((entry.amount / Math.max(filteredScholarshipTotal, 1)) * 100) }} />
                         </div>
                       </div>
                     ))}
-                    {reductionsByOrigin.length === 0 ? <p className="text-sm text-ink-dim">Aucune provenance disponible.</p> : null}
+                    {filteredReductionsByOrigin.length === 0 ? <p className="text-sm text-ink-dim">Aucune provenance disponible pour ce filtre.</p> : null}
                   </div>
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-100">Ventilation comptable</p>
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    {revenueOverview.reductionStatistics.byScope.map((entry) => (
+                    {filteredScholarshipsByScope.map((entry) => (
                       <div key={entry.scope} className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
-                        <p className="text-xs uppercase tracking-[0.12em] text-ink-dim">{formatCodeLabel(entry.scope)}</p>
+                        <p className="text-xs uppercase tracking-[0.12em] text-ink-dim">{entry.scope}</p>
                         <p className="mt-2 font-mono text-sm font-bold text-white">{money.format(entry.amount)}</p>
                       </div>
                     ))}
+                    {filteredScholarshipsByScope.length === 0 ? <p className="text-sm text-ink-dim sm:col-span-2">Aucune ventilation disponible pour ce filtre.</p> : null}
                   </div>
                 </div>
               </div>
 
               <div className="space-y-3">
-                {scholarshipRows.length === 0 && (
+                {filteredScholarshipRows.length === 0 && (
                   <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4 text-sm text-ink-dim">
-                    {L("Aucune reduction n'est encore enregistree.", "No reduction is recorded yet.")}
+                    {L("Aucune reduction ne correspond au filtre courant.", "No reduction matches the current filter.")}
                   </div>
                 )}
-                {scholarshipRows.map((row) => (
+                {filteredScholarshipRows.map((row) => (
                   <div key={row.id} className="rounded-xl border border-cyan-300/20 bg-cyan-500/10 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
@@ -1264,7 +1562,7 @@ export function FinanceDashboardPage() {
                           <span className="rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1">Plan: {formatCodeLabel(row.paymentOptionType)}</span>
                           <span className="rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1">Niveau: {formatCodeLabel(row.gradeGroup)}</span>
                           {row.percentage ? <span className="rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1">Taux: {formatPercent(row.percentage)}</span> : null}
-                          <span className="rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1">Poids: {formatPercent((Number(row.amount || 0) / Math.max(scholarshipTotal, 1)) * 100)}</span>
+                          <span className="rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1">Poids: {formatPercent((Number(row.amount || 0) / Math.max(filteredScholarshipTotal, 1)) * 100)}</span>
                         </div>
                         {row.effectiveDate ? <p className="mt-1 text-xs text-cyan-100">{new Date(row.effectiveDate).toLocaleDateString(locale)}</p> : null}
                       </div>

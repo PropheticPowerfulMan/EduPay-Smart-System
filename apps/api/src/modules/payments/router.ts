@@ -11,6 +11,14 @@ import { sendEmail, sendSms } from "../../utils/messaging";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
 import { applyPaymentToFinanceLedger, cancelRegisteredPayment, runOverdueTuitionReminderSweep } from "../finance/service";
 
+const bankTransferDetailsSchema = z.object({
+  bankName: z.string().trim().min(2),
+  referenceNumber: z.string().trim().min(2),
+  transferDate: z.string().trim().min(1),
+  senderAccountNumber: z.string().trim().min(4).optional(),
+  beneficiaryAccountNumber: z.string().trim().min(4)
+});
+
 const createPaymentSchema = z.object({
   parentFullName: z.string().optional().default(""),
   parentId: z.string().optional(),
@@ -19,16 +27,25 @@ const createPaymentSchema = z.object({
   studentDisplayName: z.string().optional(),
   reason: z.string().min(3),
   amount: z.number().positive(),
-  method: z.enum(["CASH", "AIRTEL_MONEY", "MPESA", "ORANGE_MONEY"]),
+  method: z.enum(["CASH", "AIRTEL_MONEY", "MPESA", "ORANGE_MONEY", "BANK_TRANSFER"]),
   status: z.enum(["COMPLETED", "PENDING", "FAILED"]).default("COMPLETED"),
   transactionNumber: z.string().optional(),
-  notifyParent: z.boolean().optional()
+  notifyParent: z.boolean().optional(),
+  bankTransferDetails: bankTransferDetailsSchema.optional()
 }).superRefine((payload, context) => {
   if (orbitRegistryIsEnabled() && payload.studentExternalIds.length === 0) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["studentExternalIds"],
       message: "Au moins un élève partagé doit être sélectionné pour synchroniser le paiement via Orbit."
+    });
+  }
+
+  if (payload.method === "BANK_TRANSFER" && !payload.bankTransferDetails) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["bankTransferDetails"],
+      message: "Les détails du virement bancaire sont obligatoires pour cette méthode de paiement."
     });
   }
 });
@@ -112,6 +129,21 @@ function parseTuitionAllocationSummary(
   }
 }
 
+function parseBankTransferDetails(notes: unknown) {
+  if (typeof notes !== "string" || !notes.trim()) return null;
+  try {
+    const parsed = JSON.parse(notes) as { bankTransferDetails?: z.infer<typeof bankTransferDetailsSchema> };
+    return parsed.bankTransferDetails ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function buildPaymentNotes(bankTransferDetails?: z.infer<typeof bankTransferDetailsSchema>) {
+  if (!bankTransferDetails) return undefined;
+  return JSON.stringify({ bankTransferDetails });
+}
+
 function serializePayment(
   payment: { parent?: { fullName: string } | null; students: Array<{ fullName: string; class?: { name?: string | null } | null }>; receipt?: { pdfBase64?: string | null } | null; amount?: number } & Record<string, unknown>,
   options: { fallbackParentName?: string; requestedStudentDisplayName?: string } = {}
@@ -121,6 +153,7 @@ function serializePayment(
   const studentClassNames = Array.from(new Set(payment.students.map((student) => student.class?.name).filter(Boolean)));
   const paymentSubjectName = options.requestedStudentDisplayName?.trim() || buildPaymentSubjectName(payment.students, parentFullName);
   const tuitionAllocationSummary = parseTuitionAllocationSummary(payment.receipt, Number(payment.amount || 0));
+  const bankTransferDetails = parseBankTransferDetails(payment.notes);
 
   return {
     ...payment,
@@ -129,6 +162,7 @@ function serializePayment(
     studentClassNames,
     paymentSubjectName,
     tuitionAllocationSummary,
+    bankTransferDetails,
   };
 }
 
@@ -231,7 +265,8 @@ function getMethodLabel(method: string, language: "fr" | "en" = "fr") {
     CASH: { fr: "Cash / Especes", en: "Cash" },
     AIRTEL_MONEY: { fr: "Airtel Money", en: "Airtel Money" },
     MPESA: { fr: "M-Pesa", en: "M-Pesa" },
-    ORANGE_MONEY: { fr: "Orange Money", en: "Orange Money" }
+    ORANGE_MONEY: { fr: "Orange Money", en: "Orange Money" },
+    BANK_TRANSFER: { fr: "Virement bancaire", en: "Bank transfer" }
   };
   return labels[method]?.[language] ?? method;
 }
@@ -533,6 +568,7 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
         amountInWords: `${amountToWords(payload.amount, "fr")} dollars americains`,
         method: payload.method,
         status: payload.status,
+        notes: buildPaymentNotes(payload.bankTransferDetails),
         createdById: req.user!.sub,
         ...(payload.studentIds && payload.studentIds.length > 0
           ? { students: { connect: payload.studentIds.map((id) => ({ id })) } }

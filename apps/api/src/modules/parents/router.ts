@@ -41,6 +41,7 @@ const parentSchema = z.object({
   prenom: z.string().optional().default(""),
   phone: z.string().min(6),
   email: z.string().email(),
+  physicalAddress: z.string().optional().default(""),
   photoUrl: z.string().optional().default(""),
   preferredLanguage: z.enum(["fr", "en"]).default("fr"),
   notifyEmail: z.boolean().optional().default(true),
@@ -245,6 +246,7 @@ let demoParents: any[] = [
     fullName: "Kabila wa Muzuri Jean",
     phone: "+243810000001",
     email: "jean.kabila@example.com",
+    physicalAddress: "Kinshasa, Gombe",
     students: [
       {
         id: "demo-student-1",
@@ -605,15 +607,13 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
   const temporaryPassword = generateTemporaryPassword();
   const normalizedEmail = payload.email.trim().toLowerCase();
   const normalizedPhone = payload.phone.replace(/\s+/g, "");
-  const normalizedFullName = payload.fullName.trim().toLowerCase();
 
   const existingParent = await prisma.parent.findFirst({
     where: {
       schoolId: req.user!.schoolId,
       OR: [
         { email: { equals: normalizedEmail, mode: "insensitive" } },
-        { phone: normalizedPhone },
-        { fullName: { equals: normalizedFullName, mode: "insensitive" } }
+        { phone: normalizedPhone }
       ]
     },
     select: { id: true, fullName: true, email: true, phone: true }
@@ -622,12 +622,11 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
   if (existingParent) {
     const reasons = [
       existingParent.email?.toLowerCase() === normalizedEmail ? `e-mail déjà utilisé (${existingParent.email})` : "",
-      existingParent.phone?.replace(/\s+/g, "") === normalizedPhone ? `téléphone déjà utilisé (${existingParent.phone})` : "",
-      existingParent.fullName.trim().toLowerCase() === normalizedFullName ? `nom de famille déjà enregistré (${existingParent.fullName})` : ""
+      existingParent.phone?.replace(/\s+/g, "") === normalizedPhone ? `téléphone déjà utilisé (${existingParent.phone})` : ""
     ].filter(Boolean);
     return res.status(409).json({
       code: "PARENT_ALREADY_EXISTS",
-      message: `Cette famille existe déjà dans EduPay. Raison : ${reasons.join(", ") || "dossier parent similaire trouvé"}. Ouvrez le dossier existant au lieu d'en créer un nouveau.`,
+      message: `Cette famille existe déjà dans EduPay. Raison : ${reasons.join(", ") || "coordonnées parent déjà utilisées"}. Ouvrez le dossier existant au lieu d'en créer un nouveau.`,
       existingParent
     });
   }
@@ -649,6 +648,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
         lastName: [payload.nom, payload.postnom].filter(Boolean).join(" ") || lastName,
         email: payload.email,
         phone: payload.phone,
+        physicalAddress: payload.physicalAddress,
         accessCode,
         mustChangePassword: true,
         students: payload.students.map((student) => ({
@@ -769,6 +769,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
           fullName: payload.fullName,
           phone: payload.phone,
           email: payload.email,
+          physicalAddress: payload.physicalAddress || null,
           photoUrl: payload.photoUrl || null,
           preferredLanguage: payload.preferredLanguage,
           schoolId: req.user!.schoolId,
@@ -829,6 +830,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       fullName: payload.fullName,
       phone: payload.phone,
       email: payload.email,
+      physicalAddress: payload.physicalAddress,
       accessCode: `ACC-PAR-DEMO${String(demoParents.length + 1).padStart(2, "0")}`,
       photoUrl: payload.photoUrl,
       temporaryPassword,
@@ -920,7 +922,6 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
   const payload = parentSchema.parse(req.body);
   const normalizedEmail = payload.email.trim().toLowerCase();
   const normalizedPhone = payload.phone.replace(/\s+/g, "");
-  const normalizedFullName = payload.fullName.trim();
   try {
     const parentExists = await prisma.parent.findFirst({
       where: { id, schoolId: req.user!.schoolId },
@@ -934,16 +935,19 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
         NOT: { id },
         OR: [
           { email: { equals: normalizedEmail, mode: "insensitive" } },
-          { phone: normalizedPhone },
-          { fullName: { equals: normalizedFullName, mode: "insensitive" } }
+          { phone: normalizedPhone }
         ]
       },
       select: { id: true, fullName: true, email: true, phone: true }
     });
     if (duplicateParent) {
+      const reasons = [
+        duplicateParent.email?.toLowerCase() === normalizedEmail ? `l'e-mail ${duplicateParent.email}` : "",
+        duplicateParent.phone?.replace(/\s+/g, "") === normalizedPhone ? `le téléphone ${duplicateParent.phone}` : ""
+      ].filter(Boolean);
       return res.status(409).json({
         code: "PARENT_ALREADY_EXISTS",
-        message: "Un autre dossier parent utilise déjà cet e-mail, ce téléphone ou ce nom.",
+        message: `Un autre dossier parent utilise déjà ${reasons.join(" ou ") || "cet e-mail ou ce téléphone"}.`,
         existingParent: duplicateParent
       });
     }
@@ -974,7 +978,8 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
         firstName: payload.prenom || firstName,
         lastName: [payload.nom, payload.postnom].filter(Boolean).join(" ") || lastName,
         email: normalizedEmail,
-        phone: normalizedPhone
+        phone: normalizedPhone,
+        physicalAddress: payload.physicalAddress || null
       });
       await syncOrbitRegistryMirror(req.user!.schoolId);
     }
@@ -989,6 +994,7 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
           fullName: payload.fullName,
           phone: normalizedPhone,
           email: normalizedEmail,
+          physicalAddress: payload.physicalAddress || null,
           photoUrl: payload.photoUrl || null,
           preferredLanguage: payload.preferredLanguage
         }

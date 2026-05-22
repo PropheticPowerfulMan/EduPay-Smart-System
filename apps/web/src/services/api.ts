@@ -16,6 +16,7 @@ const SESSION_ACTIVE_KEY = "edupay_session_active";
 const DEMO_PARENTS_KEY = "edupay_demo_parents_v2";
 const DEMO_PAYMENTS_KEY = "edupay_payments_v3";
 const DEMO_NOTIFICATIONS_KEY = "edupay-payment-notifications-enabled";
+const DEMO_MANUAL_MESSAGES_KEY = "edupay_manual_messages_v1";
 const DEMO_PARENT_CREDENTIALS_KEY = "edupay_demo_parent_credentials_v1";
 const DEMO_FINANCE_OVERRIDES_KEY = "edupay_demo_finance_overrides_v1";
 const DEMO_EXPENSE_CATEGORIES_KEY = "edupay_demo_expense_categories_v1";
@@ -39,7 +40,7 @@ const LOCAL_API_FALLBACK_ENABLED =
   );
 
 type DemoStudent = { id: string; fullName: string; gender?: "F" | "M" | "O" | ""; classId: string; className: string; annualFee: number; createdAt?: string; payments?: DemoPayment[] };
-type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
+type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; physicalAddress?: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
 type DemoTuitionAllocationLine = {
   installmentId: string;
   studentId: string;
@@ -67,7 +68,8 @@ type DemoTuitionAllocationSummary = {
     lines: Array<{ label: string; dueBucket: string; outstandingBefore: number; allocated: number; outstandingAfter: number }>;
   }>;
 };
-type DemoPayment = { id: string; transactionNumber: string; parentId?: string; parentFullName: string; paymentSubjectName?: string; studentNames?: string[]; reason: string; method: string; amount: number; status: string; createdAt: string; date: string; tuitionAllocationSummary?: DemoTuitionAllocationSummary };
+type DemoPayment = { id: string; transactionNumber: string; parentId?: string; parentFullName: string; paymentSubjectName?: string; studentNames?: string[]; reason: string; method: string; amount: number; status: string; createdAt: string; date: string; tuitionAllocationSummary?: DemoTuitionAllocationSummary; bankTransferDetails?: { bankName: string; referenceNumber: string; transferDate: string; senderAccountNumber?: string; beneficiaryAccountNumber: string } | null };
+type DemoManualMessage = { id: string; parentId: string; parentName: string; parentPhone?: string; parentEmail?: string; type: "MANUAL_MESSAGE"; language: "fr" | "en"; channel: "DASHBOARD"; content: string; status: string; createdAt: string };
 type DemoParentCredential = { parentId: string; email: string; password: string };
 type DemoPaymentOptionType = "FULL_PRESEPTEMBER" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS" | "STANDARD_MONTHLY" | "SPECIAL_OWNER_AGREEMENT";
 type DemoFinanceOverride =
@@ -220,6 +222,7 @@ type DemoEmployee = {
   fullName: string;
   phone?: string | null;
   email?: string | null;
+  physicalAddress?: string | null;
   accessCode?: string | null;
   subject?: string | null;
   employeeId?: string | null;
@@ -245,6 +248,7 @@ const seedParents: DemoParent[] = [
     fullName: "Rachel Kabongo",
     phone: "+243 812 450 221",
     email: "rachel.kabongo@kcs.local",
+    physicalAddress: "Avenue Kasa-Vubu, Gombe, Kinshasa",
     createdAt: new Date().toISOString(),
     students: [
       { id: "STU-KCS-ELISE-KABONGO", fullName: "Elise Kabongo", gender: "F", classId: "section-grade-11", className: "Grade 11A", annualFee: 2200, createdAt: "2026-01-12T08:15:00.000Z" },
@@ -259,6 +263,7 @@ const seedParents: DemoParent[] = [
     fullName: "Mireille Mbuyi",
     phone: "+243 899 120 882",
     email: "mireille.mbuyi@kcs.local",
+    physicalAddress: "Quartier Ma Campagne, Ngaliema, Kinshasa",
     createdAt: new Date().toISOString(),
     students: [
       { id: "STU-KCS-AMANI-MBUYI", fullName: "Amani Mbuyi", gender: "O", classId: "section-grade-10", className: "Grade 10A", annualFee: 2400, createdAt: "2026-02-03T09:42:00.000Z" }
@@ -1028,6 +1033,7 @@ function getDemoEmployees() {
     fullName: profile.fullName,
     phone: "",
     email: "",
+    physicalAddress: "",
     accessCode: `ACC-${profile.employeeCode}`,
     subject: profile.position === "Teacher" ? "General" : "",
     employeeId: profile.employeeCode,
@@ -1243,7 +1249,35 @@ function financeProfile(parentId?: string | null) {
   if (!parent) {
     throw new Error("Profil parent financier introuvable.");
   }
-  return buildDemoParentFinanceProfile(parent.id, parents, getDemoPayments());
+  const snapshot = buildDemoParentFinanceProfile(parent.id, parents, getDemoPayments()) as Record<string, unknown>;
+  const manualMessages = getDemoManualMessages()
+    .filter((message) => message.parentId === parent.id)
+    .map((message) => ({
+      id: message.id,
+      type: message.type,
+      channel: message.channel,
+      content: message.content,
+      status: message.status,
+      createdAt: message.createdAt
+    }));
+
+  return {
+    ...snapshot,
+    notificationHistory: [
+      ...(((snapshot.notificationHistory as Array<Record<string, unknown>> | undefined) ?? [])),
+      ...manualMessages
+    ].sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+  };
+}
+
+function getDemoManualMessages() {
+  const messages = readJson<DemoManualMessage[]>(DEMO_MANUAL_MESSAGES_KEY, []);
+  writeJson(DEMO_MANUAL_MESSAGES_KEY, messages);
+  return messages;
+}
+
+function saveDemoManualMessages(messages: DemoManualMessage[]) {
+  writeJson(DEMO_MANUAL_MESSAGES_KEY, messages);
 }
 
 function financeReductions() {
@@ -1759,6 +1793,64 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     return { paymentNotificationsEnabled: localStorage.getItem(DEMO_NOTIFICATIONS_KEY) !== "false" } as T;
   }
 
+  if (normalizedPath === "/api/notifications/status" && method === "GET") {
+    return {
+      email: { configured: true, host: "demo-local", port: "0", from: "demo@edupay.local", userConfigured: true },
+      sms: { configured: true, providerUrl: "demo-local", usernameConfigured: true, sender: "EduPay" }
+    } as T;
+  }
+
+  if (normalizedPath === "/api/notifications/messages" && method === "GET") {
+    return getDemoManualMessages()
+      .slice()
+      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))) as T;
+  }
+
+  if (normalizedPath === "/api/notifications/messages" && method === "POST") {
+    const parentIds = Array.isArray(body.parentIds) ? body.parentIds.map((value) => String(value)) : [];
+    const parents = getDemoParents().filter((parent) => parentIds.includes(parent.id));
+    if (parents.length === 0) throw new Error("Aucun parent valide n'a ete selectionne.");
+
+    const subject = String(body.subject ?? "").trim();
+    const bodyText = String(body.body ?? "").trim();
+    const content = subject ? `Objet : ${subject}\n\n${bodyText}` : bodyText;
+    const channels = Array.isArray(body.channels) ? body.channels.map((value) => String(value)) : [];
+    const createdAt = new Date().toISOString();
+    const existing = getDemoManualMessages();
+    const messages = parents.map((parent) => {
+      const emailStatus = channels.includes("EMAIL") ? (parent.email ? "SIMULATED" : "SKIPPED") : "DISABLED";
+      const smsStatus = channels.includes("SMS") ? (parent.phone ? "SIMULATED" : "SKIPPED") : "DISABLED";
+      return {
+        id: `manual-message-${Date.now()}-${parent.id}`,
+        parentId: parent.id,
+        parentName: parent.fullName,
+        parentPhone: parent.phone,
+        parentEmail: parent.email,
+        type: "MANUAL_MESSAGE" as const,
+        language: (String(body.language ?? "fr").toLowerCase().startsWith("en") ? "en" : "fr") as "fr" | "en",
+        channel: "DASHBOARD" as const,
+        content,
+        status: `DASHBOARD:OPEN | EMAIL:${emailStatus} | SMS:${smsStatus}`,
+        createdAt,
+      };
+    });
+
+    saveDemoManualMessages([...messages, ...existing]);
+
+    return {
+      sentCount: messages.length,
+      parentIdsMissing: parentIds.filter((parentId) => !parents.some((parent) => parent.id === parentId)),
+      messages: messages.map((message) => ({
+        parentId: message.parentId,
+        parentName: message.parentName,
+        email: message.status.includes("EMAIL:SIMULATED") ? "SIMULATED" : (message.status.includes("EMAIL:SKIPPED") ? "SKIPPED" : "DISABLED"),
+        sms: message.status.includes("SMS:SIMULATED") ? "SIMULATED" : (message.status.includes("SMS:SKIPPED") ? "SKIPPED" : "DISABLED"),
+        dashboard: "OPEN",
+        logId: message.id,
+      }))
+    } as T;
+  }
+
   const paymentVerifyMatch = normalizedPath.match(/^\/api\/payments\/verify\/([^/]+)$/);
   if (paymentVerifyMatch && method === "GET") {
     const tx = decodeURIComponent(paymentVerifyMatch[1]);
@@ -1797,6 +1889,9 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const studentNames = parent
       ? parent.students.filter((student) => studentIds.includes(student.id)).map((student) => student.fullName)
       : [];
+    const bankTransferDetails: Record<string, unknown> | null = typeof body.bankTransferDetails === "object" && body.bankTransferDetails !== null
+      ? (body.bankTransferDetails as Record<string, unknown>)
+      : null;
     const payment: DemoPayment = {
       id: `pay-${Date.now()}`,
       transactionNumber: `TXN-${Date.now()}`,
@@ -1809,7 +1904,14 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       amount: Number(body.amount ?? 0),
       status: String(body.status ?? "COMPLETED"),
       createdAt: new Date().toISOString(),
-      date: new Date().toLocaleString("fr-FR")
+      date: new Date().toLocaleString("fr-FR"),
+      bankTransferDetails: bankTransferDetails ? {
+        bankName: String(bankTransferDetails.bankName ?? ""),
+        referenceNumber: String(bankTransferDetails.referenceNumber ?? ""),
+        transferDate: String(bankTransferDetails.transferDate ?? ""),
+        senderAccountNumber: String(bankTransferDetails.senderAccountNumber ?? ""),
+        beneficiaryAccountNumber: String(bankTransferDetails.beneficiaryAccountNumber ?? "")
+      } : null
     };
     writeJson(DEMO_PAYMENTS_KEY, [payment, ...getDemoPayments()]);
     return { payment, receipt: { id: `receipt-${Date.now()}` }, notificationStatus: { email: "SIMULATED", sms: "SIMULATED" } } as T;
@@ -1973,19 +2075,16 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const parentFullName = String(body.fullName ?? `${body.nom ?? ""} ${body.prenom ?? ""}`).trim() || "Nouveau parent";
     const normalizedEmail = String(body.email ?? "").trim().toLowerCase();
     const normalizedPhone = String(body.phone ?? "").replace(/\s+/g, "");
-    const normalizedFullName = parentFullName.toLowerCase();
     const duplicateParent = existingParents.find((parent) =>
       parent.email.trim().toLowerCase() === normalizedEmail
       || parent.phone.replace(/\s+/g, "") === normalizedPhone
-      || parent.fullName.trim().toLowerCase() === normalizedFullName
     );
     if (duplicateParent) {
       const reasons = [
         duplicateParent.email.trim().toLowerCase() === normalizedEmail ? `email deja utilise (${duplicateParent.email})` : "",
-        duplicateParent.phone.replace(/\s+/g, "") === normalizedPhone ? `telephone deja utilise (${duplicateParent.phone})` : "",
-        duplicateParent.fullName.trim().toLowerCase() === normalizedFullName ? `nom de famille deja enregistre (${duplicateParent.fullName})` : ""
+        duplicateParent.phone.replace(/\s+/g, "") === normalizedPhone ? `telephone deja utilise (${duplicateParent.phone})` : ""
       ].filter(Boolean);
-      throw new Error(`Cette famille existe deja dans EduPay. Raison: ${reasons.join(", ") || "dossier parent similaire trouve"}.`);
+      throw new Error(`Cette famille existe deja dans EduPay. Raison: ${reasons.join(", ") || "coordonnees parent deja utilisees"}.`);
     }
     const id = buildUniqueDemoEntityId("PAR", parentFullName, existingParents.map((parent) => parent.id));
     const existingStudentIds = existingParents.flatMap((parent) => parent.students.map((student) => student.id));
@@ -1997,6 +2096,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       fullName: parentFullName,
       phone: String(body.phone ?? ""),
       email: String(body.email ?? ""),
+      physicalAddress: String(body.physicalAddress ?? ""),
       photoUrl: String(body.photoUrl ?? ""),
       createdAt: new Date().toISOString(),
       students: Array.isArray(body.students)
@@ -2020,7 +2120,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
         overrides[student.id] = {
           mode: "AGREEMENT",
           agreement: {
-            title: `Accord special proprietaire - ${student.fullName}`,
+            title: `Accord special parent-ecole - ${student.fullName}`,
             customTotal: Number(student.annualFee ?? 0),
             reductionAmount: 0,
             status: "APPROVED",

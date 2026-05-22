@@ -29,6 +29,7 @@ type Parent = {
   fullName: string;
   phone: string;
   email: string;
+  physicalAddress?: string;
   photoUrl?: string;
   preferredLanguage?: "fr" | "en";
   students: Student[];
@@ -135,6 +136,7 @@ type FormState = {
   prenom: string;
   phone: string;
   email: string;
+  physicalAddress: string;
   photoUrl: string;
   preferredLanguage: "fr" | "en";
   defaultPaymentOptionType: string;
@@ -147,7 +149,8 @@ const TUITION_OPTION_ORDER = [
   "FULL_PRESEPTEMBER",
   "TWO_INSTALLMENTS",
   "THREE_INSTALLMENTS",
-  "STANDARD_MONTHLY"
+  "STANDARD_MONTHLY",
+  "SPECIAL_OWNER_AGREEMENT"
 ];
 
 const PAYMENT_OPTION_LABELS: Record<string, string> = {
@@ -155,7 +158,7 @@ const PAYMENT_OPTION_LABELS: Record<string, string> = {
   TWO_INSTALLMENTS: "Paiement en 2 tranches",
   THREE_INSTALLMENTS: "Paiement en 3 tranches",
   STANDARD_MONTHLY: "Paiement mensuel standard",
-  SPECIAL_OWNER_AGREEMENT: "Accord spécial propriétaire"
+  SPECIAL_OWNER_AGREEMENT: "Accord spécial parent-école"
 };
 
 const GRADE_GROUP_LABELS: Record<string, string> = {
@@ -172,6 +175,7 @@ const EMPTY_FORM: FormState = {
   prenom: "",
   phone: "",
   email: "",
+  physicalAddress: "",
   photoUrl: "",
   preferredLanguage: "fr",
   defaultPaymentOptionType: "STANDARD_MONTHLY",
@@ -236,14 +240,14 @@ function PlusIcon() {
 }
 function EditIcon() {
   return (
-    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+    <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
       <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
       <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
     </svg>
   );
 }
 function TrashIcon() {
-  return (
+    <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
     <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
       <polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14H6L5 6" />
       <path d="M10 11v6M14 11v6" /><path d="M9 6V4h6v2" />
@@ -885,28 +889,24 @@ function splitOwnerAgreementTotal(total: number) {
 function buildSpecialOwnerAgreementPlan(student: StudentFormState, className: string, officialPlans: TuitionPlan[]): TuitionPlan | null {
   const gradeGroup = resolveGradeGroup(className);
   const parsedAmount = Number.parseFloat(student.annualFee);
-  const fallbackAmount = officialPlans.find((plan) => plan.paymentOptionType === "STANDARD_MONTHLY")?.finalAmount
-    ?? officialPlans[0]?.finalAmount
-    ?? 0;
-  const customTotal = Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : fallbackAmount;
-  if (customTotal <= 0) return null;
+  const customTotal = Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : 0;
 
   const [initialAmount, midYearAmount, finalAmount] = splitOwnerAgreementTotal(customTotal);
 
   return {
     id: `special-owner-${gradeGroup}`,
-    name: "Accord spécial propriétaire",
+    name: customTotal > 0 ? "Accord spécial parent-école" : "Accord spécial parent-école à définir",
     paymentOptionType: "SPECIAL_OWNER_AGREEMENT",
     gradeGroup,
     discountRate: 0,
     originalAmount: customTotal,
     finalAmount: customTotal,
     reductionAmount: 0,
-    scheduleJson: [
+    scheduleJson: customTotal > 0 ? [
       { label: "Engagement initial", amount: initialAmount, dueDate: buildAcademicDueDate(8, 31), windowLabel: "Avant septembre" },
       { label: "Régularisation mi-année", amount: midYearAmount, dueDate: buildAcademicDueDate(1, 31), windowLabel: "Avant fin janvier" },
       { label: "Solde final", amount: finalAmount, dueDate: buildAcademicDueDate(5, 31), windowLabel: "Avant fin mai" }
-    ]
+    ] : []
   };
 }
 
@@ -1183,6 +1183,10 @@ function DetailModal({
               <div className="rounded-xl bg-slate-900/40 border border-slate-700/50 p-3">
                 <p className="text-xs text-ink-dim">{t("email")}</p>
                 <p className="text-sm font-semibold text-white mt-1 truncate">{parent.email || "—"}</p>
+              </div>
+              <div className="rounded-xl bg-slate-900/40 border border-slate-700/50 p-3 sm:col-span-2">
+                <p className="text-xs text-ink-dim">Adresse physique</p>
+                <p className="text-sm font-semibold text-white mt-1">{parent.physicalAddress || "—"}</p>
               </div>
               <div className="rounded-xl bg-slate-900/40 border border-slate-700/50 p-3">
                 <p className="text-xs text-ink-dim">{t("pmNom")}</p>
@@ -1474,6 +1478,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
       prenom: initial.prenom,
       phone: initial.phone,
       email: initial.email,
+      physicalAddress: initial.physicalAddress || "",
       photoUrl: initial.photoUrl || "",
       preferredLanguage: initial.preferredLanguage || "fr",
       defaultPaymentOptionType: initial.students[0]?.paymentOptionType || "STANDARD_MONTHLY",
@@ -1498,9 +1503,16 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
   const getMatchingPlans = (classId: string, student?: StudentFormState) => {
     if (!catalog?.plans?.length) return [];
     const gradeGroup = resolveGradeGroup(getClassName(classId));
-    const officialPlans = catalog.plans.filter((plan) => plan.gradeGroup === gradeGroup && PAYMENT_OPTION_LABELS[plan.paymentOptionType]);
-    if (!student || !classId) return officialPlans;
-    return officialPlans;
+    const officialPlans = catalog.plans.filter((plan) => (
+      plan.gradeGroup === gradeGroup
+      && plan.paymentOptionType !== "SPECIAL_OWNER_AGREEMENT"
+      && PAYMENT_OPTION_LABELS[plan.paymentOptionType]
+    ));
+    if (!classId) return officialPlans;
+    const specialPlan = buildSpecialOwnerAgreementPlan(student ?? { ...EMPTY_STUDENT, classId, paymentOptionType: "SPECIAL_OWNER_AGREEMENT" }, getClassName(classId), officialPlans);
+    return [...officialPlans, ...(specialPlan ? [specialPlan] : [])].sort(
+      (left, right) => TUITION_OPTION_ORDER.indexOf(left.paymentOptionType) - TUITION_OPTION_ORDER.indexOf(right.paymentOptionType)
+    );
   };
 
   const getPreferredOption = (classId: string, currentOptionType?: string, student?: StudentFormState) => {
@@ -1547,7 +1559,9 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
         ...student,
         classId,
         paymentOptionType,
-        annualFee: matchingPlan ? formatAmountInput(matchingPlan.finalAmount) : student.annualFee
+        annualFee: paymentOptionType === "SPECIAL_OWNER_AGREEMENT"
+          ? student.annualFee
+          : matchingPlan ? formatAmountInput(matchingPlan.finalAmount) : student.annualFee
       };
       return { ...current, students };
     });
@@ -1561,7 +1575,9 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
       students[idx] = {
         ...student,
         paymentOptionType,
-        annualFee: matchingPlan ? formatAmountInput(matchingPlan.finalAmount) : student.annualFee
+        annualFee: paymentOptionType === "SPECIAL_OWNER_AGREEMENT"
+          ? ""
+          : matchingPlan ? formatAmountInput(matchingPlan.finalAmount) : student.annualFee
       };
       return { ...current, defaultPaymentOptionType: paymentOptionType, students };
     });
@@ -1571,14 +1587,20 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
     setForm((current) => {
       const students = current.students.map((student) => {
         if (!student.classId) {
-          return { ...student, paymentOptionType };
+          return {
+            ...student,
+            paymentOptionType,
+            annualFee: paymentOptionType === "SPECIAL_OWNER_AGREEMENT" ? "" : student.annualFee
+          };
         }
 
         const matchingPlan = getMatchingPlans(student.classId, { ...student, paymentOptionType }).find((plan) => plan.paymentOptionType === paymentOptionType);
         return {
           ...student,
           paymentOptionType,
-          annualFee: matchingPlan ? formatAmountInput(matchingPlan.finalAmount) : student.annualFee
+          annualFee: paymentOptionType === "SPECIAL_OWNER_AGREEMENT"
+            ? ""
+            : matchingPlan ? formatAmountInput(matchingPlan.finalAmount) : student.annualFee
         };
       });
 
@@ -1624,6 +1646,14 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
     if (!form.nom.trim()) e.nom = t("pmRequired");
     if (!form.prenom.trim()) e.prenom = t("pmRequired");
     if (!form.phone.trim()) e.phone = t("pmRequired");
+    form.students.forEach((student, idx) => {
+      if (student.paymentOptionType === "SPECIAL_OWNER_AGREEMENT") {
+        const amount = Number.parseFloat(student.annualFee);
+        if (!Number.isFinite(amount) || amount <= 0) {
+          e[`studentAnnualFee-${idx}`] = "Pour l'accord spécial, le montant doit être saisi manuellement par le financier.";
+        }
+      }
+    });
     return e;
   };
 
@@ -1704,6 +1734,10 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
             <label className="text-xs font-semibold text-ink-dim uppercase tracking-[0.1em]">{t("email")}</label>
             <input value={form.email} onChange={(e) => set("email", e.target.value)} type="email" className="w-full" placeholder="email@exemple.com" />
           </div>
+          <div className="space-y-1 sm:col-span-2">
+            <label className="text-xs font-semibold text-ink-dim uppercase tracking-[0.1em]">Adresse physique</label>
+            <input value={form.physicalAddress} onChange={(e) => set("physicalAddress", e.target.value)} className="w-full" placeholder="Avenue, quartier, commune, ville" />
+          </div>
         </div>
 
         <div className="rounded-xl border border-slate-700/50 bg-slate-900/30 p-4">
@@ -1754,7 +1788,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
           <div className="flex flex-col gap-1">
             <p className="text-sm font-bold uppercase tracking-[0.08em] text-white">Plan de scolarité du parent</p>
             <p className="text-xs text-cyan-100/80">
-              Choisissez l'un des 5 plans déjà définis. Ce choix sera appliqué automatiquement aux enfants ajoutés, avec le montant officiel ajusté selon leur classe.
+              Choisissez l'un des 5 plans. Les 4 plans officiels gardent leur montant automatique selon la classe. Le 5e plan d'accord spécial parent-école reste manuel: le financier doit saisir lui-même le montant convenu.
             </p>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -1773,13 +1807,13 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                 >
                   <span className="flex items-start justify-between gap-3">
                     <span className="min-w-0">
-                      <span className="block text-sm font-black text-white">{getPaymentOptionLabel(optionType)}</span>
-                      <span className="mt-1 block text-[11px] text-ink-dim">
+                      <span className="block break-words text-sm font-black leading-snug text-white">{getPaymentOptionLabel(optionType)}</span>
+                      <span className="mt-1 block break-words text-[11px] leading-relaxed text-ink-dim">
                         {optionType === "FULL_PRESEPTEMBER" && "Remise maximale pour paiement complet avant septembre."}
                         {optionType === "TWO_INSTALLMENTS" && "Deux grandes tranches avec réduction partielle."}
                         {optionType === "THREE_INSTALLMENTS" && "Trois tranches et remise légère."}
                         {optionType === "STANDARD_MONTHLY" && "Plan mensuel standard sans réduction."}
-                        {optionType === "SPECIAL_OWNER_AGREEMENT" && "Accord spécial validé par la direction financière."}
+                        {optionType === "SPECIAL_OWNER_AGREEMENT" && "Accord spécial parent-école: montant non prérempli, à fixer manuellement par le financier."}
                       </span>
                     </span>
                     <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${selected ? "bg-cyan-200 text-slate-950" : "bg-white/10 text-ink-dim"}`}>
@@ -1809,7 +1843,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-white">Élève {idx + 1}</p>
-                  <p className="text-xs text-ink-dim">Choisissez une classe puis un plan officiel adapté. Le montant annuel est proposé automatiquement.</p>
+                  <p className="text-xs leading-relaxed text-ink-dim">Choisissez une classe puis un plan adapté. Les plans officiels remplissent le montant automatiquement; l'accord spécial parent-école doit être saisi manuellement.</p>
                 </div>
                 <button type="button" onClick={() => removeStudent(idx)}
                   className="p-2 rounded-lg bg-danger/20 border border-danger/40 text-danger hover:bg-danger/30 transition-all active:scale-95">
@@ -1847,11 +1881,13 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1.15fr_0.85fr]">
                 <div className="space-y-1">
-                  <label className="text-xs text-ink-dim">Plan de scolarité officiel</label>
+                  <label className="text-xs text-ink-dim">Plan de scolarité</label>
                   <select value={st.paymentOptionType} onChange={(e) => updateStudentPlan(idx, e.target.value)} className="w-full">
                     {getMatchingPlans(st.classId, st).length > 0 ? getMatchingPlans(st.classId, st).map((plan) => (
                       <option key={`${plan.gradeGroup}-${plan.paymentOptionType}`} value={plan.paymentOptionType}>
-                        {getPaymentOptionLabel(plan.paymentOptionType)} - {formatMoney(plan.finalAmount)}
+                        {plan.paymentOptionType === "SPECIAL_OWNER_AGREEMENT"
+                          ? `${getPaymentOptionLabel(plan.paymentOptionType)} - montant à saisir`
+                          : `${getPaymentOptionLabel(plan.paymentOptionType)} - ${formatMoney(plan.finalAmount)}`}
                       </option>
                     )) : TUITION_OPTION_ORDER.map((value) => (
                       <option key={value} value={value}>{getPaymentOptionLabel(value)}</option>
@@ -1866,7 +1902,8 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                 <div className="space-y-1">
                   <label className="text-xs text-ink-dim">{t("pmAnnualFee")} (USD)</label>
                   <input type="number" value={st.annualFee} onChange={(e) => setStudent(idx, "annualFee", e.target.value)} className="w-full" placeholder="500" />
-                  <p className="text-[11px] text-ink-dim">Montant pre-rempli depuis le plan choisi, modifiable si necessaire.</p>
+                  <p className="text-[11px] leading-relaxed text-ink-dim">{st.paymentOptionType === "SPECIAL_OWNER_AGREEMENT" ? "Montant à saisir manuellement selon l'accord conclu entre l'école et la famille." : "Montant pré-rempli depuis le plan choisi, modifiable si nécessaire."}</p>
+                  {errors[`studentAnnualFee-${idx}`] && <p className="text-xs text-danger">{errors[`studentAnnualFee-${idx}`]}</p>}
                 </div>
               </div>
 
@@ -1900,9 +1937,9 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                             className={`min-w-0 rounded-2xl border p-4 text-left transition-all ${isActive ? "border-brand-300 bg-brand-500/12 shadow-[0_0_0_1px_rgba(125,232,255,0.2)]" : "border-slate-700/60 bg-slate-900/50 hover:border-brand-400/50 hover:bg-slate-900/70"}`}
                           >
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                              <div>
-                                <p className="text-sm font-black text-white">{getPaymentOptionLabel(plan.paymentOptionType)}</p>
-                                <p className="mt-1 text-[11px] text-ink-dim">{plan.paymentOptionType === "SPECIAL_OWNER_AGREEMENT" ? "Plan personnalisé validé par la direction financière, basé sur le montant annuel saisi." : plan.name}</p>
+                              <div className="min-w-0">
+                                <p className="break-words text-sm font-black leading-snug text-white">{getPaymentOptionLabel(plan.paymentOptionType)}</p>
+                                <p className="mt-1 break-words text-[11px] leading-relaxed text-ink-dim">{plan.paymentOptionType === "SPECIAL_OWNER_AGREEMENT" ? "Accord spécial parent-école: le montant et l'entente sont saisis manuellement par le financier, sans pré-remplissage automatique." : plan.name}</p>
                               </div>
                               <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${isActive ? "bg-brand-300 text-slate-950" : "bg-white/10 text-ink-dim"}`}>
                                 {isActive ? "Choisi" : "Choisir"}
@@ -1910,21 +1947,21 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                             </div>
 
                             <div className="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                              <div className="min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
                                 <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Montant initial</p>
-                                <p className="mt-1 font-bold text-white">{formatMoney(Number(plan.originalAmount || plan.finalAmount))}</p>
+                                <p className="mt-1 break-words font-bold text-white">{Number(plan.originalAmount || plan.finalAmount) > 0 ? formatMoney(Number(plan.originalAmount || plan.finalAmount)) : "À saisir"}</p>
                               </div>
-                              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                              <div className="min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
                                 <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Réduction</p>
-                                <p className="mt-1 font-bold text-emerald-300">{formatMoney(Number(plan.reductionAmount || 0))}</p>
+                                <p className="mt-1 break-words font-bold text-emerald-300">{plan.paymentOptionType === "SPECIAL_OWNER_AGREEMENT" ? "Selon accord" : formatMoney(Number(plan.reductionAmount || 0))}</p>
                               </div>
-                              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                              <div className="min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
                                 <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Remise</p>
-                                <p className="mt-1 font-bold text-white">{Number(plan.discountRate || 0).toFixed(0)}%</p>
+                                <p className="mt-1 break-words font-bold text-white">{plan.paymentOptionType === "SPECIAL_OWNER_AGREEMENT" ? "Manuelle" : `${Number(plan.discountRate || 0).toFixed(0)}%`}</p>
                               </div>
-                              <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                              <div className="min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
                                 <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Net à payer</p>
-                                <p className="mt-1 font-black text-brand-200">{formatMoney(plan.finalAmount)}</p>
+                                <p className="mt-1 break-words font-black text-brand-200">{plan.finalAmount > 0 ? formatMoney(plan.finalAmount) : "À saisir"}</p>
                               </div>
                             </div>
 
@@ -1942,6 +1979,10 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                                     </div>
                                   ))}
                                 </div>
+                              </div>
+                            ) : plan.paymentOptionType === "SPECIAL_OWNER_AGREEMENT" ? (
+                              <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
+                                Le montant étant manuel, l'échéancier détaillé apparaîtra après saisie du montant convenu par le financier.
                               </div>
                             ) : null}
                           </button>
@@ -2117,6 +2158,7 @@ export function ParentsManagementPage() {
         parent.displayId || "",
         parent.phone,
         parent.email,
+        parent.physicalAddress || "",
         studentsHaystack,
       ]
         .join(" ")
@@ -2337,21 +2379,21 @@ export function ParentsManagementPage() {
                       />
                     </td>
                     <td className="py-4 px-5">
-                      <div className="flex items-center justify-center gap-2">
+                      <div className="flex flex-nowrap items-center justify-center gap-2">
                         <button onClick={() => setViewTarget(parent)}
-                          className="p-2 rounded-lg bg-slate-700/50 text-ink-dim hover:text-white hover:bg-slate-600/50 transition-all active:scale-90" title={t("pmView")}>
+                          className="inline-flex h-9 w-9 min-h-9 min-w-9 flex-none items-center justify-center rounded-lg bg-slate-700/50 text-ink-dim transition-all hover:bg-slate-600/50 hover:text-white active:scale-90" title={t("pmView")}>
                           <EyeIcon />
                         </button>
                         <button onClick={() => openEdit(parent)}
-                          className="p-2 rounded-lg bg-brand-500/20 text-brand-300 hover:bg-brand-500/30 transition-all active:scale-90" title={t("pmEdit")}>
+                          className="inline-flex h-9 w-9 min-h-9 min-w-9 flex-none items-center justify-center rounded-lg bg-brand-500/20 text-brand-300 transition-all hover:bg-brand-500/30 active:scale-90" title={t("pmEdit")}>
                           <EditIcon />
                         </button>
                         <button onClick={() => setNotificationTarget(parent)}
-                          className="p-2 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-all active:scale-90" title="Envoyer les accès">
+                          className="inline-flex h-9 w-9 min-h-9 min-w-9 flex-none items-center justify-center rounded-lg bg-amber-500/20 text-amber-300 transition-all hover:bg-amber-500/30 active:scale-90" title="Envoyer les accès">
                           <KeyIcon />
                         </button>
                         <button onClick={() => setDeleteTarget(parent)}
-                          className="p-2 rounded-lg bg-danger/20 text-danger hover:bg-danger/30 transition-all active:scale-90" title={t("pmDelete")}>
+                          className="inline-flex h-9 w-9 min-h-9 min-w-9 flex-none items-center justify-center rounded-lg bg-danger/20 text-danger transition-all hover:bg-danger/30 active:scale-90" title={t("pmDelete")}>
                           <TrashIcon />
                         </button>
                       </div>

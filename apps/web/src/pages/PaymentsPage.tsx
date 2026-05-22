@@ -6,7 +6,7 @@ import { schoolBranding } from "../config/branding";
 import { useI18n } from "../i18n";
 import { api } from "../services/api";
 import { buildReceiptAllocationSnapshot } from "../utils/receiptAllocation";
-import { buildReceiptVerificationUrl } from "../utils/receiptVerification";
+import { buildReceiptVerificationQrUrl, buildReceiptVerificationUrl } from "../utils/receiptVerification";
 import { exportWorkbook } from "../utils/financeExcel";
 
 /* --- Transaction number generator ---------------------------------------- */
@@ -169,7 +169,7 @@ function buildReceiptSecurity(r: Pick<PaymentRecord, "transactionNumber" | "date
 }
 
 function buildReceiptQrPayload(r: PaymentRecord): string {
-  return buildReceiptVerificationUrl(r);
+  return buildReceiptVerificationQrUrl(r);
 }
 
 async function generateReceiptQrSvgMarkup(r: PaymentRecord): Promise<string> {
@@ -199,7 +199,8 @@ function analyzeReceiptRisk(r: Pick<PaymentRecord, "parentFullName" | "paymentSu
   if (r.status !== "COMPLETED") flags.push("Statut non réglé : ne pas libérer de quittance définitive");
   if (getPaymentSubjectName(r).trim().split(/\s+/).length < 2) flags.push("Identité courte : vérifier le dossier eleve");
   if (r.reason.trim().length < 8) flags.push("Motif trop court pour un audit robuste");
-  if (r.method !== "CASH") flags.push("Paiement mobile : vérifier la référence opérateur");
+  if (r.method === "BANK_TRANSFER") flags.push("Virement bancaire : vérifier la référence et le compte bénéficiaire");
+  else if (r.method !== "CASH") flags.push("Paiement mobile : vérifier la référence opérateur");
   const score = Math.min(100, flags.length * 22 + (r.amount >= 10000 ? 18 : 0));
   return {
     score,
@@ -214,8 +215,31 @@ function getMethodLabel(method: string) {
     AIRTEL_MONEY: "Airtel Money",
     MPESA: "M-Pesa",
     ORANGE_MONEY: "Orange Money",
+    BANK_TRANSFER: "Virement bancaire",
   };
   return methodLabel[method] ?? method;
+}
+
+type BankTransferDetails = {
+  bankName: string;
+  referenceNumber: string;
+  transferDate: string;
+  senderAccountNumber?: string;
+  beneficiaryAccountNumber: string;
+};
+
+function getBankTransferDetailRows(details?: BankTransferDetails | null) {
+  if (!details) return [];
+  const transferDateLabel = details.transferDate
+    ? new Date(`${details.transferDate}T00:00:00`).toLocaleDateString("fr-FR")
+    : "";
+  return [
+    ["Banque", details.bankName],
+    ["Référence bancaire", details.referenceNumber],
+    ["Date du virement", transferDateLabel],
+    ["Compte émetteur", details.senderAccountNumber || ""],
+    ["Compte bénéficiaire", details.beneficiaryAccountNumber],
+  ].filter((entry): entry is [string, string] => Boolean(entry[1]));
 }
 
 function getStatusLabel(status: string) {
@@ -231,6 +255,55 @@ function getStatusLabel(status: string) {
 function buildReceiptMicroText(r: PaymentRecord) {
   const sec = buildReceiptSecurity(r);
   return `EDUPAY-OFFICIAL ${r.transactionNumber} ${sec.verificationCode} ${formatMoney(r.amount)}USD ${r.status}`;
+}
+
+function summarizeReceiptText(value: string, maxLength: number) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
+}
+
+function getReceiptLayoutMode(r: PaymentRecord) {
+  const allocationRows = r.tuitionAllocationSummary?.perChild?.length ?? 0;
+  const bankRows = r.bankTransferDetails ? getBankTransferDetailRows(r.bankTransferDetails).length : 0;
+  const densityScore = Math.ceil(r.reason.trim().length / 40)
+    + Math.ceil(r.amountWords.trim().length / 55)
+    + allocationRows * 2
+    + bankRows;
+
+  if (densityScore >= 12) {
+    return {
+      mode: "ultra-dense",
+      scale: 0.88,
+      bodyFontSize: 8.35,
+      qrSize: 22,
+      compactReason: summarizeReceiptText(r.reason, 120),
+      compactAmountWords: summarizeReceiptText(r.amountWords, 150),
+      detailNote: "Version compacte: les détails complets restent vérifiables dans EduPay via le QR et le numéro de transaction."
+    };
+  }
+
+  if (densityScore >= 8) {
+    return {
+      mode: "dense",
+      scale: 0.94,
+      bodyFontSize: 8.9,
+      qrSize: 24,
+      compactReason: summarizeReceiptText(r.reason, 150),
+      compactAmountWords: summarizeReceiptText(r.amountWords, 190),
+      detailNote: "Mise en page compacte pour conserver le reçu sur une seule feuille."
+    };
+  }
+
+  return {
+    mode: "standard",
+    scale: 1,
+    bodyFontSize: 9.5,
+    qrSize: 27,
+    compactReason: r.reason,
+    compactAmountWords: r.amountWords,
+    detailNote: ""
+  };
 }
 
 type ReceiptPrintFonts = {
@@ -277,6 +350,7 @@ function getReceiptPrintFonts(): ReceiptPrintFonts {
 /* --- Reçu individuel HTML (A5 paysage) ------------------------------------ */
 async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string> {
   const fonts = getReceiptPrintFonts();
+  const layout = getReceiptLayoutMode(r);
   const parentCaption = getPaymentParentCaption(r);
   const safe = {
     tx: escapeHtml(r.transactionNumber),
@@ -284,15 +358,16 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
     parent: escapeHtml(r.parentFullName),
     parentCaption: escapeHtml(parentCaption),
     paymentSubject: escapeHtml(getPaymentSubjectName(r)),
-    reason: escapeHtml(r.reason),
-    amountWords: escapeHtml(r.amountWords),
+    reason: escapeHtml(layout.compactReason),
+    amountWords: escapeHtml(layout.compactAmountWords),
     method: escapeHtml(getMethodLabel(r.method)),
     status: escapeHtml(getStatusLabel(r.status)),
     schoolName: escapeHtml(schoolBranding.schoolName),
     shortName: escapeHtml(schoolBranding.shortName),
     appName: escapeHtml(schoolBranding.appName),
     tagline: escapeHtml(schoolBranding.tagline),
-    logoSrc: escapeHtml(schoolBranding.logoSrc)
+    logoSrc: escapeHtml(schoolBranding.logoSrc),
+    detailNote: escapeHtml(layout.detailNote)
   };
   const security = buildReceiptSecurity(r);
   const risk = analyzeReceiptRisk(r);
@@ -323,6 +398,17 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
         ${allocationSnapshot.overflowChildCount > 0 ? `<div class="allocation-overflow">+ ${allocationSnapshot.overflowChildCount} autre(s) dossier(s) figurent dans le detail complet.</div>` : ""}
       </div>`
     : "";
+  const bankTransferHtml = r.method === "BANK_TRANSFER" && r.bankTransferDetails
+    ? `<div class="allocation">
+        <div class="allocation-head">
+          <div class="allocation-title">Détails du virement bancaire</div>
+          <div class="allocation-pill">Virement</div>
+        </div>
+        <table>
+          <tbody>${getBankTransferDetailRows(r.bankTransferDetails).map(([label, value]) => `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join("")}</tbody>
+        </table>
+      </div>`
+    : "";
   return `<!DOCTYPE html>
 <html lang="${lang}">
 <head>
@@ -330,10 +416,11 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
   <title>Reçu ${safe.tx}</title>
   <style>
     @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,500;1,700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,500&family=IBM+Plex+Mono:wght@400;500;600;700&family=Manrope:wght@300;400;500;600;700;800&family=Sora:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap");
-    @page { size: A5 landscape; margin: 4mm; }
+    @page { size: A5 landscape; margin: 3mm; }
     * { margin:0; padding:0; box-sizing:border-box; }
-    body { font-family: ${fonts.body}; font-weight:${fonts.bodyWeight}; letter-spacing:${fonts.bodyLetterSpacing}; color:#101827; background:#fff; font-size:9.5px; }
-    .receipt { position:relative; width:202mm; height:140mm; margin:0 auto; border:0.9mm double #123047; padding:4.5mm; overflow:hidden; }
+    body { font-family: ${fonts.body}; font-weight:${fonts.bodyWeight}; letter-spacing:${fonts.bodyLetterSpacing}; color:#101827; background:#fff; font-size:${layout.bodyFontSize}px; }
+    .sheet { width:202mm; height:140mm; margin:0 auto; overflow:hidden; display:flex; align-items:flex-start; justify-content:flex-start; }
+    .receipt { --receipt-scale:${layout.scale}; --qr-size:${layout.qrSize}mm; position:relative; width:calc(202mm / var(--receipt-scale)); height:calc(140mm / var(--receipt-scale)); transform:scale(var(--receipt-scale)); transform-origin:top left; border:0.9mm double #123047; padding:4.2mm; overflow:hidden; }
     .receipt:before { content:""; position:absolute; inset:0; background:linear-gradient(135deg, rgba(18,48,71,.05), transparent 32%, rgba(180,83,9,.05)); pointer-events:none; }
     .watermark { position:absolute; inset:17mm 12mm auto; text-align:center; font-size:27mm; font-weight:900; letter-spacing:4mm; color:rgba(18,48,71,.032); transform:rotate(-10deg); pointer-events:none; }
     .seal-watermark { position:absolute; inset:28mm 0 auto; display:flex; justify-content:center; pointer-events:none; opacity:.05; }
@@ -362,17 +449,17 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
     .words { margin-top:1.4mm; border-top:1px solid #dbe4ef; padding-top:1.4mm; font-size:7.8px; font-style:italic; color:#334155; }
     .security { border:1px solid #123047; padding:2.2mm; }
     .security-head { display:flex; align-items:flex-start; justify-content:space-between; gap:3mm; }
-    .qr { width:27mm; min-width:27mm; border:1px solid #123047; background:#fff; padding:1.2mm; }
+    .qr { width:var(--qr-size); min-width:var(--qr-size); border:1px solid #123047; background:#fff; padding:1mm; }
     .qr svg { display:block; width:100%; height:auto; }
     .qr-copy { margin-top:1mm; text-align:center; font-size:6px; font-weight:800; line-height:1.35; color:#334155; }
-    .qr-fallback { width:27mm; min-width:27mm; min-height:27mm; border:1px dashed #94a3b8; display:flex; align-items:center; justify-content:center; text-align:center; padding:2mm; font-size:6px; font-weight:800; color:#64748b; background:#f8fafc; }
+    .qr-fallback { width:var(--qr-size); min-width:var(--qr-size); min-height:var(--qr-size); border:1px dashed #94a3b8; display:flex; align-items:center; justify-content:center; text-align:center; padding:2mm; font-size:6px; font-weight:800; color:#64748b; background:#f8fafc; }
     .seal-row { display:grid; grid-template-columns:1fr 1fr; gap:3mm; margin-top:3.4mm; }
     .box { min-height:17mm; border:1px dashed #475569; padding:1.5mm; display:flex; flex-direction:column; justify-content:space-between; }
     .box-title { font-size:7px; font-weight:900; color:#475569; text-transform:uppercase; letter-spacing:.8px; }
     .line { border-top:1px solid #475569; padding-top:.8mm; text-align:center; font-size:6.8px; color:#64748b; }
     .stamp { align-items:center; justify-content:center; text-align:center; border-style:solid; }
     .stamp-circle { width:17mm; height:17mm; border:1px dashed #123047; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:auto; background:#fff; color:#94a3b8; font-size:5.8px; font-weight:800; text-transform:uppercase; letter-spacing:.45px; }
-    .warning { margin-top:2.2mm; border-left:2.4px solid #b45309; background:#fffbeb; color:#78350f; padding:1.5mm; font-size:7px; }
+    .warning { margin-top:2.2mm; border-left:2.4px solid #b45309; background:#fffbeb; color:#78350f; padding:1.35mm; font-size:6.7px; }
     .allocation { position:relative; margin-top:2.2mm; border:1px solid #cbd5e1; background:#f8fafc; padding:1.8mm; }
     .allocation-head { display:flex; align-items:center; justify-content:space-between; gap:2mm; }
     .allocation-title { font-size:7px; font-weight:900; color:#123047; text-transform:uppercase; letter-spacing:.7px; }
@@ -385,12 +472,13 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
     .allocation th, .allocation td { border-top:1px solid #e2e8f0; padding:.8mm; text-align:left; vertical-align:top; }
     .allocation th { color:#475569; text-transform:uppercase; letter-spacing:.45px; }
     .allocation-overflow { margin-top:.8mm; font-size:6px; font-weight:700; color:#64748b; }
-    .footer { margin-top:2.6mm; display:flex; justify-content:space-between; color:#64748b; font-size:7px; border-top:1px solid #dbe4ef; padding-top:1.4mm; }
-    @media print { html, body { width:210mm; height:148mm; overflow:hidden; } body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } .receipt { margin:0; page-break-inside:avoid; break-inside:avoid; } }
+    .compact-note { margin-top:1.2mm; font-size:6px; font-weight:700; line-height:1.35; color:#64748b; }
+    .footer { margin-top:2.4mm; display:flex; justify-content:space-between; color:#64748b; font-size:6.8px; border-top:1px solid #dbe4ef; padding-top:1.2mm; gap:2mm; }
+    @media print { html, body { width:210mm; height:148mm; overflow:hidden; } body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } .sheet, .receipt { margin:0; page-break-inside:avoid; break-inside:avoid; } }
   </style>
 </head>
 <body>
-<div class="receipt">
+<div class="sheet"><div class="receipt">
   <div class="watermark">${safe.shortName}</div>
   <div class="seal-watermark"><img src="${safe.logoSrc}" alt="${safe.shortName}"/></div>
   <div class="top">
@@ -422,6 +510,7 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
         <div class="amount-value">$ ${formatMoney(r.amount)}</div>
         <div class="words"><strong>En toutes lettres:</strong> ${safe.amountWords}</div>
       </div>
+      ${bankTransferHtml}
       ${allocationSummaryHtml}
     </div>
 
@@ -439,6 +528,7 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
         <div class="field" style="grid-template-columns:23mm 1fr"><div class="label">Hash</div><div class="value">${security.hash}</div></div>
         <div class="field" style="grid-template-columns:23mm 1fr"><div class="label">Sceau</div><div class="value">${security.sealCode}</div></div>
         <div class="field" style="grid-template-columns:23mm 1fr"><div class="label">Contrôle</div><div class="value">${risk.level}</div></div>
+        ${safe.detailNote ? `<div class="compact-note">${safe.detailNote}</div>` : ""}
       </div>
       <div class="warning">
         Toute modification du montant, de l'eleve, du statut ou du motif invalide le code de vérification. Reçu valable uniquement avec signature du caissier et sceau de l'école.
@@ -461,12 +551,91 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
     <span>Ref: ${safe.tx} - ${new Date().toLocaleDateString("fr-FR")}</span>
   </div>
   <div class="micro">${microText} ${microText} ${microText}</div>
-</div>
+</div></div>
 </body>
 </html>`;
 }
+type PaymentExportScope = {
+  title?: string;
+  search?: string;
+  status?: string;
+  method?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
+function parsePaymentDate(value: string): Date | null {
+  const direct = new Date(value);
+  if (!Number.isNaN(direct.getTime())) return direct;
+
+  const numeric = value.match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/);
+  if (numeric) {
+    const day = Number(numeric[1]);
+    const month = Number(numeric[2]);
+    const year = Number(numeric[3]);
+    const parsed = new Date(year, month - 1, day);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const monthMap: Record<string, number> = {
+    janvier: 0, january: 0,
+    fevrier: 1, février: 1, february: 1,
+    mars: 2, march: 2,
+    avril: 3, april: 3,
+    mai: 4, may: 4,
+    juin: 5, june: 5,
+    juillet: 6, july: 6,
+    aout: 7, août: 7, august: 7,
+    septembre: 8, september: 8,
+    octobre: 9, october: 9,
+    novembre: 10, november: 10,
+    decembre: 11, décembre: 11, december: 11
+  };
+  const normalized = value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const named = normalized.match(/(\d{1,2})\s+([a-z]+)\s+(\d{4})/);
+  if (named) {
+    const month = monthMap[named[2]];
+    if (month !== undefined) {
+      const parsed = new Date(Number(named[3]), month, Number(named[1]));
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+  }
+
+  return null;
+}
+
+function paymentMatchesDateRange(payment: PaymentRecord, dateFrom: string, dateTo: string) {
+  if (!dateFrom && !dateTo) return true;
+  const paymentDate = parsePaymentDate(payment.date);
+  if (!paymentDate) return false;
+
+  const paymentDay = new Date(paymentDate.getFullYear(), paymentDate.getMonth(), paymentDate.getDate()).getTime();
+  const fromTime = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : Number.NEGATIVE_INFINITY;
+  const toTime = dateTo ? new Date(`${dateTo}T23:59:59`).getTime() : Number.POSITIVE_INFINITY;
+  return paymentDay >= fromTime && paymentDay <= toTime;
+}
+
+function buildPaymentScopeLabel(scope?: PaymentExportScope) {
+  if (!scope) return "";
+  return [
+    scope.search?.trim() ? `Recherche : ${scope.search.trim()}` : "Recherche : toutes categories",
+    scope.status && scope.status !== "ALL" ? `Statut : ${getStatusLabel(scope.status)}` : "Statut : tous",
+    scope.method && scope.method !== "ALL" ? `Mode : ${getMethodLabel(scope.method as PaymentRecord["method"])}` : "Mode : tous",
+    scope.dateFrom ? `Du : ${new Date(`${scope.dateFrom}T00:00:00`).toLocaleDateString("fr-FR")}` : "",
+    scope.dateTo ? `Au : ${new Date(`${scope.dateTo}T00:00:00`).toLocaleDateString("fr-FR")}` : ""
+  ].filter(Boolean).join(" | ");
+}
+
+function buildPaymentExportFilename(prefix: string, scope: PaymentExportScope) {
+  const category = normalizeSearchText(scope.search || "toutes-categories").replace(/\s+/g, "-") || "toutes-categories";
+  const status = scope.status && scope.status !== "ALL" ? scope.status.toLowerCase() : "tous-statuts";
+  const method = scope.method && scope.method !== "ALL" ? scope.method.toLowerCase().replace(/_/g, "-") : "tous-modes";
+  const period = `${scope.dateFrom || "debut"}-${scope.dateTo || "fin"}`;
+  return `${prefix}-${category}-${status}-${method}-${period}-${new Date().toISOString().slice(0, 10)}`;
+}
+
 /* --- État financier HTML (général ou par parent) -------------------------- */
-function buildReportHtml(payments: PaymentRecord[], filterParent?: string): string {
+function buildReportHtml(payments: PaymentRecord[], filterParent?: string, scope?: PaymentExportScope): string {
   const filtered = filterParent
     ? payments.filter((p) => getPaymentSubjectName(p).toLowerCase().includes(filterParent.toLowerCase()))
     : payments;
@@ -568,7 +737,10 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
     </div>`;
   }).join("");
 
-  const title = filterParent ? `Etat financier - ${plainPrintText(filterParent)}` : "Etat general des paiements";
+  const title = scope?.title
+    ? plainPrintText(scope.title)
+    : filterParent ? `Etat financier - ${plainPrintText(filterParent)}` : "Etat general des paiements";
+  const scopeLabel = plainPrintText(buildPaymentScopeLabel(scope));
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -664,6 +836,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
     <div style="text-align:center; font-size:17px; font-weight:bold; letter-spacing:3px; text-transform:uppercase; border:2px solid #0d1b2a; padding:10px 0; margin-bottom:24px;">
       ${title}
     </div>
+    ${scopeLabel ? `<div style="border:1px solid #cbd5e1; border-radius:6px; background:#f8fafc; color:#334155; padding:10px 12px; margin:-12px 0 22px; font-size:11px; font-weight:bold;">${scopeLabel}</div>` : ""}
 
     <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:10px; margin-bottom:24px;">
       <div style="border:1px solid #e2e8f0; border-radius:6px; padding:12px 14px; background:#f8fafc;">
@@ -761,13 +934,18 @@ function exportReceiptExcel(payment: PaymentRecord) {
         "Montant en lettres": payment.amountWords,
         "Mode": getMethodLabel(payment.method),
         "Statut": getStatusLabel(payment.status),
+        "Banque": payment.bankTransferDetails?.bankName || "-",
+        "Référence bancaire": payment.bankTransferDetails?.referenceNumber || "-",
+        "Date du virement": payment.bankTransferDetails?.transferDate || "-",
+        "Compte émetteur": payment.bankTransferDetails?.senderAccountNumber || "-",
+        "Compte bénéficiaire": payment.bankTransferDetails?.beneficiaryAccountNumber || "-",
         "Code verification": buildReceiptSecurity(payment).verificationCode
       }]
     }
   ]);
 }
 
-function exportPaymentsExcel(filename: string, records: PaymentRecord[], parentFilter?: string) {
+function exportPaymentsExcel(filename: string, records: PaymentRecord[], parentFilter?: string, scope?: PaymentExportScope) {
   const filtered = parentFilter
     ? records.filter((payment) => getPaymentSubjectName(payment) === parentFilter)
     : records;
@@ -790,6 +968,9 @@ function exportPaymentsExcel(filename: string, records: PaymentRecord[], parentF
       name: "Synthese",
       rows: [{
         "Portee": parentFilter || "Globale",
+        "Filtres appliques": buildPaymentScopeLabel(scope) || "Aucun filtre specifique",
+        "Periode du": scope?.dateFrom || "-",
+        "Periode au": scope?.dateTo || "-",
         "Paiements": filtered.length,
         "Total USD": total,
         "Regles USD": completed.reduce((sum, payment) => sum + payment.amount, 0),
@@ -809,6 +990,8 @@ function exportPaymentsExcel(filename: string, records: PaymentRecord[], parentF
         "Mode": getMethodLabel(payment.method),
         "Montant USD": payment.amount,
         "Statut": getStatusLabel(payment.status),
+        "Categorie recherche": scope?.search || "-",
+        "Periode export": scope?.dateFrom || scope?.dateTo ? `${scope?.dateFrom || "debut"} - ${scope?.dateTo || "fin"}` : "Toutes dates",
         "Code verification": buildReceiptSecurity(payment).verificationCode
       }))
     },
@@ -835,8 +1018,9 @@ type PaymentRecord = {
   reason: string;
   amount: number;
   amountWords: string;
-  method: "CASH" | "AIRTEL_MONEY" | "MPESA" | "ORANGE_MONEY";
+  method: "CASH" | "AIRTEL_MONEY" | "MPESA" | "ORANGE_MONEY" | "BANK_TRANSFER";
   status: "COMPLETED" | "PENDING" | "FAILED" | "CANCELLED";
+  bankTransferDetails?: BankTransferDetails | null;
   tuitionAllocationSummary?: {
     mode: "AUTO" | "MANUAL";
     message: string;
@@ -865,8 +1049,13 @@ type FormState = {
   parentFullName: string;
   reason: string;
   amount: string;
-  method: "CASH" | "AIRTEL_MONEY" | "MPESA" | "ORANGE_MONEY";
+  method: "CASH" | "AIRTEL_MONEY" | "MPESA" | "ORANGE_MONEY" | "BANK_TRANSFER";
   status: "COMPLETED" | "PENDING" | "FAILED" | "CANCELLED";
+  bankName: string;
+  transferReference: string;
+  transferDate: string;
+  senderAccountNumber: string;
+  beneficiaryAccountNumber: string;
 };
 
 type ParentStudentOption = {
@@ -915,7 +1104,7 @@ type FinanceParentSnapshot = {
   }>;
 };
 
-type PaymentOptionType = "FULL_PRESEPTEMBER" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS" | "STANDARD_MONTHLY";
+type PaymentOptionType = "FULL_PRESEPTEMBER" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS" | "STANDARD_MONTHLY" | "SPECIAL_OWNER_AGREEMENT";
 type AllocationMode = "AUTO" | "MANUAL";
 
 type TuitionEngineCalculation = {
@@ -1041,7 +1230,7 @@ function buildAllocationNarrative(preview: TuitionAllocationPreview, mode: Alloc
 type View = "form" | "receipt" | "history" | "report";
 
 const EMPTY_FORM: FormState = {
-  parentId: "", studentIds: [], parentFullName: "", reason: "", amount: "", method: "CASH", status: "COMPLETED",
+  parentId: "", studentIds: [], parentFullName: "", reason: "", amount: "", method: "CASH", status: "COMPLETED", bankName: "", transferReference: "", transferDate: "", senderAccountNumber: "", beneficiaryAccountNumber: "",
 };
 
 const PAYMENT_NOTIFICATION_STORAGE_KEY = "edupay-payment-notifications-enabled";
@@ -1098,6 +1287,7 @@ const METHOD_OPTIONS = [
   { value: "AIRTEL_MONEY", label: "Airtel Money" },
   { value: "MPESA",        label: "M-Pesa" },
   { value: "ORANGE_MONEY", label: "Orange Money" },
+  { value: "BANK_TRANSFER", label: "Virement bancaire" },
 ];
 
 const STATUS_OPTIONS = [
@@ -1128,7 +1318,8 @@ const TUITION_PLAN_OPTIONS: Array<{ value: PaymentOptionType; label: string; det
   { value: "FULL_PRESEPTEMBER", label: "Full Annual", detail: "10% plan discount after family discount" },
   { value: "TWO_INSTALLMENTS", label: "Two Installments", detail: "5% plan discount after family discount" },
   { value: "THREE_INSTALLMENTS", label: "Three Installments", detail: "2% plan discount after family discount" },
-  { value: "STANDARD_MONTHLY", label: "Monthly", detail: "No plan discount, 4 months due upfront" }
+  { value: "STANDARD_MONTHLY", label: "Monthly", detail: "No plan discount, 4 months due upfront" },
+  { value: "SPECIAL_OWNER_AGREEMENT", label: "Accord spécial parent-école", detail: "Montant manuel défini par la finance" }
 ];
 
 const HISTORY_PRODUCT_FILTERS = [
@@ -1326,6 +1517,12 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
               <span className="text-sm font-bold text-slate-700">{value}</span>
             </div>
           ))}
+          {receipt.method === "BANK_TRANSFER" && receipt.bankTransferDetails ? getBankTransferDetailRows(receipt.bankTransferDetails).map(([label, value]) => (
+            <div key={label} className="grid grid-cols-[120px_1fr] gap-3 border-b border-dotted border-slate-300 py-2">
+              <span className="text-[10px] font-black uppercase tracking-wide text-slate-500">{label}</span>
+              <span className="text-sm font-bold text-slate-700">{value}</span>
+            </div>
+          )) : null}
           <div className="mt-3 border-2 border-slate-900 bg-slate-50 p-3">
             <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-500">Montant reçu en dollars américains</p>
             <p className="mt-1 font-mono text-2xl font-black text-slate-900">$ {formatMoney(receipt.amount)}</p>
@@ -1452,6 +1649,8 @@ export function PaymentsPage() {
   const [searchQuery, setSearchQuery]       = useState("");
   const [filterStatus, setFilterStatus]     = useState("ALL");
   const [filterMethod, setFilterMethod]     = useState("ALL");
+  const [historyDateFrom, setHistoryDateFrom] = useState("");
+  const [historyDateTo, setHistoryDateTo] = useState("");
   // État
   const [reportSearch, setReportSearch]     = useState("");
 
@@ -1507,8 +1706,18 @@ export function PaymentsPage() {
     const matchQ = !query || query.split(/\s+/).every((token) => searchableText.includes(token));
     return matchQ
       && (filterStatus === "ALL" || p.status === filterStatus)
-      && (filterMethod === "ALL" || p.method === filterMethod);
-  }), [payments, searchQuery, filterStatus, filterMethod]);
+      && (filterMethod === "ALL" || p.method === filterMethod)
+      && paymentMatchesDateRange(p, historyDateFrom, historyDateTo);
+  }), [payments, searchQuery, filterStatus, filterMethod, historyDateFrom, historyDateTo]);
+
+  const historyExportScope = useMemo<PaymentExportScope>(() => ({
+    title: "Historique des paiements filtre",
+    search: searchQuery,
+    status: filterStatus,
+    method: filterMethod,
+    dateFrom: historyDateFrom,
+    dateTo: historyDateTo
+  }), [filterMethod, filterStatus, historyDateFrom, historyDateTo, searchQuery]);
 
   const stats = useMemo(() => ({
     total:     payments.filter((p) => p.status === "COMPLETED").reduce((s, p) => s + p.amount, 0),
@@ -1525,6 +1734,12 @@ export function PaymentsPage() {
     if (!form.parentFullName.trim()) errs.parentFullName = t("pmRequired");
     if (!form.reason.trim())         errs.reason         = t("pmRequired");
     if (!form.amount || parseFloat(form.amount) <= 0) errs.amount = t("pmRequired");
+    if (form.method === "BANK_TRANSFER") {
+      if (!form.bankName.trim()) errs.bankName = "La banque est obligatoire pour un virement.";
+      if (!form.transferReference.trim()) errs.transferReference = "La référence bancaire est obligatoire.";
+      if (!form.transferDate.trim()) errs.transferDate = "La date du virement est obligatoire.";
+      if (!form.beneficiaryAccountNumber.trim()) errs.beneficiaryAccountNumber = "Le compte bénéficiaire est obligatoire.";
+    }
     setFieldErrors(errs);
     return Object.keys(errs).length === 0;
   };
@@ -1644,7 +1859,7 @@ export function PaymentsPage() {
   );
 
   useEffect(() => {
-    const officialOptions = new Set<PaymentOptionType>(["FULL_PRESEPTEMBER", "TWO_INSTALLMENTS", "THREE_INSTALLMENTS", "STANDARD_MONTHLY"]);
+    const officialOptions = new Set<PaymentOptionType>(["FULL_PRESEPTEMBER", "TWO_INSTALLMENTS", "THREE_INSTALLMENTS", "STANDARD_MONTHLY", "SPECIAL_OWNER_AGREEMENT"]);
     const selectedIds = form.studentIds.length > 0 ? new Set(form.studentIds) : null;
     const financeStudents = (selectedParentFinance?.students ?? [])
       .filter((student) => !selectedIds || selectedIds.has(student.id));
@@ -1889,6 +2104,13 @@ export function PaymentsPage() {
         amountWords: amountToWords(amountNum, lang as "fr" | "en"),
         method: form.method,
         status: form.status,
+        bankTransferDetails: form.method === "BANK_TRANSFER" ? {
+          bankName: form.bankName.trim(),
+          referenceNumber: form.transferReference.trim(),
+          transferDate: form.transferDate,
+          senderAccountNumber: form.senderAccountNumber.trim(),
+          beneficiaryAccountNumber: form.beneficiaryAccountNumber.trim(),
+        } : null,
         tuitionAllocationSummary: buildReceiptAllocationSummary(result.allocationPreview, allocationMode)
       };
       setPayments((prev) => [record, ...prev]);
@@ -1952,6 +2174,13 @@ export function PaymentsPage() {
       amountWords: amountToWords(finalAmount, lang as "fr" | "en"),
       method: form.method,
       status: form.status,
+      bankTransferDetails: form.method === "BANK_TRANSFER" ? {
+        bankName: form.bankName.trim(),
+        referenceNumber: form.transferReference.trim(),
+        transferDate: form.transferDate,
+        senderAccountNumber: form.senderAccountNumber.trim(),
+        beneficiaryAccountNumber: form.beneficiaryAccountNumber.trim(),
+      } : null,
     };
 
     try {
@@ -1968,6 +2197,7 @@ export function PaymentsPage() {
           method: record.method,
           transactionNumber: txNumber,
           status: record.status,
+          bankTransferDetails: record.bankTransferDetails,
           notifyParent: effectivePaymentNotificationsEnabled && Boolean(record.parentId),
         }),
       });
@@ -1976,6 +2206,7 @@ export function PaymentsPage() {
       record.studentNames = created?.payment?.studentNames ?? record.studentNames;
       record.studentClassNames = created?.payment?.studentClassNames ?? record.studentClassNames;
       record.parentFullName = created?.payment?.parentFullName ?? record.parentFullName;
+      record.bankTransferDetails = created?.payment?.bankTransferDetails ?? record.bankTransferDetails;
       if (created?.notificationStatus) {
         setNotificationStatus(`${record.parentFullName} - Email: ${created.notificationStatus.email ?? "SKIPPED"} | SMS: ${created.notificationStatus.sms ?? "SKIPPED"}`);
       }
@@ -2230,7 +2461,7 @@ export function PaymentsPage() {
 
         {/* Filtres */}
         <div className="card">
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-5">
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-ink-dim block mb-2">Recherche</label>
               <SearchField
@@ -2272,6 +2503,36 @@ export function PaymentsPage() {
                 <option value="ALL">Tous les modes</option>
                 {METHOD_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wide text-ink-dim block mb-2">Du</label>
+              <input
+                type="date"
+                value={historyDateFrom}
+                onChange={(e) => setHistoryDateFrom(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wide text-ink-dim block mb-2">Au</label>
+              <input
+                type="date"
+                value={historyDateTo}
+                onChange={(e) => setHistoryDateTo(e.target.value)}
+                className="w-full"
+              />
+              {(historyDateFrom || historyDateTo) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHistoryDateFrom("");
+                    setHistoryDateTo("");
+                  }}
+                  className="mt-2 text-xs font-semibold text-brand-200 hover:text-white"
+                >
+                  Effacer la periode
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -2390,13 +2651,15 @@ export function PaymentsPage() {
         {filteredPayments.length > 0 && (
           <div className="flex gap-3">
             <button
-              onClick={() => printHtml(buildReportHtml(filteredPayments))}
+              onClick={() => printHtml(buildReportHtml(filteredPayments, undefined, historyExportScope))}
+              title="Ouvre la boîte d'impression pour enregistrer la liste filtrée en PDF"
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-brand-500/40 text-brand-300 hover:bg-brand-600/20 transition-all text-sm font-semibold"
             >
-              <PrintIcon /> Imprimer la liste filtrée
+              <PrintIcon /> PDF / Imprimer la liste filtrée
             </button>
             <button
-              onClick={() => exportPaymentsExcel(`historique-paiements-${new Date().toISOString().slice(0, 10)}`, filteredPayments)}
+              onClick={() => exportPaymentsExcel(buildPaymentExportFilename("historique-paiements", historyExportScope), filteredPayments, undefined, historyExportScope)}
+              title="Exporte exactement la liste filtrée courante au format Excel"
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-all text-sm font-semibold"
             >
               <ExcelIcon /> Exporter la liste filtrée
@@ -3217,6 +3480,35 @@ export function PaymentsPage() {
               </select>
             </div>
           </div>
+
+          {form.method === "BANK_TRANSFER" ? (
+            <div className="grid gap-5 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-ink-dim uppercase tracking-wide">Banque</label>
+                <input value={form.bankName} onChange={(e) => setField("bankName", e.target.value)} className="w-full" placeholder="Nom de la banque" />
+                {fieldErrors.bankName && <p className="text-xs text-danger">{fieldErrors.bankName}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-ink-dim uppercase tracking-wide">Référence bancaire</label>
+                <input value={form.transferReference} onChange={(e) => setField("transferReference", e.target.value)} className="w-full" placeholder="Référence du virement" />
+                {fieldErrors.transferReference && <p className="text-xs text-danger">{fieldErrors.transferReference}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-ink-dim uppercase tracking-wide">Date du virement</label>
+                <input type="date" value={form.transferDate} onChange={(e) => setField("transferDate", e.target.value)} className="w-full" />
+                {fieldErrors.transferDate && <p className="text-xs text-danger">{fieldErrors.transferDate}</p>}
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-semibold text-ink-dim uppercase tracking-wide">Compte émetteur</label>
+                <input value={form.senderAccountNumber} onChange={(e) => setField("senderAccountNumber", e.target.value)} className="w-full" placeholder="Compte débité" />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <label className="text-sm font-semibold text-ink-dim uppercase tracking-wide">Compte bénéficiaire</label>
+                <input value={form.beneficiaryAccountNumber} onChange={(e) => setField("beneficiaryAccountNumber", e.target.value)} className="w-full" placeholder="Compte crédité" />
+                {fieldErrors.beneficiaryAccountNumber && <p className="text-xs text-danger">{fieldErrors.beneficiaryAccountNumber}</p>}
+              </div>
+            </div>
+          ) : null}
 
           {/* Statut */}
           <div className="space-y-1.5">

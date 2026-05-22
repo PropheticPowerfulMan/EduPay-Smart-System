@@ -45,6 +45,7 @@ enum NotificationType {
   ABNORMAL_DEBT
   MISSING_PAYMENT
   INCOMPLETE_SCHEDULE
+  MANUAL_MESSAGE
 }
 
 enum NotificationChannel {
@@ -290,6 +291,7 @@ model Parent {
   fullName          String
   phone             String
   email             String
+  physicalAddress   String?
   photoUrl          String?
   preferredLanguage String   @default("fr")
   createdAt         DateTime @default(now())

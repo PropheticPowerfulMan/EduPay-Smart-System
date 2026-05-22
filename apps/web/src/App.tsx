@@ -8,6 +8,7 @@ import { EmployeesPage } from "./pages/EmployeesPage";
 import { FinanceParentAdminPage } from "./pages/FinanceParentAdminPage";
 import { FinanceParentPage } from "./pages/FinanceParentPage";
 import { LoginPage } from "./pages/LoginPage";
+import { MessagesPage } from "./pages/MessagesPage";
 import { ParentsManagementPage } from "./pages/ParentsManagementPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { ReceiptVerificationPage } from "./pages/ReceiptVerificationPage";
@@ -97,6 +98,7 @@ export function App() {
             <Route path="operations" element={<FinancialOperationsPage />} />
             <Route path="reports" element={<ReportsPage />} />
             <Route path="payments" element={<PaymentsPage />} />
+            <Route path="messages" element={<MessagesPage />} />
             <Route path="parent-payments" element={<FinanceParentAdminPage />} />
             <Route path="students" element={<StudentsDirectoryPage />} />
             <Route path="employees" element={<EmployeesPage />} />
