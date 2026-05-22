@@ -34,6 +34,7 @@ import {
   WalletCards,
   X
 } from "lucide-react";
+import { schoolBranding } from "../config/branding";
 import { api } from "../services/api";
 import { useI18n } from "../i18n";
 import { exportWorkbook } from "../utils/financeExcel";
@@ -373,6 +374,13 @@ function buildScholarshipReportHtml(input: {
     maximumFractionDigits: 2
   });
   const total = input.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const branding = {
+    schoolName: plainPrintText(schoolBranding.schoolName),
+    shortName: plainPrintText(schoolBranding.shortName),
+    appName: plainPrintText(schoolBranding.appName),
+    tagline: plainPrintText(schoolBranding.tagline),
+    logoSrc: plainPrintText(schoolBranding.logoSrc)
+  };
 
   const rowsHtml = input.rows.map((row) => `
     <tr>
@@ -395,26 +403,142 @@ function buildScholarshipReportHtml(input: {
     <style>
       @page { size: A4 portrait; margin: 12mm; }
       * { box-sizing: border-box; }
-      body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; background: #fff; }
-      .shell { padding: 12px; }
-      .hero { border: 2px solid #082f49; background: linear-gradient(135deg, rgba(8,47,73,.04), rgba(6,182,212,.06)); padding: 16px 18px; border-radius: 16px; }
+      body { position: relative; font-family: Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; background: #fff; }
+      .watermark-text {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 108px;
+        font-weight: 900;
+        letter-spacing: 14px;
+        color: rgba(8, 47, 73, 0.055);
+        transform: rotate(-26deg);
+        pointer-events: none;
+        user-select: none;
+      }
+      .watermark-logo-frame {
+        position: fixed;
+        left: 50%;
+        top: 48%;
+        z-index: 0;
+        width: 420px;
+        height: 420px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        border: 2px solid rgba(8, 47, 73, 0.05);
+        background: radial-gradient(circle, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 58%, rgba(8,47,73,0.03) 100%);
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        user-select: none;
+      }
+      .watermark-logo {
+        width: 78%;
+        height: 78%;
+        object-fit: contain;
+        opacity: 0.11;
+        filter: grayscale(100%) contrast(1.08) saturate(0.3);
+        transform: rotate(-12deg);
+        pointer-events: none;
+        user-select: none;
+      }
+      .shell { position: relative; z-index: 2; padding: 12px; }
+      .hero {
+        position: relative;
+        overflow: hidden;
+        border: 2px solid #082f49;
+        background: linear-gradient(145deg, rgba(8,47,73,.05), rgba(31,79,143,.07) 45%, rgba(143,183,232,.12));
+        padding: 18px 20px;
+        border-radius: 20px;
+      }
+      .hero:after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.26) 48%, transparent 100%);
+        opacity: .45;
+        pointer-events: none;
+      }
+      .hero-header { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+      .brand { display: flex; align-items: center; gap: 14px; }
+      .logo {
+        width: 64px;
+        height: 64px;
+        object-fit: contain;
+        border-radius: 999px;
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        padding: 5px;
+      }
       .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #0f766e; font-weight: 700; }
-      h1 { margin: 8px 0 6px; font-size: 24px; color: #082f49; }
+      .school { margin-top: 4px; font-size: 22px; font-weight: 800; color: #082f49; letter-spacing: .5px; }
+      .tagline { margin-top: 4px; font-size: 12px; font-weight: 700; color: #334155; }
+      .meta { text-align: right; }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid #082f49;
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 1.6px;
+        text-transform: uppercase;
+        color: #082f49;
+        background: rgba(255,255,255,0.45);
+      }
+      h1 { margin: 14px 0 6px; font-size: 26px; color: #082f49; }
       .scope { font-size: 12px; color: #475569; }
       .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 16px 0; }
       .metric { border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px; background: #f8fafc; }
       .metric-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; }
       .metric-value { margin-top: 6px; font-size: 18px; font-weight: 700; color: #0f172a; }
-      table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 14px; background: rgba(255,255,255,0.94); }
       th, td { border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; vertical-align: top; }
-      th { background: #e2e8f0; text-transform: uppercase; letter-spacing: .6px; text-align: left; color: #334155; }
+      th { background: linear-gradient(180deg, #d8e7fa, #e9f1fb); text-transform: uppercase; letter-spacing: .6px; text-align: left; color: #334155; }
       tr:nth-child(even) td { background: #f8fafc; }
+      .footer {
+        margin-top: 18px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        border-top: 2px solid #dbe4ef;
+        padding-top: 12px;
+        font-size: 10px;
+        color: #475569;
+      }
+      .footer strong { color: #082f49; }
+      @media print {
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      }
     </style>
   </head>
   <body>
+    <div class="watermark-text">${branding.shortName}</div>
+    <div class="watermark-logo-frame">
+      <img class="watermark-logo" src="${branding.logoSrc}" alt="${branding.shortName}" />
+    </div>
     <div class="shell">
       <div class="hero">
-        <div class="eyebrow">EduPay Finance</div>
+        <div class="hero-header">
+          <div class="brand">
+            <img class="logo" src="${branding.logoSrc}" alt="${branding.schoolName}" />
+            <div>
+              <div class="eyebrow">Document administratif EduPay</div>
+              <div class="school">${branding.schoolName}</div>
+              <div class="tagline">${branding.shortName} · ${branding.tagline}</div>
+            </div>
+          </div>
+          <div class="meta">
+            <div class="badge">Rapport officiel - Bourses</div>
+            <div style="margin-top:8px;font-size:11px;color:#475569;">${branding.appName}</div>
+          </div>
+        </div>
         <h1>${plainPrintText(input.title)}</h1>
         <div class="scope">${plainPrintText(input.scopeLabel)}</div>
       </div>
@@ -439,6 +563,10 @@ function buildScholarshipReportHtml(input: {
         </thead>
         <tbody>${rowsHtml || `<tr><td colspan="9">Aucune ligne visible pour ce filtre.</td></tr>`}</tbody>
       </table>
+      <div class="footer">
+        <span><strong>${branding.schoolName}</strong> · ${branding.appName}</span>
+        <span>Édité le ${plainPrintText(new Date().toLocaleString(input.locale))}</span>
+      </div>
     </div>
   </body>
   </html>`;
@@ -456,12 +584,24 @@ function printScholarshipReport(html: string) {
     popup.print();
   };
 
+  const waitForImages = Promise.all(
+    Array.from(popup.document.images).map((image) => {
+      if (image.complete) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        image.addEventListener("load", () => resolve(), { once: true });
+        image.addEventListener("error", () => resolve(), { once: true });
+      });
+    })
+  );
+
   if (popup.document.fonts?.ready) {
-    void popup.document.fonts.ready.then(triggerPrint).catch(triggerPrint);
+    void Promise.all([popup.document.fonts.ready.catch(() => undefined), waitForImages]).then(triggerPrint).catch(triggerPrint);
     return;
   }
 
-  window.setTimeout(triggerPrint, 250);
+  void waitForImages.finally(() => {
+    window.setTimeout(triggerPrint, 250);
+  });
 }
 
 function exportScholarshipRowsExcel(filename: string, rows: ScholarshipRow[], scopeLabel: string, locale: string) {
@@ -559,6 +699,81 @@ export function FinanceDashboardPage() {
     }));
   }, [expenseOverview, locale]);
 
+  const reductionStatistics = revenueOverview?.reductionStatistics ?? null;
+  const scholarshipRows = useMemo(
+    () => uniqueReductionRows(reductionStatistics?.reductions ?? reductionStatistics?.scholarships ?? []),
+    [reductionStatistics]
+  );
+  const manualScholarshipRows = useMemo(
+    () => uniqueReductionRows(reductionStatistics?.scholarships ?? []),
+    [reductionStatistics]
+  );
+  const scholarshipScopeOptions = useMemo(
+    () => Array.from(new Set(scholarshipRows.map((row) => String(row.scope ?? "UNKNOWN")))).sort(),
+    [scholarshipRows]
+  );
+  const scholarshipOriginOptions = useMemo(
+    () => Array.from(new Set(scholarshipRows.map((row) => reductionOrigin(row.scope, row.title)))).sort(),
+    [scholarshipRows]
+  );
+  const filteredScholarshipRows = useMemo(() => {
+    if (activeModule !== "scholarships") return [];
+
+    const normalizedSearch = scholarshipSearch.trim().toLowerCase();
+    return scholarshipRows.filter((row) => {
+      const rowOrigin = reductionOrigin(row.scope, row.title);
+      const effectiveDate = row.effectiveDate ? new Date(row.effectiveDate) : null;
+      const matchesSearch = !normalizedSearch || [
+        row.title,
+        row.parentName,
+        row.studentName,
+        row.scope,
+        row.source,
+        row.gradeGroup,
+        row.paymentOptionType,
+        rowOrigin
+      ].some((value) => String(value ?? "").toLowerCase().includes(normalizedSearch));
+      const matchesScope = scholarshipScopeFilter === "ALL" || String(row.scope ?? "UNKNOWN") === scholarshipScopeFilter;
+      const matchesOrigin = scholarshipOriginFilter === "ALL" || rowOrigin === scholarshipOriginFilter;
+      const matchesDateFrom = !scholarshipDateFrom || (effectiveDate && effectiveDate >= new Date(`${scholarshipDateFrom}T00:00:00`));
+      const matchesDateTo = !scholarshipDateTo || (effectiveDate && effectiveDate <= new Date(`${scholarshipDateTo}T23:59:59`));
+      return matchesSearch && matchesScope && matchesOrigin && matchesDateFrom && matchesDateTo;
+    });
+  }, [activeModule, scholarshipDateFrom, scholarshipDateTo, scholarshipOriginFilter, scholarshipRows, scholarshipScopeFilter, scholarshipSearch]);
+  const filteredScholarshipTotal = useMemo(
+    () => filteredScholarshipRows.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    [filteredScholarshipRows]
+  );
+  const filteredManualScholarshipRows = useMemo(
+    () => filteredScholarshipRows.filter((row) => {
+      const normalizedScope = String(row.scope ?? "").toUpperCase();
+      const normalizedTitle = String(row.title ?? "").toLowerCase();
+      return normalizedScope === "MANUAL" || normalizedTitle.includes("bourse") || normalizedTitle.includes("scholarship");
+    }),
+    [filteredScholarshipRows]
+  );
+  const filteredReductionsByOrigin = useMemo(
+    () => Array.from(filteredScholarshipRows.reduce<Map<string, { origin: string; amount: number; count: number }>>((acc, row) => {
+      const origin = reductionOrigin(row.scope, row.title);
+      const current = acc.get(origin) ?? { origin, amount: 0, count: 0 };
+      current.amount += Number(row.amount || 0);
+      current.count += 1;
+      acc.set(origin, current);
+      return acc;
+    }, new Map()).values())
+      .map((entry) => ({ ...entry, amount: Math.round((entry.amount + Number.EPSILON) * 100) / 100 }))
+      .sort((left, right) => right.amount - left.amount),
+    [filteredScholarshipRows]
+  );
+  const filteredScholarshipsByScope = useMemo(
+    () => Array.from(filteredScholarshipRows.reduce<Map<string, number>>((acc, row) => {
+      const scope = formatCodeLabel(row.scope);
+      acc.set(scope, (acc.get(scope) ?? 0) + Number(row.amount || 0));
+      return acc;
+    }, new Map()).entries()).map(([scope, amount]) => ({ scope, amount })),
+    [filteredScholarshipRows]
+  );
+
   if (loading) {
     return (
       <div className="flex min-h-[65vh] items-center justify-center">
@@ -610,9 +825,6 @@ export function FinanceDashboardPage() {
   const healthTone = healthScore >= 78 ? "text-emerald-300" : healthScore >= 58 ? "text-amber-300" : "text-red-300";
   const healthLabel = healthScore >= 78 ? L("Stable", "Stable") : healthScore >= 58 ? L("Sous surveillance", "Under watch") : L("Critique", "Critical");
   const riskIndex = clampScore(100 - healthScore);
-  const allReductionRows = uniqueReductionRows(revenueOverview.reductionStatistics.reductions ?? revenueOverview.reductionStatistics.scholarships ?? []);
-  const manualScholarshipRows = uniqueReductionRows(revenueOverview.reductionStatistics.scholarships ?? []);
-  const scholarshipRows = allReductionRows;
   const scholarshipTotal = revenueOverview.reductionStatistics.scholarshipTotal ?? revenueOverview.reductionStatistics.totalReductions;
   const scholarshipCount = revenueOverview.reductionStatistics.scholarshipCount ?? revenueOverview.reductionStatistics.reductionCount;
   const manualScholarshipTotal = revenueOverview.reductionStatistics.manualScholarshipTotal ?? manualScholarshipRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
@@ -627,51 +839,6 @@ export function FinanceDashboardPage() {
   }, new Map()).values())
     .map((entry) => ({ ...entry, amount: Math.round((entry.amount + Number.EPSILON) * 100) / 100 }))
     .sort((left, right) => right.amount - left.amount);
-  const scholarshipScopeOptions = Array.from(new Set(scholarshipRows.map((row) => String(row.scope ?? "UNKNOWN")))).sort();
-  const scholarshipOriginOptions = Array.from(new Set(scholarshipRows.map((row) => reductionOrigin(row.scope, row.title)))).sort();
-  const filteredScholarshipRows = useMemo(() => {
-    const normalizedSearch = scholarshipSearch.trim().toLowerCase();
-    return scholarshipRows.filter((row) => {
-      const rowOrigin = reductionOrigin(row.scope, row.title);
-      const effectiveDate = row.effectiveDate ? new Date(row.effectiveDate) : null;
-      const matchesSearch = !normalizedSearch || [
-        row.title,
-        row.parentName,
-        row.studentName,
-        row.scope,
-        row.source,
-        row.gradeGroup,
-        row.paymentOptionType,
-        rowOrigin
-      ].some((value) => String(value ?? "").toLowerCase().includes(normalizedSearch));
-      const matchesScope = scholarshipScopeFilter === "ALL" || String(row.scope ?? "UNKNOWN") === scholarshipScopeFilter;
-      const matchesOrigin = scholarshipOriginFilter === "ALL" || rowOrigin === scholarshipOriginFilter;
-      const matchesDateFrom = !scholarshipDateFrom || (effectiveDate && effectiveDate >= new Date(`${scholarshipDateFrom}T00:00:00`));
-      const matchesDateTo = !scholarshipDateTo || (effectiveDate && effectiveDate <= new Date(`${scholarshipDateTo}T23:59:59`));
-      return matchesSearch && matchesScope && matchesOrigin && matchesDateFrom && matchesDateTo;
-    });
-  }, [scholarshipDateFrom, scholarshipDateTo, scholarshipOriginFilter, scholarshipRows, scholarshipScopeFilter, scholarshipSearch]);
-  const filteredScholarshipTotal = filteredScholarshipRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-  const filteredManualScholarshipRows = filteredScholarshipRows.filter((row) => {
-    const normalizedScope = String(row.scope ?? "").toUpperCase();
-    const normalizedTitle = String(row.title ?? "").toLowerCase();
-    return normalizedScope === "MANUAL" || normalizedTitle.includes("bourse") || normalizedTitle.includes("scholarship");
-  });
-  const filteredReductionsByOrigin = Array.from(filteredScholarshipRows.reduce<Map<string, { origin: string; amount: number; count: number }>>((acc, row) => {
-    const origin = reductionOrigin(row.scope, row.title);
-    const current = acc.get(origin) ?? { origin, amount: 0, count: 0 };
-    current.amount += Number(row.amount || 0);
-    current.count += 1;
-    acc.set(origin, current);
-    return acc;
-  }, new Map()).values())
-    .map((entry) => ({ ...entry, amount: Math.round((entry.amount + Number.EPSILON) * 100) / 100 }))
-    .sort((left, right) => right.amount - left.amount);
-  const filteredScholarshipsByScope = Array.from(filteredScholarshipRows.reduce<Map<string, number>>((acc, row) => {
-    const scope = formatCodeLabel(row.scope);
-    acc.set(scope, (acc.get(scope) ?? 0) + Number(row.amount || 0));
-    return acc;
-  }, new Map()).entries()).map(([scope, amount]) => ({ scope, amount }));
   const scholarshipFilterScopeLabel = [
     scholarshipSearch ? `Recherche: ${scholarshipSearch}` : "Recherche: toutes",
     scholarshipScopeFilter !== "ALL" ? `Scope: ${formatCodeLabel(scholarshipScopeFilter)}` : "Scope: tous",
