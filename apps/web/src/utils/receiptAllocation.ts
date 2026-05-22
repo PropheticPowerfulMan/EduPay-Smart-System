@@ -60,7 +60,7 @@ export function buildReceiptAllocationSnapshot(summary: ReceiptAllocationSummary
     modeLabel: getReceiptAllocationModeLabel(summary.mode),
     statusNote: buildReceiptAllocationStatusNote(summary),
     metrics: [
-      { label: "Montant recu", amount: roundMoney(summary.totalReceived) },
+      { label: "Montant reçu", amount: roundMoney(summary.totalReceived) },
       { label: "Montant impute", amount: roundMoney(summary.allocatedTotal) },
       { label: "Solde non impute", amount: roundMoney(summary.missingAmount) },
       { label: "Avance", amount: roundMoney(summary.advanceBalance) },

@@ -28,7 +28,7 @@ const createPaymentSchema = z.object({
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["studentExternalIds"],
-      message: "Au moins un eleve partage doit etre selectionne pour synchroniser le paiement via Orbit."
+      message: "Au moins un élève partagé doit être sélectionné pour synchroniser le paiement via Orbit."
     });
   }
 });
@@ -248,10 +248,10 @@ function getStatusLabel(status: string) {
 
 function getLocalizedStatusLabel(status: string, language: "fr" | "en" = "fr") {
   const labels: Record<string, Record<"fr" | "en", string>> = {
-    COMPLETED: { fr: "Regle", en: "Paid" },
+    COMPLETED: { fr: "Réglé", en: "Paid" },
     PENDING: { fr: "En attente", en: "Pending" },
-    FAILED: { fr: "Echoue", en: "Failed" },
-    CANCELLED: { fr: "Annule", en: "Cancelled" }
+    FAILED: { fr: "Échoué", en: "Failed" },
+    CANCELLED: { fr: "Annulé", en: "Cancelled" }
   };
   return labels[status]?.[language] ?? getStatusLabel(status);
 }
@@ -276,7 +276,7 @@ function buildPaymentNotificationMessages(input: {
   const isReceiptPrint = input.event === "RECEIPT_PRINTED";
   const studentLines = input.students.length
     ? input.students.map((student) => `- ${student.fullName}`).join("\n")
-    : language === "en" ? "- No specific student" : "- Aucun eleve precise";
+    : language === "en" ? "- No specific student" : "- Aucun élève précisé";
   const amount = `$ ${input.amount.toFixed(5)} USD`;
   const date = input.createdAt.toLocaleString(language === "en" ? "en-US" : "fr-FR");
 
@@ -311,31 +311,31 @@ function buildPaymentNotificationMessages(input: {
   }
 
   const subject = isReceiptPrint
-    ? `Recu EduPay imprime ${input.receiptNumber ?? input.transactionNumber}`
+    ? `Reçu EduPay imprimé ${input.receiptNumber ?? input.transactionNumber}`
     : `Confirmation de paiement ${input.transactionNumber}`;
   const emailBody = [
     `Bonjour ${input.parent.fullName},`,
     "",
-    isReceiptPrint ? "Un recu EduPay vient d'etre imprime ou ouvert pour impression." : "Un paiement vient d'etre enregistre dans EduPay.",
+    isReceiptPrint ? "Un reçu EduPay vient d'être imprimé ou ouvert pour impression." : "Un paiement vient d'être enregistré dans EduPay.",
     "",
     `Transaction: ${input.transactionNumber}`,
-    input.receiptNumber ? `Recu: ${input.receiptNumber}` : "",
-    `Date: ${date}`,
-    `Motif: ${input.reason}`,
-    `Montant: ${amount}`,
-    `Mode de paiement: ${getMethodLabel(input.method, language)}`,
-    `Statut: ${getLocalizedStatusLabel(input.status, language)}`,
+    input.receiptNumber ? `Reçu : ${input.receiptNumber}` : "",
+    `Date : ${date}`,
+    `Motif : ${input.reason}`,
+    `Montant : ${amount}`,
+    `Mode de paiement : ${getMethodLabel(input.method, language)}`,
+    `Statut : ${getLocalizedStatusLabel(input.status, language)}`,
     "",
-    "Eleves concernes:",
+    "Élèves concernés :",
     studentLines,
     "",
     isReceiptPrint
-      ? "Si vous n'avez pas demande ou attendu cette impression, contactez le service financier."
+      ? "Si vous n'avez pas demandé ou attendu cette impression, contactez le service financier."
       : "Merci de conserver ce message comme confirmation de suivi."
   ].filter(Boolean).join("\n");
   const smsBody = isReceiptPrint
-    ? `EduPay: recu ${input.receiptNumber ?? input.transactionNumber} imprime/ouvert. Montant: ${amount}. Statut: ${getLocalizedStatusLabel(input.status, language)}.`
-    : `EduPay: paiement ${input.transactionNumber}. Motif: ${input.reason}. Montant: ${amount}. Statut: ${getLocalizedStatusLabel(input.status, language)}.`;
+    ? `EduPay : reçu ${input.receiptNumber ?? input.transactionNumber} imprimé/ouvert. Montant : ${amount}. Statut : ${getLocalizedStatusLabel(input.status, language)}.`
+    : `EduPay : paiement ${input.transactionNumber}. Motif : ${input.reason}. Montant : ${amount}. Statut : ${getLocalizedStatusLabel(input.status, language)}.`;
   return { subject, emailBody, smsBody, dashboardBody: emailBody };
 }
 async function sendPaymentNotifications(input: {
@@ -708,7 +708,7 @@ paymentRouter.post("/:id/receipt/printed", authorize("ADMIN", "ACCOUNTANT", "PAR
     return res.json({ notificationStatus });
   } catch (error) {
     console.error("Receipt print notification failed", error);
-    return res.status(400).json({ message: "Impossible de notifier l'impression du recu." });
+    return res.status(400).json({ message: "Impossible de notifier l'impression du reçu." });
   }
 });
 

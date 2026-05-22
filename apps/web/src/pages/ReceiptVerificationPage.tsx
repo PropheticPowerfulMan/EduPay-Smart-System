@@ -101,7 +101,7 @@ function AllocationSummaryBlock({ summary }: { summary: NonNullable<Verification
     <section className="rounded-3xl border border-emerald-400/20 bg-emerald-500/10 p-5 shadow-xl">
       <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-200">Repartition tuition</p>
       <h2 className="mt-2 font-display text-xl font-bold text-white">
-        Repartition {summary.mode === "AUTO" ? "automatique executee par le systeme" : "manuelle executee par le financier"}
+        Répartition {summary.mode === "AUTO" ? "automatique exécutée par le système" : "manuelle exécutée par le financier"}
       </h2>
       <p className="mt-3 text-sm leading-6 text-emerald-50/90">{summary.message}</p>
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -226,7 +226,7 @@ export function ReceiptVerificationPage() {
                 <div className={`rounded-3xl border p-6 ${txParam ? "border-sky-400/20 bg-sky-500/10 text-sky-100" : "border-red-400/20 bg-red-500/10 text-red-100"}`}>
                   <p className="text-xs font-black uppercase tracking-[0.22em]">{txParam ? "QR transaction" : "QR invalide"}</p>
                   <h2 className="mt-3 font-display text-2xl font-bold text-white">
-                    {txParam ? "Verification directe dans EduPay" : "Aucune donnee de recu exploitable"}
+                    {txParam ? "Vérification directe dans EduPay" : "Aucune donnée de reçu exploitable"}
                   </h2>
                   <p className="mt-3 text-sm leading-6 text-current/90">
                     {txParam
@@ -277,17 +277,17 @@ export function ReceiptVerificationPage() {
                     {validation.valid ? "Recu coherent" : "Verification partielle"}
                   </p>
                   <h2 className="mt-3 font-display text-2xl font-bold text-white">
-                    {validation.valid ? "Les codes du recu correspondent aux donnees scannees" : "Les donnees du recu ne correspondent pas entierement aux codes"}
+                    {validation.valid ? "Les codes du reçu correspondent aux données scannées" : "Les données du reçu ne correspondent pas entièrement aux codes"}
                   </h2>
                   <p className="mt-3 text-sm leading-6 text-current/90">
                     {validation.valid
-                      ? "La transaction, le montant, le statut et les identifiants de securite du recu sont coherents."
-                      : "Les informations visibles ont ete lues, mais au moins un code de securite ne correspond plus."}
+                      ? "La transaction, le montant, le statut et les identifiants de sécurité du reçu sont cohérents."
+                      : "Les informations visibles ont été lues, mais au moins un code de sécurité ne correspond plus."}
                   </p>
                 </div>
 
                 <div className={`rounded-3xl border p-5 ${apiState === "ready" && apiComparison?.matched ? "border-sky-400/30 bg-sky-500/10 text-sky-100" : "border-white/10 bg-white/5 text-ink"}`}>
-                  <p className="text-xs font-black uppercase tracking-[0.22em] text-brand-300">Recoupement base de donnees</p>
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-brand-300">Recoupement base de données</p>
                   {apiState === "loading" && <p className="mt-3 text-sm text-ink-dim">Verification de la transaction dans l'API EduPay en cours...</p>}
                   {apiState === "missing" && <p className="mt-3 text-sm text-amber-100">Aucune transaction correspondante n'a ete trouvee en base pour ce numero.</p>}
                   {apiState === "error" && <p className="mt-3 text-sm text-red-200">La verification en base est indisponible pour le moment.</p>}
@@ -295,8 +295,8 @@ export function ReceiptVerificationPage() {
                     <div className="mt-3 space-y-3">
                       <p className="text-sm leading-6 text-current/90">
                         {apiComparison.matched
-                          ? "Les donnees scannees correspondent aux donnees recuperees en base pour cette transaction."
-                          : `Des ecarts ont ete detectes entre le QR et la base: ${apiComparison.mismatches.join(", ")}.`}
+                          ? "Les données scannées correspondent aux données récupérées en base pour cette transaction."
+                          : `Des écarts ont été détectés entre le QR et la base : ${apiComparison.mismatches.join(", ")}.`}
                       </p>
                       {apiResult.payment.downloads ? (
                         <div className="flex flex-wrap gap-3 pt-2">
@@ -340,7 +340,7 @@ export function ReceiptVerificationPage() {
                     </section>
 
                     <section className="rounded-3xl border border-white/10 bg-slate-900/60 p-5 shadow-xl">
-                      <p className="text-xs font-black uppercase tracking-[0.22em] text-brand-300">Codes securite</p>
+                      <p className="text-xs font-black uppercase tracking-[0.22em] text-brand-300">Codes de sécurité</p>
                       <DetailGrid rows={[
                         ["Verification", receipt.security.verificationCode],
                         ["Sceau", receipt.security.sealCode],

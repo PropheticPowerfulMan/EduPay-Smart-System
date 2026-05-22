@@ -14,7 +14,7 @@ const applyStoredFont = () => {
 };
 
 const forceFavicon = () => {
-  const href = `${import.meta.env.BASE_URL}logo-school.png?v=4`;
+  const href = `${import.meta.env.BASE_URL}pwa-192x192.png?v=5`;
   const existing = document.querySelector<HTMLLinkElement>("link[rel='icon']");
   if (existing) {
     existing.href = href;

@@ -8,12 +8,13 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.ico", "logo-school.png", "kcs.jpg"],
+      includeAssets: ["favicon.ico", "logo-school.png", "kcs.jpg", "apple-touch-icon.png", "pwa-192x192.png", "pwa-512x512.png", "pwa-maskable-512x512.png"],
       manifest: {
         id: "/EduPay-Smart-System/",
         name: "EduPay KCS",
-        short_name: "EduPay",
-        description: "Kinshasa Christian School payment and finance application",
+        short_name: "EduPay KCS",
+        lang: "fr",
+        description: "Application mobile et tablette de paiement scolaire pour Kinshasa Christian School",
         theme_color: "#031b34",
         background_color: "#020817",
         display: "standalone",
@@ -23,27 +24,28 @@ export default defineConfig({
         start_url: "/EduPay-Smart-System/#/dashboard",
         categories: ["education", "finance", "productivity"],
         icons: [
-          { src: "logo-school.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
-          { src: "logo-school.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }
+          { src: "pwa-192x192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "pwa-512x512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "pwa-maskable-512x512.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
         ],
         shortcuts: [
           {
             name: "Dashboard",
             short_name: "Dashboard",
             url: "/EduPay-Smart-System/#/dashboard",
-            icons: [{ src: "logo-school.png", sizes: "192x192", type: "image/png" }]
+            icons: [{ src: "pwa-192x192.png", sizes: "192x192", type: "image/png" }]
           },
           {
             name: "Paiements",
             short_name: "Paiements",
             url: "/EduPay-Smart-System/#/payments",
-            icons: [{ src: "logo-school.png", sizes: "192x192", type: "image/png" }]
+            icons: [{ src: "pwa-192x192.png", sizes: "192x192", type: "image/png" }]
           },
           {
             name: "Parents",
             short_name: "Parents",
             url: "/EduPay-Smart-System/#/parents",
-            icons: [{ src: "logo-school.png", sizes: "192x192", type: "image/png" }]
+            icons: [{ src: "pwa-192x192.png", sizes: "192x192", type: "image/png" }]
           }
         ]
       },

@@ -23,14 +23,14 @@ export function Sidebar() {
 
   return (
     <>
-    <nav className="fixed inset-x-3 bottom-3 z-50 md:hidden">
-      <div className="glass flex items-center justify-between gap-1 rounded-2xl p-2 shadow-2xl">
+    <nav className="fixed inset-x-3 bottom-3 z-50 pb-[env(safe-area-inset-bottom)] md:hidden">
+      <div className="glass edupay-mobile-nav flex items-center gap-1 overflow-x-auto rounded-2xl p-2 shadow-2xl">
         {links.map((link) => (
           <NavLink
             key={link.to}
             to={link.to}
             className={({ isActive }) =>
-              `flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-[10px] font-bold transition-all ${
+              `flex min-w-[4.75rem] flex-none flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-[10px] font-bold transition-all ${
                 isActive
                   ? "bg-brand-500/25 text-white ring-1 ring-brand-300/35"
                   : "text-ink-dim hover:bg-white/[0.06] hover:text-white"

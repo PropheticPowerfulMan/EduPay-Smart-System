@@ -56,7 +56,17 @@ type FinanceSnapshot = {
     completionRate: number;
     overdueInstallments: number;
   }>;
-  reductions: Array<{ id: string; title: string; amount: number; studentName?: string | null; scope?: string | null }>;
+  reductions: Array<{
+    id: string;
+    title: string;
+    amount: number;
+    percentage?: number | null;
+    studentName?: string | null;
+    scope?: string | null;
+    gradeGroup?: string | null;
+    paymentOptionType?: string | null;
+    effectiveDate?: string;
+  }>;
   debts: Array<{
     id: string;
     title: string;
@@ -120,6 +130,85 @@ function uniqueReductionRows<T extends { studentName?: string | null; scope?: st
   }, new Map<string, T>()).values());
 }
 
+type ReductionDisplayRow = FinanceSnapshot["reductions"][number];
+
+function getReductionOrigin(row: Pick<ReductionDisplayRow, "scope" | "title" | "paymentOptionType">) {
+  const scope = String(row.scope ?? "").toUpperCase();
+  const title = row.title.toLowerCase();
+  if (scope === "PARENT" || title.includes("family")) return "Réduction familiale";
+  if (scope === "PAYMENT_OPTION" || row.paymentOptionType) return "Réduction du plan de scolarité";
+  if (scope === "MANUAL" || title.includes("bourse") || title.includes("scholarship")) return "Bourse / accord manuel";
+  if (scope === "AGREEMENT" || title.includes("agreement") || title.includes("accord")) return "Accord spécial";
+  if (scope === "GRADE_GROUP") return "Réduction par niveau";
+  if (scope === "STUDENT") return "Réduction individuelle";
+  return "Autre réduction";
+}
+
+function getReductionScopeLabel(scope: string) {
+  switch (scope.toUpperCase()) {
+    case "PARENT":
+      return "Réduction familiale";
+    case "PAYMENT_OPTION":
+      return "Tuition plan";
+    case "MANUAL":
+      return "Bourse / ajustement manuel";
+    case "AGREEMENT":
+      return "Accord spécial";
+    case "GRADE_GROUP":
+      return "Niveau / classe";
+    case "STUDENT":
+      return "Enfant";
+    default:
+      return "Type non précisé";
+  }
+}
+
+function getPaymentOptionLabel(paymentOptionType: string) {
+  switch (paymentOptionType) {
+    case "THREE_INSTALLMENTS":
+      return "Paiement en 3 tranches";
+    case "STANDARD_MONTHLY":
+      return "Mensualité standard";
+    case "SPECIAL_OWNER_AGREEMENT":
+      return "Accord spécial propriétaire";
+    case "ANNUAL":
+      return "Paiement annuel";
+    default:
+      return paymentOptionType.replace(/_/g, " ").toLowerCase();
+  }
+}
+
+function groupReductionRows(rows: ReductionDisplayRow[]) {
+  return Array.from(rows.reduce((acc, row) => {
+    const origin = getReductionOrigin(row);
+    const beneficiary = row.studentName || "Compte parent";
+    const key = [origin, beneficiary, row.scope ?? "UNKNOWN", row.paymentOptionType ?? "NONE", row.gradeGroup ?? "NONE"].join("|");
+    const current = acc.get(key) ?? {
+      key,
+      origin,
+      beneficiary,
+      scope: row.scope ?? "UNKNOWN",
+      paymentOptionType: row.paymentOptionType ?? null,
+      gradeGroup: row.gradeGroup ?? null,
+      amount: 0,
+      rows: [] as ReductionDisplayRow[]
+    };
+    current.amount += Number(row.amount || 0);
+    current.rows.push(row);
+    acc.set(key, current);
+    return acc;
+  }, new Map<string, {
+    key: string;
+    origin: string;
+    beneficiary: string;
+    scope: string;
+    paymentOptionType: string | null;
+    gradeGroup: string | null;
+    amount: number;
+    rows: ReductionDisplayRow[];
+  }>()).values()).map((group) => ({ ...group, amount: Number(group.amount.toFixed(5)) }));
+}
+
 type AgreementInstallmentForm = {
   label: string;
   dueDate: string;
@@ -131,157 +220,157 @@ const pageCopy = {
   fr: {
     dialogEyebrow: "Suivi financier des parents",
     close: "Fermer",
-    closeDialog: "Fermer la boite de dialogue",
+    closeDialog: "Fermer la boîte de dialogue",
     loadProfileError: "Impossible de charger le profil financier parent.",
-    loadFinanceError: "Impossible de charger les donnees finance.",
-    assignmentSuccess: "Plan officiel affecte avec succes.",
+    loadFinanceError: "Impossible de charger les données financières.",
+    assignmentSuccess: "Plan officiel affecté avec succès.",
     assignmentError: "Impossible d'affecter le plan officiel.",
-    agreementValidationError: "Completez le titre, le total et au moins une echeance valide pour l'accord special.",
-    agreementSuccess: "Accord special enregistre avec succes.",
-    agreementError: "Impossible de creer l'accord special.",
+    agreementValidationError: "Complétez le titre, le total et au moins une échéance valide pour l'accord spécial.",
+    agreementSuccess: "Accord spécial enregistré avec succès.",
+    agreementError: "Impossible de créer l'accord spécial.",
     loading: "Chargement du suivi parent financier...",
     emptyEyebrow: "Finance parent",
     emptyTitle: "Aucun parent disponible",
-    emptyBody: "Ajoutez un parent pour activer le suivi financier detaille.",
-    pageEyebrow: "Administration financiere",
-    pageTitle: "Suivi financier detaille des parents",
-    pageSubtitle: "Vue organisee par modules : plans actifs, bourses, dettes historiques, alertes, accords speciaux et paiements.",
-    searchPlaceholder: "Rechercher un parent, telephone, email...",
+    emptyBody: "Ajoutez un parent pour activer le suivi financier détaillé.",
+    pageEyebrow: "Administration financière",
+    pageTitle: "Suivi financier détaillé des parents",
+    pageSubtitle: "Vue organisée par modules : plans actifs, bourses, dettes historiques, alertes, accords spéciaux et paiements.",
+    searchPlaceholder: "Rechercher un parent, un téléphone, un e-mail...",
     profileLoading: "Chargement du profil financier...",
-    phoneMissing: "Telephone non renseigne",
-    emailMissing: "Email non renseigne",
+    phoneMissing: "Téléphone non renseigné",
+    emailMissing: "E-mail non renseigné",
     activePlan: "Plan actif",
     officialCatalogLoaded: "{{count}} variantes officielles chargees dans le catalogue finance.",
     behaviorScore: "Score de comportement",
     completion: "Couverture {{rate}}%",
-    paid: "Paye",
+    paid: "Payé",
     debt: "Dette",
     reductions: "Bourses",
-    carryOver: "Solde anterieur inclus",
-    overdue: "Echeances en retard",
-    paidHelp: "Montant deja encaisse sur le plan de scolarite.",
+    carryOver: "Solde antérieur inclus",
+    overdue: "Échéances en retard",
+    paidHelp: "Montant déjà encaissé sur le plan de scolarité.",
     debtHelp: "Reste a payer selon le plan actif et les ajustements.",
-    reductionsHelp: "Bourses, remises et reductions appliquees au dossier.",
-    carryOverHelp: "Dette d'une annee precedente ramenee dans le suivi actuel.",
-    overdueHelp: "Echeances du plan de paiement qui ne sont pas encore soldees.",
+    reductionsHelp: "Bourses, remises et réductions appliquées au dossier.",
+    carryOverHelp: "Dette d'une année précédente ramenée dans le suivi actuel.",
+    overdueHelp: "Échéances du plan de paiement qui ne sont pas encore soldées.",
     coveredMetric: "{{rate}} % couvert",
     lateMetric: "{{count}} retard(s)",
     none: "Aucun",
     studentsPlansTitle: "Enfants et plans",
-    studentsPlansSubtitle: "Plans actifs, progression, soldes et echeances a suivre par enfant.",
+    studentsPlansSubtitle: "Plans actifs, progression, soldes et échéances à suivre par enfant.",
     historicalDebtsTitle: "Dettes historiques",
-    historicalDebtsSubtitle: "Synthese detaillee des dettes du parent : montants, annees, echeances, dates de creation, reglements et soldes.",
+    historicalDebtsSubtitle: "Synthèse détaillée des dettes du parent : montants, années, échéances, dates de création, règlements et soldes.",
     alertsTitle: "Alertes",
     alertsSubtitle: "Alertes de retard, anomalies et pression de recouvrement.",
-    reductionsTitle: "Bourses et reductions",
-    reductionsSubtitle: "Bourses, remises officielles et avantages appliques au dossier.",
-    agreementsTitle: "Accords speciaux",
-    agreementsSubtitle: "Accords proprietaire/direction, statuts et soldes restants.",
+    reductionsTitle: "Bourses et réductions",
+    reductionsSubtitle: "Bourses, remises officielles et avantages appliqués au dossier.",
+    agreementsTitle: "Accords spéciaux",
+    agreementsSubtitle: "Accords propriétaire/direction, statuts et soldes restants.",
     paymentsTitle: "Paiements",
-    paymentsSubtitle: "Historique des paiements et recus lies au parent.",
+    paymentsSubtitle: "Historique des paiements et reçus liés au parent.",
     open: "Ouvrir",
     adminFileEyebrow: "Dossier administratif du parent",
     adminFileTitle: "Plans officiels et accords speciaux",
-    adminFileSubtitle: "Les actions sensibles restent rattachees au parent selectionne et s'ouvrent dans une fenetre dediee.",
+    adminFileSubtitle: "Les actions sensibles restent rattachées au parent sélectionné et s'ouvrent dans une fenêtre dédiée.",
     plans: "Plans",
     agreements: "Accords",
-    assignPlanTitle: "Affecter un plan officiel de scolarite",
-    assignPlanSubtitle: "Affecter un plan KCS officiel au parent entier ou a un enfant precis.",
-    openWindow: "Ouvrir la fenetre",
+    assignPlanTitle: "Affecter un plan officiel de scolarité",
+    assignPlanSubtitle: "Affecter un plan KCS officiel au parent entier ou à un enfant précis.",
+    openWindow: "Ouvrir la fenêtre",
     createAgreementTitle: "Creer un accord direction",
-    createAgreementSubtitle: "Creer un accord direction avec echeances, reductions et notes privees.",
-    classMissing: "Classe non renseignee",
+    createAgreementSubtitle: "Créer un accord direction avec échéances, réductions et notes privées.",
+    classMissing: "Classe non renseignée",
     balance: "Solde",
     coverage: "Couverture",
     totalTrackedDebt: "Solde total restant",
     originalDebtTotal: "Somme initiale des dettes",
-    settledDebtTotal: "Montant deja regle",
-    currentYearDebt: "Dette de l'annee courante",
-    dateWindow: "Periode observee",
+    settledDebtTotal: "Montant déjà réglé",
+    currentYearDebt: "Dette de l'année courante",
+    dateWindow: "Période observée",
     noDebtDateWindow: "Aucune date de dette disponible",
     fromDateToDate: "De {{from}} a {{to}}",
-    dueWindow: "Fenetre des echeances",
-    debtSummaryHelp: "Cette synthese additionne toutes les lignes de dette rattachees au parent, puis separe ce qui vient du plan courant et ce qui vient des annees anterieures.",
-    previousYears: "Annees anterieures",
+    dueWindow: "Fenêtre des échéances",
+    debtSummaryHelp: "Cette synthèse additionne toutes les lignes de dette rattachées au parent, puis sépare ce qui vient du plan courant et ce qui vient des années antérieures.",
+    previousYears: "Années antérieures",
     debtLines: "Lignes de dette",
-    noDebtForParent: "Aucune dette enregistree pour ce parent.",
-    generatedDebtReason: "Dette generee par le moteur financier EduPay.",
-    historicalDebtFlag: "Dette d'annee anterieure / solde anterieur",
+    noDebtForParent: "Aucune dette enregistrée pour ce parent.",
+    generatedDebtReason: "Dette générée par le moteur financier EduPay.",
+    historicalDebtFlag: "Dette d'année antérieure / solde antérieur",
     initialAmount: "Montant initial",
-    settledAmount: "Montant regle",
+    settledAmount: "Montant réglé",
     remainingBalance: "Solde restant",
-    debtYear: "Annee de la dette",
-    carriedFrom: "Annee d'origine",
-    dueDate: "Echeance",
-    createdAt: "Creee le",
-    settledAt: "Reglee le",
-    debtAge: "Age de la dette",
-    daysBeforeDue: "{{count}} jour(s) avant echeance",
-    daysOverdue: "{{count}} jour(s) apres echeance",
-    createdDaysAgo: "Creee il y a {{count}} jour(s)",
-    createdToday: "Creee aujourd'hui",
+    debtYear: "Année de la dette",
+    carriedFrom: "Année d'origine",
+    dueDate: "Échéance",
+    createdAt: "Créée le",
+    settledAt: "Réglée le",
+    debtAge: "Âge de la dette",
+    daysBeforeDue: "{{count}} jour(s) avant échéance",
+    daysOverdue: "{{count}} jour(s) après échéance",
+    createdDaysAgo: "Créée il y a {{count}} jour(s)",
+    createdToday: "Créée aujourd'hui",
     identifier: "Identifiant",
-    notProvidedF: "Non renseignee",
-    notProvidedM: "Non renseigne",
-    notCarried: "Pas de solde anterieur",
-    noDueDate: "Non definie",
-    notSettled: "Non reglee",
+    notProvidedF: "Non renseignée",
+    notProvidedM: "Non renseigné",
+    notCarried: "Pas de solde antérieur",
+    noDueDate: "Non définie",
+    notSettled: "Non réglée",
     noActiveAlert: "Aucune alerte active.",
     noAlert: "Aucune alerte.",
     noActiveDebt: "Aucune dette active.",
-    noReductionApplied: "Aucune reduction appliquee.",
-    noReductionTracked: "Aucune reduction tracee.",
+    noReductionApplied: "Aucune réduction appliquée.",
+    noReductionTracked: "Aucune réduction tracée.",
     parentAccount: "Compte parent",
-    noAgreement: "Aucun accord special.",
+    noAgreement: "Aucun accord spécial.",
     noHistoricalPayment: "Aucun paiement historique disponible.",
-    noLinkedStudent: "Aucun eleve lie",
-    selectedParent: "Parent selectionne",
+    noLinkedStudent: "Aucun élève lié",
+    selectedParent: "Parent sélectionné",
     currentActivePlan: "Plan actif actuel",
-    studentTarget: "Cible eleve",
-    allParentStudents: "Tous les eleves du parent",
+    studentTarget: "Élève ciblé",
+    allParentStudents: "Tous les élèves du parent",
     paymentOption: "Option de paiement",
     notes: "Notes",
     assignmentNotesPlaceholder: "Notes d'affectation, justification, commentaire administratif...",
     assigning: "Affectation...",
     assignPlanButton: "Affecter le plan officiel",
-    agreementSubtitleFor: "Accord special cree dans le dossier de {{name}}.",
-    assignmentSubtitleFor: "Plan officiel rattache au dossier de {{name}}.",
+    agreementSubtitleFor: "Accord spécial créé dans le dossier de {{name}}.",
+    assignmentSubtitleFor: "Plan officiel rattaché au dossier de {{name}}.",
     status: "Statut",
     title: "Titre",
     agreementTitlePlaceholder: "Titre de l'accord direction",
-    customTotal: "Total personnalise",
-    reductionAmount: "Montant de reduction",
+    customTotal: "Total personnalisé",
+    reductionAmount: "Montant de réduction",
     gradeGroup: "Groupe de niveau",
-    installments: "Echeances",
-    addInstallment: "Ajouter une echeance",
-    label: "Libelle",
-    amountDue: "Montant du",
-    installmentNotesPlaceholder: "Notes internes pour cette echeance",
+    installments: "Échéances",
+    addInstallment: "Ajouter une échéance",
+    label: "Libellé",
+    amountDue: "Montant dû",
+    installmentNotesPlaceholder: "Notes internes pour cette échéance",
     remove: "Retirer",
     publicNotesPlaceholder: "Notes visibles pour le dossier financier",
-    privateNotesPlaceholder: "Notes privees du proprietaire / direction",
-    creating: "Creation...",
-    saveAgreement: "Enregistrer l'accord special",
-    studentsAssignedPlans: "Enfants et plans affectes",
+    privateNotesPlaceholder: "Notes privées du propriétaire / direction",
+    creating: "Création...",
+    saveAgreement: "Enregistrer l'accord spécial",
+    studentsAssignedPlans: "Enfants et plans affectés",
     coverageText: "{{rate}}% couvert",
-    overdueInstallments: "{{count}} echeance(s) en retard",
+    overdueInstallments: "{{count}} échéance(s) en retard",
     alertsAndDebts: "Alertes et dettes",
     remaining: "Restant {{amount}}",
-    carryOverFrom: "Solde anterieur depuis {{year}}",
-    specialAgreements: "Accords speciaux",
+    carryOverFrom: "Solde antérieur depuis {{year}}",
+    specialAgreements: "Accords spéciaux",
     balanceDue: "Solde restant {{amount}}",
-    selectParentPrompt: "Selectionnez un parent pour afficher son profil financier detaille.",
+    selectParentPrompt: "Sélectionnez un parent pour afficher son profil financier détaillé.",
     optionFullPreSeptember: "Paiement complet avant septembre",
     optionTwoInstallments: "Paiement en deux tranches",
     optionThreeInstallments: "Paiement en trois tranches",
     optionStandardMonthly: "Paiement mensuel standard",
-    optionSpecialOwnerAgreement: "Bourse / accord manuel owner",
-    scholarshipAgreementTitle: "Accord manuel owner-parent",
-    scholarshipAgreementHelp: "Cette 5e possibilite est determinee manuellement par le financier. La difference entre le montant officiel et le montant accepte est classee dans Bourse.",
-    officialReferenceAmount: "Montant officiel de reference",
-    agreedTuitionTotal: "Total accepte par l'ecole",
-    scholarshipAmount: "Bourse / reduction accordee",
-    scholarshipInstallmentsHelp: "Les echeances ci-dessous representent le montant que le parent paiera reellement.",
+    optionSpecialOwnerAgreement: "Bourse / accord manuel propriétaire",
+    scholarshipAgreementTitle: "Accord manuel propriétaire-parent",
+    scholarshipAgreementHelp: "Cette 5e possibilité est déterminée manuellement par le financier. La différence entre le montant officiel et le montant accepté est classée comme bourse.",
+    officialReferenceAmount: "Montant officiel de référence",
+    agreedTuitionTotal: "Total accepté par l'école",
+    scholarshipAmount: "Bourse / réduction accordée",
+    scholarshipInstallmentsHelp: "Les échéances ci-dessous représentent le montant que le parent paiera réellement.",
     gradeK: "Maternelle (K3-K5)",
     grade1to5: "Classes 1-5",
     grade6to8: "Classes 6-8",
@@ -289,15 +378,15 @@ const pageCopy = {
     gradeCustom: "Personnalise",
     statusDraft: "Brouillon",
     statusPendingApproval: "En attente d'approbation",
-    statusApproved: "Approuve",
-    statusRejected: "Rejete",
+    statusApproved: "Approuvé",
+    statusRejected: "Rejeté",
     statusOpen: "Ouverte",
-    statusPartiallyPaid: "Partiellement payee",
-    statusPaid: "Payee",
-    statusHigh: "Elevee",
+    statusPartiallyPaid: "Partiellement payée",
+    statusPaid: "Payée",
+    statusHigh: "Élevée",
     statusMedium: "Moyenne",
     statusLow: "Faible",
-    statusFailed: "Echoue",
+    statusFailed: "Échoué",
     statusPending: "En attente",
     statusCompleted: "Termine"
   },
@@ -586,7 +675,7 @@ function AllocationTraceBlock({ trace, money, lang }: { trace?: AllocationTrace 
   return (
     <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-3">
       <div className="flex flex-wrap justify-between gap-2 text-xs">
-        <p className="font-black uppercase tracking-[0.16em] text-emerald-100">Repartition tracee par EduPay {trace.mode ? `(${trace.mode})` : ""}</p>
+        <p className="font-black uppercase tracking-[0.16em] text-emerald-100">Répartition tracée par EduPay {trace.mode ? `(${trace.mode})` : ""}</p>
         <p className="font-mono font-bold text-emerald-200">{money.format(trace.allocatedTotal)} / {money.format(trace.totalReceived)}</p>
       </div>
       <div className="mt-3 grid gap-2">
@@ -606,7 +695,7 @@ function AllocationTraceBlock({ trace, money, lang }: { trace?: AllocationTrace 
           </div>
         ))}
       </div>
-      {trace.advanceBalance > 0 && <p className="mt-2 text-xs text-emerald-100">Avance conservee: {money.format(trace.advanceBalance)}</p>}
+      {trace.advanceBalance > 0 && <p className="mt-2 text-xs text-emerald-100">Avance conservée : {money.format(trace.advanceBalance)}</p>}
     </div>
   );
 }
@@ -738,6 +827,7 @@ export function FinanceParentAdminPage() {
   const lastDueDate = debtDueDates.length ? new Date(Math.max(...debtDueDates.map((date) => date.getTime()))) : null;
   const paymentCount = snapshot?.paymentHistory?.length ?? 0;
   const visibleReductions = snapshot ? uniqueReductionRows(snapshot.reductions) : [];
+  const groupedReductions = groupReductionRows(visibleReductions);
   const scholarshipRows = visibleReductions.filter((reduction) =>
     reduction.scope === "MANUAL" ||
     reduction.title.toLowerCase().includes("bourse") ||
@@ -756,7 +846,7 @@ export function FinanceParentAdminPage() {
     { id: "students", title: copy.studentsPlansTitle, subtitle: copy.studentsPlansSubtitle, count: snapshot.students.length, metric: formatCopy(copy.coveredMetric, { rate: snapshot.profile.completionRate.toFixed(1) }), Icon: CalendarClock, toneClass: "border-brand-300/20 bg-brand-500/10 text-brand-100" },
     { id: "debts", title: copy.historicalDebtsTitle, subtitle: copy.historicalDebtsSubtitle, count: snapshot.debts.length, metric: money.format(historicalDebtTotal), Icon: FileClock, toneClass: "border-red-300/20 bg-red-500/10 text-red-100" },
     { id: "alerts", title: copy.alertsTitle, subtitle: copy.alertsSubtitle, count: snapshot.alerts.length, metric: formatCopy(copy.lateMetric, { count: snapshot.profile.overdueInstallments }), Icon: ShieldAlert, toneClass: "border-amber-300/20 bg-amber-500/10 text-amber-100" },
-    { id: "reductions", title: copy.reductionsTitle, subtitle: copy.reductionsSubtitle, count: scholarshipRows.length || snapshot.reductions.length, metric: money.format(scholarshipTotal || snapshot.profile.totalReduction), Icon: HandCoins, toneClass: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100" },
+    { id: "reductions", title: copy.reductionsTitle, subtitle: copy.reductionsSubtitle, count: groupedReductions.length || visibleReductions.length, metric: money.format(scholarshipTotal || snapshot.profile.totalReduction), Icon: HandCoins, toneClass: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100" },
     { id: "agreements", title: copy.agreementsTitle, subtitle: copy.agreementsSubtitle, count: snapshot.agreements.length, metric: snapshot.agreements[0] ? money.format(snapshot.agreements[0].balanceDue) : copy.none, Icon: Save, toneClass: "border-emerald-300/20 bg-emerald-500/10 text-emerald-100" },
     { id: "payments", title: copy.paymentsTitle, subtitle: copy.paymentsSubtitle, count: paymentCount, metric: money.format(snapshot.profile.totalPaid), Icon: ReceiptText, toneClass: "border-violet-300/20 bg-violet-500/10 text-violet-100" }
   ] : [];
@@ -1003,9 +1093,9 @@ export function FinanceParentAdminPage() {
                             <span className="break-words font-display text-xl font-bold text-white">{module.title}</span>
                             <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold text-ink-dim">{module.count}</span>
                           </span>
-                          <span className="mt-2 block text-sm text-ink-dim">{module.subtitle}</span>
+                          <span className="mt-2 block break-words text-sm leading-6 text-ink-dim">{module.subtitle}</span>
                           <span className="mt-4 flex min-w-0 items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.12em] text-brand-100">
-                            <span className="break-words">{module.metric}</span>
+                            <span className="min-w-0 break-words">{module.metric}</span>
                             <span className="rounded-full border border-white/10 px-3 py-1 normal-case tracking-normal text-white group-hover:border-brand-300/30">{copy.open}</span>
                           </span>
                         </span>
@@ -1213,16 +1303,36 @@ export function FinanceParentAdminPage() {
                   )}
 
                   {activeModule === "reductions" && (
-                    <div className="space-y-3">
-                      {visibleReductions.length === 0 && <p className="text-sm text-ink-dim">{copy.noReductionApplied}</p>}
-                      {visibleReductions.map((reduction) => (
-                        <article key={reduction.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                          <div className="flex flex-wrap items-start justify-between gap-3">
-                            <div>
-                              <p className="font-semibold text-white">{reduction.title}</p>
-                              <p className="mt-1 text-sm text-ink-dim">{reduction.studentName || copy.parentAccount}</p>
+                    <div className="space-y-4">
+                      {groupedReductions.length === 0 && <p className="text-sm text-ink-dim">{copy.noReductionApplied}</p>}
+                      {groupedReductions.map((group) => (
+                        <article key={group.key} className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
+                              <p className="break-words font-semibold text-white">{group.origin}</p>
+                              <p className="mt-1 break-words text-sm text-ink-dim">{group.beneficiary}</p>
+                              <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-ink-dim">
+                                <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">{getReductionScopeLabel(group.scope)}</span>
+                                {group.paymentOptionType && <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1 text-cyan-100">{getPaymentOptionLabel(group.paymentOptionType)}</span>}
+                                {group.gradeGroup && <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">Niveau: {group.gradeGroup}</span>}
+                                <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">{group.rows.length} ligne(s)</span>
+                              </div>
                             </div>
-                            <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-200">{money.format(reduction.amount)}</span>
+                            <span className="w-fit shrink-0 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-200">{money.format(group.amount)}</span>
+                          </div>
+                          <div className="mt-4 grid gap-2">
+                            {group.rows.map((row) => (
+                              <div key={row.id} className="min-w-0 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2">
+                                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                                  <p className="min-w-0 break-words text-sm font-semibold text-white">{row.title}</p>
+                                  <p className="shrink-0 font-mono text-sm font-bold text-cyan-200">{money.format(row.amount)}</p>
+                                </div>
+                                <p className="mt-1 text-xs text-ink-dim">
+                                  {row.effectiveDate ? new Date(row.effectiveDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US") : "Date non renseignee"}
+                                  {row.percentage ? ` - ${row.percentage}%` : ""}
+                                </p>
+                              </div>
+                            ))}
                           </div>
                         </article>
                       ))}
@@ -1613,15 +1723,16 @@ export function FinanceParentAdminPage() {
                   <div className="card glass border border-white/10 shadow-lg">
                     <h3 className="font-display text-xl font-bold text-white">{copy.reductionsTitle}</h3>
                     <div className="mt-5 space-y-3">
-                      {visibleReductions.length === 0 && <p className="text-sm text-ink-dim">{copy.noReductionTracked}</p>}
-                      {visibleReductions.map((reduction) => (
-                        <div key={reduction.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <p className="font-semibold text-white">{reduction.title}</p>
-                              <p className="mt-1 text-xs text-ink-dim">{reduction.studentName || snapshot.parent.fullName}</p>
+                      {groupedReductions.length === 0 && <p className="text-sm text-ink-dim">{copy.noReductionTracked}</p>}
+                      {groupedReductions.map((group) => (
+                        <div key={group.key} className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
+                              <p className="break-words font-semibold text-white">{group.origin}</p>
+                              <p className="mt-1 break-words text-xs text-ink-dim">{group.beneficiary}</p>
+                              <p className="mt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-ink-dim">{group.rows.length} ligne(s) detaillee(s)</p>
                             </div>
-                            <span className="font-mono font-semibold text-cyan-200">{money.format(reduction.amount)}</span>
+                            <span className="shrink-0 font-mono font-semibold text-cyan-200">{money.format(group.amount)}</span>
                           </div>
                         </div>
                       ))}

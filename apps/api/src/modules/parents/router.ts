@@ -130,7 +130,7 @@ function buildParentWelcomeMessages(parent: any, temporaryPassword: string, logi
   const language = normalizeMessageLanguage(parent.preferredLanguage);
   const students = (parent.students || []).map((student: any) => ({
     fullName: student.fullName,
-    className: student.class?.name ?? student.className ?? student.classId ?? (language === "en" ? "Class not provided" : "Classe non renseignee"),
+    className: student.class?.name ?? student.className ?? student.classId ?? (language === "en" ? "Class not provided" : "Classe non renseignée"),
     annualFee: Number(student.annualFee || 0)
   }));
   const studentLines = students.length
@@ -138,7 +138,7 @@ function buildParentWelcomeMessages(parent: any, temporaryPassword: string, logi
       ? `- ${student.fullName} | Class: ${student.className} | Annual fees: $ ${student.annualFee.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
       : `- ${student.fullName} | Classe: ${student.className} | Frais annuels: $ ${student.annualFee.toLocaleString("en-US", { maximumFractionDigits: 2 })}`
     ).join("\n")
-    : language === "en" ? "- No linked student yet" : "- Aucun eleve rattache pour le moment";
+    : language === "en" ? "- No linked student yet" : "- Aucun élève rattaché pour le moment";
 
   if (language === "en") {
     const subject = "Your EduPay access";
@@ -162,24 +162,24 @@ function buildParentWelcomeMessages(parent: any, temporaryPassword: string, logi
     return { subject, emailBody, smsBody };
   }
 
-  const subject = "Vos acces EduPay";
+  const subject = "Vos accès EduPay";
   const emailBody = [
     `Bonjour ${parent.fullName},`,
     "",
     "Votre compte parent EduPay vient d'être créé par l'administration de l'école.",
     "",
-    `Identifiant parent: ${parent.id}`,
-    `Code d'accès: ${parent.accessCode || "Non renseigne"}`,
-    `Telephone: ${parent.phone || "Non renseigne"}`,
-    `Identifiant de connexion: ${loginEmail}`,
-    `Mot de passe temporaire: ${temporaryPassword}`,
+    `Identifiant parent : ${parent.id}`,
+    `Code d'accès : ${parent.accessCode || "Non renseigné"}`,
+    `Téléphone : ${parent.phone || "Non renseigné"}`,
+    `Identifiant de connexion : ${loginEmail}`,
+    `Mot de passe temporaire : ${temporaryPassword}`,
     "",
-    "Enfants rattaches:",
+    "Enfants rattachés :",
     studentLines,
     "",
-    "Pour votre securite, connectez-vous puis changez ce mot de passe depuis votre profil."
+    "Pour votre sécurité, connectez-vous puis changez ce mot de passe depuis votre profil."
   ].join("\n");
-  const smsBody = `EduPay: compte cree pour ${parent.fullName}. Code: ${parent.accessCode || "N/A"}. Identifiant: ${loginEmail}. Mot de passe temporaire: ${temporaryPassword}. Changez-le apres connexion.`;
+  const smsBody = `EduPay : compte créé pour ${parent.fullName}. Code : ${parent.accessCode || "N/A"}. Identifiant : ${loginEmail}. Mot de passe temporaire : ${temporaryPassword}. Changez-le après connexion.`;
   return { subject, emailBody, smsBody };
 }
 
@@ -473,13 +473,13 @@ async function assignOnboardingFinance(options: {
   for (const student of options.students) {
     if (student.paymentOptionType === PaymentOptionType.SPECIAL_OWNER_AGREEMENT) {
       if (student.annualFee <= 0) {
-        throw new Error("Le total de l'accord special doit etre positif.");
+        throw new Error("Le total de l'accord spécial doit être positif.");
       }
       await createSpecialFinancialAgreement({
         schoolId: options.schoolId,
         parentId: options.parentId,
         studentId: student.id,
-        title: `Accord special proprietaire - ${student.fullName}`,
+        title: `Accord spécial propriétaire - ${student.fullName}`,
         customTotal: student.annualFee,
         reductionAmount: 0,
         status: AgreementStatus.APPROVED,
@@ -621,13 +621,13 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
 
   if (existingParent) {
     const reasons = [
-      existingParent.email?.toLowerCase() === normalizedEmail ? `email deja utilise (${existingParent.email})` : "",
-      existingParent.phone?.replace(/\s+/g, "") === normalizedPhone ? `telephone deja utilise (${existingParent.phone})` : "",
-      existingParent.fullName.trim().toLowerCase() === normalizedFullName ? `nom de famille deja enregistre (${existingParent.fullName})` : ""
+      existingParent.email?.toLowerCase() === normalizedEmail ? `e-mail déjà utilisé (${existingParent.email})` : "",
+      existingParent.phone?.replace(/\s+/g, "") === normalizedPhone ? `téléphone déjà utilisé (${existingParent.phone})` : "",
+      existingParent.fullName.trim().toLowerCase() === normalizedFullName ? `nom de famille déjà enregistré (${existingParent.fullName})` : ""
     ].filter(Boolean);
     return res.status(409).json({
       code: "PARENT_ALREADY_EXISTS",
-      message: `Cette famille existe deja dans EduPay. Raison: ${reasons.join(", ") || "dossier parent similaire trouve"}. Ouvrez le dossier existant au lieu d'en creer un nouveau.`,
+      message: `Cette famille existe déjà dans EduPay. Raison : ${reasons.join(", ") || "dossier parent similaire trouvé"}. Ouvrez le dossier existant au lieu d'en créer un nouveau.`,
       existingParent
     });
   }
@@ -667,7 +667,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
 
       if (!mirroredParent) {
         return res.status(502).json({
-          message: "La famille a ete creee dans Orbit, mais EduPay n'a pas encore pu recuperer son miroir local.",
+          message: "La famille a été créée dans Orbit, mais EduPay n'a pas encore pu récupérer son miroir local.",
           orbitResult,
         });
       }
@@ -721,7 +721,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       });
       if (!createdParent) {
         return res.status(502).json({
-          message: "La famille a ete creee dans Orbit, mais EduPay n'a pas retrouve le parent local apres synchronisation.",
+          message: "La famille a été créée dans Orbit, mais EduPay n'a pas retrouvé le parent local après synchronisation.",
           orbitResult,
         });
       }
@@ -818,7 +818,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       return res.status(404).json({ message: error.message });
     }
     if (!demoDataFallbackEnabled()) {
-      return res.status(503).json({ message: "Creation parent temporairement indisponible. Verifiez la base de donnees." });
+      return res.status(503).json({ message: "Création parent temporairement indisponible. Vérifiez la base de données." });
     }
     const parentId = buildReadableEntityId("PAR", payload.fullName);
     const newParent = {
@@ -943,7 +943,7 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
     if (duplicateParent) {
       return res.status(409).json({
         code: "PARENT_ALREADY_EXISTS",
-        message: "Un autre dossier parent utilise deja cet email, ce telephone ou ce nom.",
+        message: "Un autre dossier parent utilise déjà cet e-mail, ce téléphone ou ce nom.",
         existingParent: duplicateParent
       });
     }
@@ -958,7 +958,7 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
     if (duplicateUser) {
       return res.status(409).json({
         code: "USER_EMAIL_ALREADY_EXISTS",
-        message: `Cet email est deja utilise par ${duplicateUser.fullName} (${duplicateUser.role}).`
+        message: `Cet e-mail est déjà utilisé par ${duplicateUser.fullName} (${duplicateUser.role}).`
       });
     }
 

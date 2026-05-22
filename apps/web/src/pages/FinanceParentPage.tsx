@@ -185,6 +185,85 @@ function uniqueReductionRows<T extends { studentName?: string | null; scope?: st
   }, new Map<string, T>()).values());
 }
 
+type ReductionDisplayRow = FinanceSnapshot["reductions"][number];
+
+function getReductionOrigin(row: Pick<ReductionDisplayRow, "scope" | "title" | "paymentOptionType">) {
+  const scope = String(row.scope ?? "").toUpperCase();
+  const title = row.title.toLowerCase();
+  if (scope === "PARENT" || title.includes("family")) return "Réduction familiale";
+  if (scope === "PAYMENT_OPTION" || row.paymentOptionType) return "Réduction du plan de scolarité";
+  if (scope === "MANUAL" || title.includes("bourse") || title.includes("scholarship")) return "Bourse / accord manuel";
+  if (scope === "AGREEMENT" || title.includes("agreement") || title.includes("accord")) return "Accord spécial";
+  if (scope === "GRADE_GROUP") return "Réduction par niveau";
+  if (scope === "STUDENT") return "Réduction individuelle";
+  return "Autre réduction";
+}
+
+function getReductionScopeLabel(scope: string) {
+  switch (scope.toUpperCase()) {
+    case "PARENT":
+      return "Réduction familiale";
+    case "PAYMENT_OPTION":
+      return "Tuition plan";
+    case "MANUAL":
+      return "Bourse / ajustement manuel";
+    case "AGREEMENT":
+      return "Accord spécial";
+    case "GRADE_GROUP":
+      return "Niveau / classe";
+    case "STUDENT":
+      return "Enfant";
+    default:
+      return "Type non précisé";
+  }
+}
+
+function getPaymentOptionLabel(paymentOptionType: string) {
+  switch (paymentOptionType) {
+    case "THREE_INSTALLMENTS":
+      return "Paiement en 3 tranches";
+    case "STANDARD_MONTHLY":
+      return "Mensualité standard";
+    case "SPECIAL_OWNER_AGREEMENT":
+      return "Accord spécial propriétaire";
+    case "ANNUAL":
+      return "Paiement annuel";
+    default:
+      return paymentOptionType.replace(/_/g, " ").toLowerCase();
+  }
+}
+
+function groupReductionRows(rows: ReductionDisplayRow[]) {
+  return Array.from(rows.reduce((acc, row) => {
+    const origin = getReductionOrigin(row);
+    const beneficiary = row.studentName || "Compte parent";
+    const key = [origin, beneficiary, row.scope ?? "UNKNOWN", row.paymentOptionType ?? "NONE", row.gradeGroup ?? "NONE"].join("|");
+    const current = acc.get(key) ?? {
+      key,
+      origin,
+      beneficiary,
+      scope: row.scope ?? "UNKNOWN",
+      paymentOptionType: row.paymentOptionType ?? null,
+      gradeGroup: row.gradeGroup ?? null,
+      amount: 0,
+      rows: [] as ReductionDisplayRow[]
+    };
+    current.amount += Number(row.amount || 0);
+    current.rows.push(row);
+    acc.set(key, current);
+    return acc;
+  }, new Map<string, {
+    key: string;
+    origin: string;
+    beneficiary: string;
+    scope: string;
+    paymentOptionType: string | null;
+    gradeGroup: string | null;
+    amount: number;
+    rows: ReductionDisplayRow[];
+  }>()).values()).map((group) => ({ ...group, amount: Number(group.amount.toFixed(5)) }));
+}
+
 function imageFileToAvatar(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith("image/")) {
@@ -294,10 +373,10 @@ function AllocationTraceBlock({ trace, money, lang }: { trace?: AllocationTrace 
   return (
     <div className="mt-4 rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-        <p className="font-black uppercase tracking-[0.16em] text-emerald-100">Repartition tracee {trace.mode ? `(${trace.mode})` : ""}</p>
-        <p className="font-mono font-bold text-emerald-200">{money.format(trace.allocatedTotal)} applique / {money.format(trace.totalReceived)} recu</p>
+        <p className="font-black uppercase tracking-[0.16em] text-emerald-100">Répartition tracée {trace.mode ? `(${trace.mode})` : ""}</p>
+        <p className="font-mono font-bold text-emerald-200">{money.format(trace.allocatedTotal)} appliqué / {money.format(trace.totalReceived)} reçu</p>
       </div>
-      {trace.advanceBalance > 0 && <p className="mt-1 text-xs text-emerald-100">Avance conservee: {money.format(trace.advanceBalance)}</p>}
+      {trace.advanceBalance > 0 && <p className="mt-1 text-xs text-emerald-100">Avance conservée : {money.format(trace.advanceBalance)}</p>}
       <div className="mt-3 grid gap-2">
         {trace.perChild.map((child) => (
           <div key={`${child.studentId ?? child.studentName}-${child.allocated}`} className="rounded-xl border border-white/10 bg-slate-950/35 p-3">
@@ -308,7 +387,7 @@ function AllocationTraceBlock({ trace, money, lang }: { trace?: AllocationTrace 
             <div className="mt-2 space-y-1 text-xs text-ink-dim">
               {child.lines.map((line) => (
                 <p key={line.allocationId}>
-                  {line.label} ({new Date(line.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}): {money.format(line.allocated)} applique, solde {money.format(line.outstandingAfter)} · {line.status}
+                  {line.label} ({new Date(line.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}): {money.format(line.allocated)} appliqué, solde {money.format(line.outstandingAfter)} · {line.status}
                 </p>
               ))}
             </div>
@@ -492,6 +571,7 @@ export function FinanceParentPage() {
   const nextInstallment = openInstallments.find((installment) => daysUntil(installment.dueDate) >= 0) ?? openInstallments[0] ?? null;
   const overdueBalance = openInstallments.filter((installment) => installment.isOverdue).reduce((sum, installment) => sum + installment.balance, 0);
   const visibleReductions = uniqueReductionRows(snapshot.reductions);
+  const groupedReductions = groupReductionRows(visibleReductions);
   const next30DaysBalance = openInstallments
     .filter((installment) => {
       const delay = daysUntil(installment.dueDate);
@@ -527,7 +607,7 @@ export function FinanceParentPage() {
     { id: "forecast", title: L("Prévisions", "Forecasts"), subtitle: L("Projection à 30 jours, score de santé et risque de retard.", "30-day projection, health score and late-payment risk."), count: openInstallments.length, metric: money.format(projectedRemainingAfter30Days), icon: BrainCircuit, tone: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100" },
     { id: "debts", title: L("Dettes historiques", "Historical debts"), subtitle: L("Années antérieures, reports, origine, échéance et solde restant.", "Previous years, carry-overs, source, due date and remaining balance."), count: snapshot.debts.length, metric: money.format(previousDebtTotal), icon: FileClock, tone: "border-red-300/20 bg-red-500/10 text-red-100" },
     { id: "alerts", title: L("Alertes", "Alerts"), subtitle: L("Retards et anomalies détectés par le moteur financier.", "Late payments and anomalies detected by the finance engine."), count: snapshot.alerts.length, metric: L(`${snapshot.profile.overdueInstallments} retard(s)`, `${snapshot.profile.overdueInstallments} late item(s)`), icon: AlertTriangle, tone: "border-amber-300/20 bg-amber-500/10 text-amber-100" },
-    { id: "reductions", title: L("Réductions", "Discounts"), subtitle: L("Remises officielles, réductions manuelles et contexte.", "Official discounts, manual reductions and context."), count: visibleReductions.length, metric: money.format(snapshot.profile.totalReduction), icon: HandCoins, tone: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100" },
+    { id: "reductions", title: L("Réductions", "Discounts"), subtitle: L("Remises officielles, réductions manuelles et contexte.", "Official discounts, manual reductions and context."), count: groupedReductions.length || visibleReductions.length, metric: money.format(snapshot.profile.totalReduction), icon: HandCoins, tone: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100" },
     { id: "agreements", title: L("Accords", "Agreements"), subtitle: L("Accords spéciaux, montants personnalisés et statut.", "Special agreements, custom amounts and status."), count: snapshot.agreements.length, metric: activeAgreement ? money.format(activeAgreement.balanceDue) : L("Aucun", "None"), icon: ShieldCheck, tone: "border-emerald-300/20 bg-emerald-500/10 text-emerald-100" },
     { id: "payments", title: L("Paiements et reçus", "Payments & receipts"), subtitle: L("Historique des encaissements et reçus archivés.", "Payment history and archived receipts."), count: snapshot.paymentHistory.length + snapshot.historicalReceipts.length, metric: money.format(snapshot.profile.totalPaid), icon: ReceiptText, tone: "border-violet-300/20 bg-violet-500/10 text-violet-100" },
     { id: "notifications", title: L("Messages reçus", "Received messages"), subtitle: L("SMS, e-mails, confirmations et alertes envoyés par EduPay.", "SMS, emails, confirmations and alerts sent by EduPay."), count: notificationHistory.length, metric: L(`${notificationHistory.filter((log) => log.channel === "SMS" || log.channel === "EMAIL").length} directs`, `${notificationHistory.filter((log) => log.channel === "SMS" || log.channel === "EMAIL").length} direct`), icon: BellRing, tone: "border-orange-300/20 bg-orange-500/10 text-orange-100" }
@@ -549,7 +629,7 @@ export function FinanceParentPage() {
               )}
             </div>
             <div className="min-w-0">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand-300">KCS parent financial profile</p>
+              <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand-300">{L("Profil financier parent KCS", "KCS parent financial profile")}</p>
               <h1 className="mt-2 break-words font-display text-3xl font-bold text-white">{snapshot.parent.fullName}</h1>
               <p className="mt-2 break-words text-sm text-ink-dim">{snapshot.parent.phone} · {snapshot.parent.email}</p>
               <p className="mt-3 text-sm text-cyan-100">{L("Plan actif", "Active plan")} : {snapshot.profile.activeTuitionPlan}</p>
@@ -559,7 +639,7 @@ export function FinanceParentPage() {
               {photoError && <p className="mt-2 text-xs text-red-300">{photoError}</p>}
               <label className="mt-4 inline-flex cursor-pointer items-center gap-2 rounded-lg border border-brand-500/30 bg-brand-500/10 px-3 py-2 text-xs font-semibold text-brand-200 hover:bg-brand-500/20">
                 <Camera className="h-4 w-4" />
-                {photoSaving ? L("Mise a jour photo...", "Updating photo...") : L("Mettre a jour la photo", "Update photo")}
+                {photoSaving ? L("Mise à jour de la photo...", "Updating photo...") : L("Mettre à jour la photo", "Update photo")}
                 <input type="file" accept="image/*" className="hidden" onChange={(event) => void updatePhoto(event.target.files?.[0])} />
               </label>
             </div>
@@ -571,7 +651,7 @@ export function FinanceParentPage() {
               <p className="mt-2 font-display text-3xl font-bold text-white">{snapshot.profile.paymentBehaviorScore.toFixed(0)}%</p>
             </div>
             <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
-              <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">{L("Annee academique", "Academic year")}</p>
+              <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">{L("Année académique", "Academic year")}</p>
               <p className="mt-2 font-display text-3xl font-bold text-white">{snapshot.academicYear.name}</p>
             </div>
           </div>
@@ -593,7 +673,7 @@ export function FinanceParentPage() {
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-200">{L("Temps reel financier", "Real-time finance")}</p>
               <h2 className="mt-2 font-display text-2xl font-bold text-white">{L("Evolution globale du foyer", "Household financial progress")}</h2>
-              <p className="mt-2 text-sm text-ink-dim">{L("Mise a jour automatique toutes les 30 secondes lorsque le portail parent reste ouvert.", "Automatically refreshes every 30 seconds while the parent portal stays open.")}</p>
+              <p className="mt-2 text-sm text-ink-dim">{L("Mise à jour automatique toutes les 30 secondes lorsque le portail parent reste ouvert.", "Automatically refreshes every 30 seconds while the parent portal stays open.")}</p>
             </div>
             <Activity className={`h-7 w-7 shrink-0 ${obligationHealthTone}`} />
           </div>
@@ -604,10 +684,10 @@ export function FinanceParentPage() {
               <p className="mt-3 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white">{obligationHealthLabel}</p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
-              <ParentInsightCard label={L("Prochaine echeance", "Next due item")} value={nextInstallment ? money.format(nextInstallment.balance) : L("Aucune", "None")} detail={nextInstallment ? `${nextInstallment.studentName} - ${nextInstallment.label} - ${new Date(nextInstallment.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}` : L("Toutes les echeances visibles sont couvertes.", "All visible installments are covered.")} tone={nextInstallment?.isOverdue ? "text-red-300" : "text-cyan-300"} />
+              <ParentInsightCard label={L("Prochaine échéance", "Next due item")} value={nextInstallment ? money.format(nextInstallment.balance) : L("Aucune", "None")} detail={nextInstallment ? `${nextInstallment.studentName} - ${nextInstallment.label} - ${new Date(nextInstallment.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}` : L("Toutes les échéances visibles sont couvertes.", "All visible installments are covered.")} tone={nextInstallment?.isOverdue ? "text-red-300" : "text-cyan-300"} />
               <ParentInsightCard label={L("Dans 30 jours", "Next 30 days")} value={money.format(next30DaysBalance)} detail={L("Somme des obligations dues dans les 30 prochains jours.", "Total obligations due within the next 30 days.")} tone="text-amber-300" />
-              <ParentInsightCard label={L("Retard actuel", "Current overdue")} value={money.format(overdueBalance)} detail={L(`${snapshot.profile.overdueInstallments} echeance(s) signalee(s) en retard.`, `${snapshot.profile.overdueInstallments} installment(s) flagged as late.`)} tone={overdueBalance > 0 ? "text-red-300" : "text-emerald-300"} />
-              <ParentInsightCard label={L("Paiement moyen", "Average payment")} value={money.format(averagePayment)} detail={latestPayment ? L(`Dernier paiement: ${new Date(latestPayment.createdAt).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}`, `Last payment: ${new Date(latestPayment.createdAt).toLocaleDateString("en-US")}`) : L("Aucun paiement complet recent.", "No recent completed payment.")} tone="text-emerald-300" />
+              <ParentInsightCard label={L("Retard actuel", "Current overdue")} value={money.format(overdueBalance)} detail={L(`${snapshot.profile.overdueInstallments} échéance(s) signalée(s) en retard.`, `${snapshot.profile.overdueInstallments} installment(s) flagged as late.`)} tone={overdueBalance > 0 ? "text-red-300" : "text-emerald-300"} />
+              <ParentInsightCard label={L("Paiement moyen", "Average payment")} value={money.format(averagePayment)} detail={latestPayment ? L(`Dernier paiement : ${new Date(latestPayment.createdAt).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}`, `Last payment: ${new Date(latestPayment.createdAt).toLocaleDateString("en-US")}`) : L("Aucun paiement complet récent.", "No recent completed payment.")} tone="text-emerald-300" />
             </div>
           </div>
         </div>
@@ -615,16 +695,16 @@ export function FinanceParentPage() {
         <div className="glass min-w-0 border border-white/10 p-4 shadow-lg sm:p-5">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-200">{L("Obligations envers l'ecole", "Obligations to the school")}</p>
-              <h2 className="mt-2 font-display text-2xl font-bold text-white">{L("Lecture immediate", "Immediate overview")}</h2>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-200">{L("Obligations envers l'école", "Obligations to the school")}</p>
+              <h2 className="mt-2 font-display text-2xl font-bold text-white">{L("Lecture immédiate", "Immediate overview")}</h2>
             </div>
             <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-100">{L("Email + SMS + tableau de bord", "Email + SMS + dashboard")}</span>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <ParentInsightCard label={L("Net attendu", "Expected net")} value={money.format(snapshot.profile.expectedNetRevenue)} detail={L("Total annuel apres reductions.", "Annual total after discounts.")} />
-            <ParentInsightCard label={L("Deja couvert", "Already covered")} value={money.format(snapshot.profile.totalPaid)} detail={L(`${snapshot.profile.completionRate.toFixed(1)}% de progression.`, `${snapshot.profile.completionRate.toFixed(1)}% progress.`)} tone="text-emerald-300" />
+            <ParentInsightCard label={L("Net attendu", "Expected net")} value={money.format(snapshot.profile.expectedNetRevenue)} detail={L("Total annuel après réductions.", "Annual total after discounts.")} />
+            <ParentInsightCard label={L("Déjà couvert", "Already covered")} value={money.format(snapshot.profile.totalPaid)} detail={L(`${snapshot.profile.completionRate.toFixed(1)} % de progression.`, `${snapshot.profile.completionRate.toFixed(1)}% progress.`)} tone="text-emerald-300" />
             <ParentInsightCard label={L("Reste a couvrir", "Remaining")} value={money.format(snapshot.profile.totalDebt)} detail={L("Solde actif et reports historiques.", "Active balance and historical carry-overs.")} tone="text-red-300" />
-            <ParentInsightCard label={L("Projection solde", "Projected balance")} value={money.format(projectedRemainingAfter30Days)} detail={L("Dette estimee apres le prochain cycle.", "Estimated debt after the next cycle.")} tone={projectedRemainingAfter30Days <= snapshot.profile.totalDebt * 0.5 ? "text-emerald-300" : "text-amber-300"} />
+            <ParentInsightCard label={L("Projection du solde", "Projected balance")} value={money.format(projectedRemainingAfter30Days)} detail={L("Dette estimée après le prochain cycle.", "Estimated debt after the next cycle.")} tone={projectedRemainingAfter30Days <= snapshot.profile.totalDebt * 0.5 ? "text-emerald-300" : "text-amber-300"} />
           </div>
           <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-800">
             <div className="h-full rounded-full bg-gradient-to-r from-brand-600 to-cyan-400" style={{ width: `${Math.max(0, Math.min(100, snapshot.profile.completionRate))}%` }} />
@@ -652,9 +732,9 @@ export function FinanceParentPage() {
                     <span className="font-display text-xl font-bold text-white">{module.title}</span>
                     <span className="shrink-0 rounded-full bg-white/10 px-2.5 py-1 text-xs font-semibold text-ink-dim">{module.count}</span>
                   </span>
-                  <span className="mt-2 block text-sm text-ink-dim">{module.subtitle}</span>
+                  <span className="mt-2 block break-words text-sm leading-6 text-ink-dim">{module.subtitle}</span>
                   <span className="mt-4 flex min-w-0 items-center justify-between gap-3 text-xs font-semibold uppercase tracking-[0.12em] text-brand-100">
-                    <span>{module.metric}</span>
+                    <span className="min-w-0 break-words">{module.metric}</span>
                     <span className="rounded-full border border-white/10 px-3 py-1 normal-case tracking-normal text-white group-hover:border-brand-300/30">Ouvrir</span>
                   </span>
                 </span>
@@ -680,14 +760,14 @@ export function FinanceParentPage() {
                         <div className="mt-3 flex flex-wrap gap-2 text-xs">
                           <span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-cyan-200">{student.paymentOptionLabel}</span>
                           <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-ink-dim">{student.gradeGroup}</span>
-                          {student.agreementId && <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-amber-200">Owner agreement</span>}
+                          {student.agreementId && <span className="rounded-full border border-amber-500/20 bg-amber-500/10 px-3 py-1 text-amber-200">{L("Accord propriétaire", "Owner agreement")}</span>}
                         </div>
                       </div>
                       <div className="grid gap-3 sm:grid-cols-2 lg:w-[360px]">
-                        <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4"><p className="text-xs text-ink-dim">Expected</p><p className="mt-2 font-mono text-lg font-bold text-white">{money.format(student.expectedTotal)}</p></div>
-                        <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4"><p className="text-xs text-ink-dim">Balance</p><p className="mt-2 font-mono text-lg font-bold text-red-300">{money.format(student.balance)}</p></div>
-                        <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4"><p className="text-xs text-ink-dim">Reduction</p><p className="mt-2 font-mono text-lg font-bold text-cyan-300">{money.format(student.reductionTotal)}</p></div>
-                        <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4"><p className="text-xs text-ink-dim">Next due</p><p className="mt-2 text-sm font-semibold text-white">{nextDue ? new Date(nextDue.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US") : "Fully covered"}</p></div>
+                        <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4"><p className="text-xs text-ink-dim">{L("Montant attendu", "Expected")}</p><p className="mt-2 font-mono text-lg font-bold text-white">{money.format(student.expectedTotal)}</p></div>
+                        <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4"><p className="text-xs text-ink-dim">{L("Solde", "Balance")}</p><p className="mt-2 font-mono text-lg font-bold text-red-300">{money.format(student.balance)}</p></div>
+                        <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4"><p className="text-xs text-ink-dim">{L("Réduction", "Reduction")}</p><p className="mt-2 font-mono text-lg font-bold text-cyan-300">{money.format(student.reductionTotal)}</p></div>
+                        <div className="rounded-2xl border border-white/10 bg-slate-900/50 p-4"><p className="text-xs text-ink-dim">{L("Prochaine échéance", "Next due")}</p><p className="mt-2 text-sm font-semibold text-white">{nextDue ? new Date(nextDue.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US") : L("Tout est couvert", "Fully covered")}</p></div>
                       </div>
                     </div>
                     <div className="mt-5 h-2 overflow-hidden rounded-full bg-slate-800">
@@ -695,7 +775,7 @@ export function FinanceParentPage() {
                     </div>
                     <div className="edupay-scrollbar mt-5 overflow-x-auto">
                       <table className="w-full min-w-[760px] text-sm">
-                        <thead><tr className="border-b border-slate-700/50 text-left text-ink-dim"><th className="px-3 py-3">Installment</th><th className="px-3 py-3">Due date</th><th className="px-3 py-3">Amount due</th><th className="px-3 py-3">Paid</th><th className="px-3 py-3">Balance</th><th className="px-3 py-3">Status</th></tr></thead>
+                        <thead><tr className="border-b border-slate-700/50 text-left text-ink-dim"><th className="px-3 py-3">{L("Échéance", "Installment")}</th><th className="px-3 py-3">{L("Date limite", "Due date")}</th><th className="px-3 py-3">{L("Montant dû", "Amount due")}</th><th className="px-3 py-3">{L("Payé", "Paid")}</th><th className="px-3 py-3">{L("Solde", "Balance")}</th><th className="px-3 py-3">{L("Statut", "Status")}</th></tr></thead>
                         <tbody>
                           {student.installments.map((installment) => (
                             <tr key={installment.id} className="border-b border-slate-700/25">
@@ -720,7 +800,7 @@ export function FinanceParentPage() {
             <div className="space-y-5">
               <div className="grid gap-3 md:grid-cols-4">
                 <ParentInsightCard label="Reste total" value={money.format(snapshot.profile.totalDebt)} detail="Toutes obligations ouvertes envers l'ecole." tone="text-red-300" />
-                <ParentInsightCard label="Retard" value={money.format(overdueBalance)} detail="Echeances deja depassees." tone={overdueBalance > 0 ? "text-red-300" : "text-emerald-300"} />
+                <ParentInsightCard label="Retard" value={money.format(overdueBalance)} detail="Échéances déjà dépassées." tone={overdueBalance > 0 ? "text-red-300" : "text-emerald-300"} />
                 <ParentInsightCard label="30 prochains jours" value={money.format(next30DaysBalance)} detail="Pression de paiement immediate." tone="text-amber-300" />
                 <ParentInsightCard label="Reports historiques" value={money.format(previousDebtTotal)} detail="Dettes issues des annees precedentes." tone="text-orange-300" />
               </div>
@@ -754,27 +834,27 @@ export function FinanceParentPage() {
             <div className="space-y-5">
               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                 <ParentInsightCard label="Score foyer" value={`${obligationHealthScore.toFixed(0)}/100`} detail={obligationHealthLabel} tone={obligationHealthTone} />
-                <ParentInsightCard label="Cash requis 30j" value={money.format(next30DaysBalance)} detail="Montant a preparer sur les prochaines echeances." tone="text-amber-300" />
-                <ParentInsightCard label="Solde projete" value={money.format(projectedRemainingAfter30Days)} detail="Projection apres un cycle de paiement moyen." tone={projectedRemainingAfter30Days <= snapshot.profile.totalDebt * 0.5 ? "text-emerald-300" : "text-red-300"} />
-                <ParentInsightCard label="Paiement moyen" value={money.format(averagePayment)} detail={`${completedPayments.length} paiement(s) complet(s) analyses.`} tone="text-emerald-300" />
+                <ParentInsightCard label="Montant requis à 30 jours" value={money.format(next30DaysBalance)} detail="Montant à préparer pour les prochaines échéances." tone="text-amber-300" />
+                <ParentInsightCard label="Solde projeté" value={money.format(projectedRemainingAfter30Days)} detail="Projection après un cycle de paiement moyen." tone={projectedRemainingAfter30Days <= snapshot.profile.totalDebt * 0.5 ? "text-emerald-300" : "text-red-300"} />
+                <ParentInsightCard label="Paiement moyen" value={money.format(averagePayment)} detail={`${completedPayments.length} paiement(s) complet(s) analysé(s).`} tone="text-emerald-300" />
               </div>
               <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-5">
-                <h3 className="font-display text-xl font-bold text-white">Lecture predictive</h3>
+                <h3 className="font-display text-xl font-bold text-white">Lecture prédictive</h3>
                 <div className="mt-4 grid gap-4 lg:grid-cols-3">
                   <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
-                    <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Scenario favorable</p>
+                    <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Scénario favorable</p>
                     <p className="mt-2 font-mono text-lg font-bold text-emerald-300">{money.format(Math.max(snapshot.profile.totalDebt - Math.max(averagePayment * 1.5, next30DaysBalance), 0))}</p>
-                    <p className="mt-1 text-xs text-ink-dim">Si le prochain paiement depasse la moyenne recente.</p>
+                    <p className="mt-1 text-xs text-ink-dim">Si le prochain paiement dépasse la moyenne récente.</p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
-                    <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Scenario courant</p>
+                    <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Scénario courant</p>
                     <p className="mt-2 font-mono text-lg font-bold text-amber-300">{money.format(projectedRemainingAfter30Days)}</p>
-                    <p className="mt-1 text-xs text-ink-dim">Si le comportement recent reste stable.</p>
+                    <p className="mt-1 text-xs text-ink-dim">Si le comportement récent reste stable.</p>
                   </div>
                   <div className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
-                    <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Scenario risque</p>
+                    <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Scénario à risque</p>
                     <p className="mt-2 font-mono text-lg font-bold text-red-300">{money.format(snapshot.profile.totalDebt + next30DaysBalance)}</p>
-                    <p className="mt-1 text-xs text-ink-dim">Si aucune echeance proche n'est regularisee.</p>
+                    <p className="mt-1 text-xs text-ink-dim">Si aucune échéance proche n'est régularisée.</p>
                   </div>
                 </div>
               </div>
@@ -798,8 +878,8 @@ export function FinanceParentPage() {
             <div className="space-y-5">
               <div className="grid gap-3 md:grid-cols-3">
                 <MetricCard label="Dette totale suivie" value={money.format(activeDebtTotal)} detail={`${snapshot.debts.length} ligne(s) de dette`} icon={WalletCards} tone="text-red-300" />
-                <MetricCard label="Annees anterieures" value={money.format(previousDebtTotal)} detail={`${previousYearDebts.length} report(s) historique(s)`} icon={FileClock} tone="text-amber-300" />
-                <MetricCard label="Annee active" value={snapshot.academicYear.name} detail="Periode de reference actuelle" icon={CalendarClock} tone="text-cyan-300" />
+                <MetricCard label="Années antérieures" value={money.format(previousDebtTotal)} detail={`${previousYearDebts.length} report(s) historique(s)`} icon={FileClock} tone="text-amber-300" />
+                <MetricCard label="Année active" value={snapshot.academicYear.name} detail="Période de référence actuelle" icon={CalendarClock} tone="text-cyan-300" />
               </div>
               {snapshot.debts.length === 0 && <p className="text-sm text-ink-dim">Aucune dette enregistree.</p>}
               {snapshot.debts.map((debt) => {
@@ -817,11 +897,11 @@ export function FinanceParentPage() {
                     <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                       <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Montant initial</p><p className="mt-1 font-mono font-bold text-white">{money.format(debt.originalAmount)}</p></div>
                       <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Solde restant</p><p className="mt-1 font-mono font-bold text-red-300">{money.format(debt.amountRemaining)}</p></div>
-                      <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Annee dette</p><p className="mt-1 font-semibold text-white">{debt.academicYearName || debt.academicYearId || snapshot.academicYear.name}</p></div>
+                      <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Année de la dette</p><p className="mt-1 font-semibold text-white">{debt.academicYearName || debt.academicYearId || snapshot.academicYear.name}</p></div>
                       <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Origine report</p><p className="mt-1 font-semibold text-white">{debt.carriedOverFromYearName || debt.carriedOverFromYearId || "Non reportee"}</p></div>
-                      <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Echeance</p><p className="mt-1 font-semibold text-white">{debt.dueDate ? new Date(debt.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US") : "Non definie"}</p></div>
-                      <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Creee le</p><p className="mt-1 font-semibold text-white">{new Date(debt.createdAt).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}</p></div>
-                      <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Reglee le</p><p className="mt-1 font-semibold text-white">{debt.settledAt ? new Date(debt.settledAt).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US") : "Non reglee"}</p></div>
+                      <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Échéance</p><p className="mt-1 font-semibold text-white">{debt.dueDate ? new Date(debt.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US") : "Non définie"}</p></div>
+                      <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Créée le</p><p className="mt-1 font-semibold text-white">{new Date(debt.createdAt).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}</p></div>
+                      <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">Réglée le</p><p className="mt-1 font-semibold text-white">{debt.settledAt ? new Date(debt.settledAt).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US") : "Non réglée"}</p></div>
                       <div className="rounded-xl border border-white/10 bg-slate-950/40 p-3"><p className="text-xs text-ink-dim">ID dette</p><p className="mt-1 break-all font-mono text-xs font-semibold text-cyan-200">{debt.id}</p></div>
                     </div>
                   </article>
@@ -834,8 +914,8 @@ export function FinanceParentPage() {
             <div className="space-y-3">
               <div className="grid gap-3 md:grid-cols-3">
                 <ParentInsightCard label="Alertes actives" value={String(snapshot.alerts.length)} detail="Issues du moteur financier EduPay." tone="text-amber-300" />
-                <ParentInsightCard label="SMS / Email" value={String(notificationHistory.filter((log) => log.channel === "SMS" || log.channel === "EMAIL").length)} detail="Messages directs deja traces." tone="text-cyan-300" />
-                <ParentInsightCard label="Retard detecte" value={money.format(overdueBalance)} detail="Montant actuellement en retard." tone={overdueBalance > 0 ? "text-red-300" : "text-emerald-300"} />
+                <ParentInsightCard label="SMS / e-mails" value={String(notificationHistory.filter((log) => log.channel === "SMS" || log.channel === "EMAIL").length)} detail="Messages directs déjà tracés." tone="text-cyan-300" />
+                <ParentInsightCard label="Retard détecté" value={money.format(overdueBalance)} detail="Montant actuellement en retard." tone={overdueBalance > 0 ? "text-red-300" : "text-emerald-300"} />
               </div>
               {snapshot.alerts.length === 0 && <p className="text-sm text-ink-dim">Aucune alerte active.</p>}
               {snapshot.alerts.map((alert) => (
@@ -848,12 +928,37 @@ export function FinanceParentPage() {
           )}
 
           {activeModule === "reductions" && (
-            <div className="space-y-3">
-              {visibleReductions.length === 0 && <p className="text-sm text-ink-dim">Aucune reduction appliquee.</p>}
-              {visibleReductions.map((reduction) => (
-                <div key={reduction.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                  <div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-white">{reduction.title}</p><p className="mt-1 text-xs text-ink-dim">{reduction.studentName || "Compte parent"} - {reduction.scope}</p></div><span className="rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-200">{money.format(reduction.amount)}</span></div>
-                  <p className="mt-2 text-xs text-ink-dim">{new Date(reduction.effectiveDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}</p>
+            <div className="space-y-4">
+              {groupedReductions.length === 0 && <p className="text-sm text-ink-dim">Aucune réduction appliquée.</p>}
+              {groupedReductions.map((group) => (
+                <div key={group.key} className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="break-words font-semibold text-white">{group.origin}</p>
+                      <p className="mt-1 break-words text-xs text-ink-dim">{group.beneficiary}</p>
+                      <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-ink-dim">
+                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">{getReductionScopeLabel(group.scope)}</span>
+                        {group.paymentOptionType && <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-2.5 py-1 text-cyan-100">{getPaymentOptionLabel(group.paymentOptionType)}</span>}
+                        {group.gradeGroup && <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">Niveau: {group.gradeGroup}</span>}
+                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">{group.rows.length} ligne(s)</span>
+                      </div>
+                    </div>
+                    <span className="w-fit shrink-0 rounded-full border border-cyan-500/20 bg-cyan-500/10 px-3 py-1 text-xs font-semibold text-cyan-200">{money.format(group.amount)}</span>
+                  </div>
+                  <div className="mt-4 grid gap-2">
+                    {group.rows.map((row) => (
+                      <div key={row.id} className="min-w-0 rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <p className="min-w-0 break-words text-sm font-semibold text-white">{row.title}</p>
+                          <p className="shrink-0 font-mono text-sm font-bold text-cyan-200">{money.format(row.amount)}</p>
+                        </div>
+                        <p className="mt-1 text-xs text-ink-dim">
+                          {new Date(row.effectiveDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}
+                          {row.percentage ? ` - ${row.percentage}%` : ""}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
@@ -861,11 +966,11 @@ export function FinanceParentPage() {
 
           {activeModule === "agreements" && (
             <div className="space-y-3">
-              {snapshot.agreements.length === 0 && <p className="text-sm text-ink-dim">Aucun accord special actif.</p>}
+              {snapshot.agreements.length === 0 && <p className="text-sm text-ink-dim">Aucun accord spécial actif.</p>}
               {snapshot.agreements.map((agreement) => (
                 <div key={agreement.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                  <div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-white">{agreement.title}</p><p className="mt-1 text-sm text-ink-dim">{agreement.notes || "Accord personnalise valide par l'administration."}</p></div><span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusTone(agreement.status)}`}>{agreement.status}</span></div>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-3 text-sm"><div><p className="text-ink-dim">Custom total</p><p className="font-mono font-semibold text-white">{money.format(agreement.customTotal)}</p></div><div><p className="text-ink-dim">Reduction</p><p className="font-mono font-semibold text-cyan-300">{money.format(agreement.reductionAmount)}</p></div><div><p className="text-ink-dim">Balance due</p><p className="font-mono font-semibold text-red-300">{money.format(agreement.balanceDue)}</p></div></div>
+                  <div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-white">{agreement.title}</p><p className="mt-1 text-sm text-ink-dim">{agreement.notes || "Accord personnalisé validé par l'administration."}</p></div><span className={`rounded-full border px-3 py-1 text-xs font-semibold ${statusTone(agreement.status)}`}>{agreement.status}</span></div>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3 text-sm"><div><p className="text-ink-dim">Total personnalisé</p><p className="font-mono font-semibold text-white">{money.format(agreement.customTotal)}</p></div><div><p className="text-ink-dim">Réduction</p><p className="font-mono font-semibold text-cyan-300">{money.format(agreement.reductionAmount)}</p></div><div><p className="text-ink-dim">Solde dû</p><p className="font-mono font-semibold text-red-300">{money.format(agreement.balanceDue)}</p></div></div>
                 </div>
               ))}
             </div>
@@ -874,7 +979,7 @@ export function FinanceParentPage() {
           {activeModule === "payments" && (
             <div className="grid gap-5 xl:grid-cols-2">
               <section className="space-y-3">
-                <h3 className="font-display text-xl font-bold text-white">Payment history</h3>
+                <h3 className="font-display text-xl font-bold text-white">Historique des paiements</h3>
                 {snapshot.paymentHistory.length === 0 && <p className="text-sm text-ink-dim">Aucun paiement historique disponible.</p>}
                 {snapshot.paymentHistory.map((payment) => (
                   <div key={payment.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
@@ -885,8 +990,8 @@ export function FinanceParentPage() {
                 ))}
               </section>
               <section className="space-y-3">
-                <h3 className="font-display text-xl font-bold text-white">Historical receipts</h3>
-                {snapshot.historicalReceipts.length === 0 && <p className="text-sm text-ink-dim">Aucun recu archive.</p>}
+                <h3 className="font-display text-xl font-bold text-white">Reçus archivés</h3>
+                {snapshot.historicalReceipts.length === 0 && <p className="text-sm text-ink-dim">Aucun reçu archivé.</p>}
                 {snapshot.historicalReceipts.map((receipt) => (
                   <div key={receipt.id} className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm"><div className="flex items-center justify-between gap-3"><div><p className="font-semibold text-white">{receipt.receiptNumber}</p><p className="text-xs text-ink-dim">{receipt.transactionNumber}</p></div><p className="text-xs text-ink-dim">{new Date(receipt.createdAt).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}</p></div><AllocationTraceBlock trace={receipt.allocationTrace} money={moneyInstallment} lang={lang} /></div>
                 ))}
@@ -897,12 +1002,12 @@ export function FinanceParentPage() {
           {activeModule === "notifications" && (
             <div className="space-y-4">
               <div className="grid gap-3 md:grid-cols-4">
-                <ParentInsightCard label="Total messages" value={String(notificationHistory.length)} detail="Historique recent conserve par EduPay." />
-                <ParentInsightCard label="Emails" value={String(notificationHistory.filter((log) => log.channel === "EMAIL").length)} detail="Confirmations et rappels envoyes par mail." tone="text-cyan-300" />
-                <ParentInsightCard label="SMS" value={String(notificationHistory.filter((log) => log.channel === "SMS").length)} detail="Rappels courts sur telephone." tone="text-emerald-300" />
-                <ParentInsightCard label="Dashboard" value={String(notificationHistory.filter((log) => log.channel === "DASHBOARD").length)} detail="Messages visibles dans le systeme." tone="text-brand-100" />
+                <ParentInsightCard label="Total des messages" value={String(notificationHistory.length)} detail="Historique récent conservé par EduPay." />
+                <ParentInsightCard label="E-mails" value={String(notificationHistory.filter((log) => log.channel === "EMAIL").length)} detail="Confirmations et rappels envoyés par e-mail." tone="text-cyan-300" />
+                <ParentInsightCard label="SMS" value={String(notificationHistory.filter((log) => log.channel === "SMS").length)} detail="Rappels courts envoyés sur téléphone." tone="text-emerald-300" />
+                <ParentInsightCard label="Tableau de bord" value={String(notificationHistory.filter((log) => log.channel === "DASHBOARD").length)} detail="Messages visibles dans le système." tone="text-brand-100" />
               </div>
-              {notificationHistory.length === 0 && <p className="text-sm text-ink-dim">Aucun message n'a encore ete trace pour ce compte.</p>}
+              {notificationHistory.length === 0 && <p className="text-sm text-ink-dim">Aucun message n'a encore été tracé pour ce compte.</p>}
               <div className="space-y-3">
                 {notificationHistory.map((log) => (
                   <article key={log.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">

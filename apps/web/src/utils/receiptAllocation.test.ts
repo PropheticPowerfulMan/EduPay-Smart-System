@@ -21,7 +21,7 @@ describe("receipt allocation snapshot", () => {
 
     expect(snapshot.modeLabel).toBe("Imputation automatique");
     expect(snapshot.metrics.map((item) => item.label)).toEqual([
-      "Montant recu",
+      "Montant reçu",
       "Montant impute",
       "Solde non impute",
       "Avance",

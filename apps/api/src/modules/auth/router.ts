@@ -48,7 +48,7 @@ const loginSchema = z.object({
   email: z.string().min(1).optional(),
   password: z.string().min(8)
 }).refine((value) => Boolean(value.identifier?.trim() || value.email?.trim()), {
-  message: "Email ou code d'acces requis",
+  message: "E-mail ou code d'accès requis",
   path: ["identifier"]
 });
 
@@ -288,7 +288,7 @@ const recoveryLimiter = rateLimit({
   max: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { message: "Trop de tentatives de recuperation. Reessayez plus tard." }
+  message: { message: "Trop de tentatives de récupération. Réessayez plus tard." }
 });
 
 authRouter.post("/register", async (req, res) => {
@@ -403,7 +403,7 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
 
 authRouter.post("/forgot-password", recoveryLimiter, async (req, res) => {
   const payload = forgotPasswordSchema.safeParse(req.body);
-  const genericMessage = "Si ce compte existe, un code de reinitialisation vient d'etre envoye.";
+  const genericMessage = "Si ce compte existe, un code de réinitialisation vient d'être envoyé.";
   if (!payload.success) return res.json({ message: genericMessage });
 
   try {
@@ -435,7 +435,7 @@ authRouter.post("/forgot-password", recoveryLimiter, async (req, res) => {
         text: [
           `Bonjour ${user.fullName},`,
           "",
-          "Une demande de reinitialisation de mot de passe a ete recue pour votre compte EduPay.",
+          "Une demande de réinitialisation de mot de passe a été reçue pour votre compte EduPay.",
           "",
           `Code de reinitialisation: ${token}`,
           `Lien direct: ${buildPasswordResetLink(token)}`,
@@ -497,11 +497,11 @@ authRouter.post("/recover-admin-password", recoveryLimiter, async (req, res) => 
   }).parse(req.body);
 
   if (!env.ADMIN_RECOVERY_CODE || env.ADMIN_RECOVERY_CODE.startsWith("CHANGE_ME")) {
-    return res.status(503).json({ message: "La recuperation administrateur n'est pas configuree sur le serveur." });
+    return res.status(503).json({ message: "La récupération administrateur n'est pas configurée sur le serveur." });
   }
 
   if (payload.recoveryCode !== env.ADMIN_RECOVERY_CODE) {
-    return res.status(401).json({ message: "Code de recuperation invalide." });
+    return res.status(401).json({ message: "Code de récupération invalide." });
   }
 
   const email = payload.email.trim().toLowerCase();
@@ -522,7 +522,7 @@ authRouter.post("/recover-admin-password", recoveryLimiter, async (req, res) => 
     text: [
       `Bonjour ${user.fullName},`,
       "",
-      "Le mot de passe administrateur EduPay vient d'etre reinitialise avec le code de recuperation serveur.",
+      "Le mot de passe administrateur EduPay vient d'être réinitialisé avec le code de récupération serveur.",
       "Si vous n'avez pas effectue cette action, changez immediatement ADMIN_RECOVERY_CODE et JWT_SECRET."
     ].join("\n")
   }).catch((error) => console.error("Admin recovery email failed", error));

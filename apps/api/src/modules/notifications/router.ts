@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../../prisma";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
-import { sendEmail, sendSms } from "../../utils/messaging";
+import { getMessagingConfigStatus, sendEmail, sendSms } from "../../utils/messaging";
 
 const sendSchema = z.object({
   parentId: z.string(),
@@ -15,6 +15,10 @@ const sendSchema = z.object({
 
 export const notificationRouter = Router();
 notificationRouter.use(authGuard);
+
+notificationRouter.get("/status", authorize("ADMIN", "ACCOUNTANT"), async (_req: AuthenticatedRequest, res) => {
+  res.json(getMessagingConfigStatus());
+});
 
 notificationRouter.post("/send", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
   const payload = sendSchema.parse(req.body);

@@ -48,7 +48,7 @@ function ForgotPasswordModal({ onClose, t, initialResetToken = "" }: { onClose: 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (identifier.trim().length < 3) {
-      setError("Entrez votre email ou votre code d'acces.");
+      setError("Entrez votre e-mail ou votre code d'accès.");
       return;
     }
     setLoading(true);
@@ -58,10 +58,10 @@ function ForgotPasswordModal({ onClose, t, initialResetToken = "" }: { onClose: 
         method: "POST",
         body: JSON.stringify({ identifier: identifier.trim() })
       });
-      setSuccessMessage(result.message || "Si ce compte existe, un code vient d'etre envoye.");
+      setSuccessMessage(result.message || "Si ce compte existe, un code vient d'être envoyé.");
     } catch {
       // Even on error we show success to not leak account existence
-      setSuccessMessage("Si ce compte existe, un code vient d'etre envoye.");
+      setSuccessMessage("Si ce compte existe, un code vient d'être envoyé.");
     } finally {
       setLoading(false);
       setStep("sent");
@@ -71,7 +71,7 @@ function ForgotPasswordModal({ onClose, t, initialResetToken = "" }: { onClose: 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (resetToken.trim().length < 24) {
-      setError("Entrez le code de reinitialisation recu par email.");
+      setError("Entrez le code de réinitialisation reçu par e-mail.");
       return;
     }
     if (newPassword.length < 8) {
@@ -163,7 +163,7 @@ function ForgotPasswordModal({ onClose, t, initialResetToken = "" }: { onClose: 
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-2">
-                <label className="text-sm font-medium text-ink-dim">Email ou code d'accès</label>
+                <label className="text-sm font-medium text-ink-dim">E-mail ou code d'accès</label>
                 <input
                   type="text"
                   value={identifier}
@@ -206,7 +206,7 @@ function ForgotPasswordModal({ onClose, t, initialResetToken = "" }: { onClose: 
               <p className="text-sm text-ink-dim mt-2">{t("adminRecoverySubtitle")}</p>
             </div>
             <form onSubmit={handleAdminRecovery} className="space-y-4">
-              <input type="text" value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="Email administrateur" className="w-full" />
+              <input type="text" value={identifier} onChange={(e) => setIdentifier(e.target.value)} placeholder="E-mail administrateur" className="w-full" />
               <input type="password" value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} placeholder={t("adminRecoveryCode")} className="w-full" />
               <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={t("newPasswordField")} className="w-full" />
               <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder={t("confirmNewPassword")} className="w-full" />
@@ -237,13 +237,13 @@ function ForgotPasswordModal({ onClose, t, initialResetToken = "" }: { onClose: 
             </div>
             <div className="text-center">
               <h3 className="font-display text-xl font-bold text-white">{t("forgotSentTitle")}</h3>
-              <p className="text-sm text-ink-dim">{successMessage || "Si ce compte existe, un code vient d'etre envoye. Collez ce code ci-dessous pour choisir un nouveau mot de passe."}</p>
+              <p className="text-sm text-ink-dim">{successMessage || "Si ce compte existe, un code vient d'être envoyé. Collez ce code ci-dessous pour choisir un nouveau mot de passe."}</p>
             </div>
             <form onSubmit={handleResetPassword} className="space-y-4">
               <textarea
                 value={resetToken}
                 onChange={(e) => setResetToken(e.target.value)}
-                placeholder="Code de reinitialisation recu par email"
+                placeholder="Code de réinitialisation reçu par e-mail"
                 className="min-h-20 w-full resize-none"
               />
               <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder={t("newPasswordField")} className="w-full" />
@@ -403,9 +403,9 @@ export function LoginPage() {
 
             {/* Form */}
             <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
-              {/* Email Input */}
+              {/* Email input */}
               <div className="space-y-2">
-                <label className="text-sm font-medium text-ink-dim">Email ou code d'accès</label>
+                <label className="text-sm font-medium text-ink-dim">E-mail ou code d'accès</label>
                 <input 
                   {...register("email")} 
                   placeholder="email@school.com ou ACC-PAR-XXXXXX"

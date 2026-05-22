@@ -15,6 +15,22 @@ type SmsInput = {
 
 type DeliveryStatus = "SENT" | "FAILED" | "SIMULATED" | "SKIPPED";
 
+export type MessagingConfigStatus = {
+  email: {
+    configured: boolean;
+    host: string;
+    port: string;
+    from: string;
+    userConfigured: boolean;
+  };
+  sms: {
+    configured: boolean;
+    providerUrl: string;
+    usernameConfigured: boolean;
+    sender: string;
+  };
+};
+
 const SCHOOL_NAME = "Kinshasa Christian School";
 const SCHOOL_SHORT_NAME = "KCS";
 const SCHOOL_TAGLINE = "Letting Our Light Shine";
@@ -142,7 +158,7 @@ function buildBrandedEmailHtml(input: EmailInput) {
             <td style="background:#ffffff;border-left:1px solid #dbe7f4;border-right:1px solid #dbe7f4;padding:30px 30px 10px">
               <div style="border-left:5px solid ${audience.accent};background:#f8fbff;border-radius:18px;padding:18px 20px;margin-bottom:22px">
                 <p style="margin:0;color:${BRAND_BLUE};font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.12em">Message officiel</p>
-                <p style="margin:6px 0 0;color:#334155;font-size:14px;line-height:1.55">Ce message vous est envoye par ${SCHOOL_NAME} via EduPay.</p>
+                <p style="margin:6px 0 0;color:#334155;font-size:14px;line-height:1.55">Ce message vous est envoyé par ${SCHOOL_NAME} via EduPay.</p>
               </div>
               ${formatEmailContent(input.text)}
             </td>
@@ -179,6 +195,24 @@ function hasSmsConfig() {
     env.AFRIKTALK_API_KEY &&
     env.AFRIKTALK_API_KEY !== "CHANGE_ME"
   );
+}
+
+export function getMessagingConfigStatus(): MessagingConfigStatus {
+  return {
+    email: {
+      configured: hasSmtpConfig(),
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      from: env.SMTP_FROM || env.SMTP_USER,
+      userConfigured: Boolean(env.SMTP_USER && env.SMTP_USER !== "school@example.com")
+    },
+    sms: {
+      configured: hasSmsConfig(),
+      providerUrl: env.AFRIKTALK_API_URL,
+      usernameConfigured: Boolean(env.AFRIKTALK_USERNAME),
+      sender: env.AFRIKTALK_SENDER
+    }
+  };
 }
 
 function smtpTransport() {

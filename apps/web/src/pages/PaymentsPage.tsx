@@ -672,7 +672,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string): stri
         <div style="font-size:9px; color:#94a3b8; margin-top:2px;">${activePayments.length} active${activePayments.length > 1 ? "s" : ""} / ${filtered.length} transaction${filtered.length > 1 ? "s" : ""}</div>
       </div>
       <div style="border:1px solid #d1fae5; border-radius:6px; padding:12px 14px; background:#f0fdf4;">
-        <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Paiements regles</div>
+        <div style="font-size:9px; text-transform:uppercase; letter-spacing:1px; color:#64748b; margin-bottom:4px;">Paiements réglés</div>
         <div style="font-size:16px; font-weight:bold; font-family:monospace; color:#16a34a;">$ ${formatMoney(completedTotal)}</div>
       </div>
       <div style="border:1px solid #fef3c7; border-radius:6px; padding:12px 14px; background:#fffbeb;">
@@ -1005,11 +1005,11 @@ function buildAllocationChildSummaries(preview: TuitionAllocationPreview) {
 function buildAllocationNarrative(preview: TuitionAllocationPreview, mode: AllocationMode): string[] {
   if (mode === "MANUAL") {
     return [
-      `Le financier a choisi la repartition manuelle pour ${fmtUsd(preview.totalReceived)}.`,
-      `Le systeme controle que le total reparti est egal au paiement recu: ${fmtUsd(preview.allocatedTotal)} applique.`,
+      `Le financier a choisi la répartition manuelle pour ${fmtUsd(preview.totalReceived)}.`,
+      `Le système contrôle que le total réparti est égal au paiement reçu : ${fmtUsd(preview.allocatedTotal)} appliqué.`,
       preview.missingAmount > 0
-        ? `Il reste ${fmtUsd(preview.missingAmount)} non couvert sur les echeances selectionnees.`
-        : "Toutes les lignes couvertes par cette repartition sont soldees."
+        ? `Il reste ${fmtUsd(preview.missingAmount)} non couvert sur les échéances sélectionnées.`
+        : "Toutes les lignes couvertes par cette répartition sont soldées."
     ];
   }
 
@@ -1017,24 +1017,24 @@ function buildAllocationNarrative(preview: TuitionAllocationPreview, mode: Alloc
   const current = preview.lines.filter((line) => line.dueBucket === "CURRENT" && line.allocated > 0);
   const future = preview.lines.filter((line) => line.dueBucket === "FUTURE" && line.allocated > 0);
   const children = buildAllocationChildSummaries(preview)
-    .map((child) => `${child.studentName}: ${fmtUsd(child.allocated)} applique, ${fmtUsd(child.remaining)} reste`)
+    .map((child) => `${child.studentName} : ${fmtUsd(child.allocated)} appliqué, ${fmtUsd(child.remaining)} reste`)
     .join(" | ");
 
   return [
-    `Montant recu: ${fmtUsd(preview.totalReceived)}. Le systeme paie d'abord les retards, puis l'echeance actuelle, puis les futures echeances par date.`,
+    `Montant reçu : ${fmtUsd(preview.totalReceived)}. Le système paie d'abord les retards, puis l'échéance actuelle, puis les futures échéances par date.`,
     overdue.length > 0
-      ? `Retards payes en premier: ${overdue.map((line) => `${line.studentName} / ${line.label} ${fmtUsd(line.allocated)}`).join("; ")}.`
-      : "Aucun retard ouvert n'a ete trouve pour ce paiement.",
+      ? `Retards payés en premier : ${overdue.map((line) => `${line.studentName} / ${line.label} ${fmtUsd(line.allocated)}`).join("; ")}.`
+      : "Aucun retard ouvert n'a été trouvé pour ce paiement.",
     current.length > 0
-      ? `Echeance actuelle traitee ensuite: ${current.map((line) => `${line.studentName} / ${line.label} ${fmtUsd(line.allocated)}`).join("; ")}.`
-      : "Aucune echeance actuelle ouverte n'a ete trouvee.",
+      ? `Échéance actuelle traitée ensuite : ${current.map((line) => `${line.studentName} / ${line.label} ${fmtUsd(line.allocated)}`).join("; ")}.`
+      : "Aucune échéance actuelle ouverte n'a été trouvée.",
     future.length > 0
-      ? `Futures echeances traitees par ordre de date: ${future.map((line) => `${line.studentName} / ${line.label} ${fmtUsd(line.allocated)}`).join("; ")}.`
-      : "Aucune future echeance n'a recu d'argent apres les priorites.",
+      ? `Futures échéances traitées par ordre de date : ${future.map((line) => `${line.studentName} / ${line.label} ${fmtUsd(line.allocated)}`).join("; ")}.`
+      : "Aucune future échéance n'a reçu d'argent après les priorités.",
     children,
     preview.advanceBalance > 0
-      ? `Excedent conserve comme avance: ${fmtUsd(preview.advanceBalance)}.`
-      : `Montant encore requis apres allocation: ${fmtUsd(preview.missingAmount)}.`
+      ? `Excédent conservé comme avance : ${fmtUsd(preview.advanceBalance)}.`
+      : `Montant encore requis après allocation : ${fmtUsd(preview.missingAmount)}.`
   ].filter(Boolean);
 }
 
@@ -1440,6 +1440,7 @@ export function PaymentsPage() {
   const [notificationStatus, setNotificationStatus] = useState<string | null>(null);
   const [paymentDetailsDialogOpen, setPaymentDetailsDialogOpen] = useState(true);
   const [parents, setParents] = useState<ParentOption[]>([]);
+  const [parentLookupQuery, setParentLookupQuery] = useState("");
   const [selectedParentFinance, setSelectedParentFinance] = useState<FinanceParentSnapshot | null>(null);
   const [financeLoading, setFinanceLoading] = useState(false);
   const [tuitionPlan, setTuitionPlan] = useState<PaymentOptionType>("STANDARD_MONTHLY");
@@ -1564,15 +1565,61 @@ export function PaymentsPage() {
     : true;
   const effectivePaymentNotificationsEnabled = paymentNotificationsEnabled && selectedParentNotificationsEnabled;
 
-  const setParentTarget = (parentId: string) => {
+  const parentLookupResults = useMemo(() => {
+    const query = normalizeSearchText(parentLookupQuery);
+    const tokens = query.split(/\s+/).filter(Boolean);
+
+    return parents
+      .map((parent) => {
+        const matchedStudents = (parent.students ?? []).filter((student) => {
+          if (tokens.length === 0) return false;
+          const studentText = normalizeSearchText([
+            student.fullName,
+            student.className,
+            student.externalStudentId
+          ].filter(Boolean).join(" "));
+          return tokens.every((token) => studentText.includes(token));
+        });
+        const familyText = normalizeSearchText([
+          parent.fullName,
+          parent.phone,
+          parent.email,
+          ...(parent.students ?? []).flatMap((student) => [
+            student.fullName,
+            student.className,
+            student.externalStudentId
+          ])
+        ].filter(Boolean).join(" "));
+        const matches = tokens.length === 0 || tokens.every((token) => familyText.includes(token));
+        return { parent, matchedStudents, matches };
+      })
+      .filter((item) => item.matches || item.parent.id === form.parentId)
+      .sort((left, right) => {
+        if (left.parent.id === form.parentId) return -1;
+        if (right.parent.id === form.parentId) return 1;
+        if (left.matchedStudents.length !== right.matchedStudents.length) {
+          return right.matchedStudents.length - left.matchedStudents.length;
+        }
+        return left.parent.fullName.localeCompare(right.parent.fullName);
+      })
+      .slice(0, tokens.length > 0 ? 8 : 5);
+  }, [form.parentId, parentLookupQuery, parents]);
+
+  const setParentTarget = (parentId: string, studentIds: string[] = []) => {
     const parent = parents.find((item) => item.id === parentId);
     setForm((prev) => ({
       ...prev,
       parentId,
-      studentIds: [],
+      studentIds,
       parentFullName: parent?.fullName ?? prev.parentFullName
     }));
     setFieldErrors((prev) => ({ ...prev, parentFullName: undefined, studentIds: undefined }));
+  };
+
+  const selectFamilyForPayment = (parent: ParentOption, matchedStudents: ParentStudentOption[]) => {
+    setParentLookupQuery(parent.fullName);
+    setParentTarget(parent.id, matchedStudents.map((student) => student.id));
+    setTuitionPreview(null);
   };
 
   const toggleParentPaymentNotifications = (parentId: string) => {
@@ -1786,23 +1833,23 @@ export function PaymentsPage() {
       return;
     }
     if (form.status !== "COMPLETED") {
-      setApiError("Le moteur tuition et la repartition manuelle s'appliquent uniquement aux paiements regles. Utilisez le statut Regle pour affecter les echeances.");
+      setApiError("Le moteur de scolarité et la répartition manuelle s'appliquent uniquement aux paiements réglés. Utilisez le statut « Réglé » pour affecter les échéances.");
       return;
     }
     if (selectedParent && (selectedParent.students?.length ?? 0) > 0 && form.studentIds.length === 0) {
-      setApiError("Selectionnez au moins un enfant avant de confirmer le paiement tuition.");
+      setApiError("Sélectionnez au moins un enfant avant de confirmer le paiement de scolarité.");
       return;
     }
     if (allocationMode === "MANUAL" && !tuitionPreview) {
-      setApiError("Previsualisez d'abord la repartition automatique ou manuelle avant de confirmer le paiement tuition.");
+      setApiError("Prévisualisez d'abord la répartition automatique ou manuelle avant de confirmer le paiement de scolarité.");
       return;
     }
     if (allocationMode === "MANUAL" && manualAllocationTotal <= 0) {
-      setApiError("Saisissez au moins une ligne dans la repartition manuelle avant de confirmer.");
+      setApiError("Saisissez au moins une ligne dans la répartition manuelle avant de confirmer.");
       return;
     }
     if (allocationMode === "MANUAL" && manualAllocationTotal > roundMoney(amountNum)) {
-      setApiError(`La repartition manuelle ne peut pas depasser le montant recu (${fmtUsd(amountNum)}). Total saisi: ${fmtUsd(manualAllocationTotal)}.`);
+      setApiError(`La répartition manuelle ne peut pas dépasser le montant reçu (${fmtUsd(amountNum)}). Total saisi : ${fmtUsd(manualAllocationTotal)}.`);
       return;
     }
     setTuitionEngineBusy(true);
@@ -2292,7 +2339,7 @@ export function PaymentsPage() {
                           <PrintIcon className="w-3.5 h-3.5" />
                         </button>
                         <button
-                          title="Exporter le recu en Excel"
+                          title="Exporter le reçu en Excel"
                           onClick={() => exportReceiptExcel(p)}
                           className="p-1.5 rounded bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/40 transition-colors"
                         >
@@ -2499,7 +2546,7 @@ export function PaymentsPage() {
                               <PrintIcon className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              title="Exporter le recu en Excel"
+                              title="Exporter le reçu en Excel"
                               onClick={() => exportReceiptExcel(r)}
                               className="ml-1 p-1.5 rounded bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/40 transition-colors"
                             >
@@ -2622,22 +2669,69 @@ export function PaymentsPage() {
               <label className="text-sm font-semibold text-ink-dim uppercase tracking-wide">
                 Parent destinataire email/SMS
               </label>
-              <div className="max-w-full overflow-hidden rounded-xl">
-                <select
-                  value={form.parentId}
-                  onChange={(event) => setParentTarget(event.target.value)}
-                  className="w-full max-w-full truncate"
-                >
-                  <option value="">Choisir un parent inscrit</option>
-                  {parents.map((parent) => (
-                    <option key={parent.id} value={parent.id}>
-                      {[parent.fullName, parent.phone].filter(Boolean).join(" - ")}
-                    </option>
-                  ))}
-                </select>
+              <div className="space-y-2">
+                <input
+                  type="search"
+                  value={parentLookupQuery}
+                  onChange={(event) => setParentLookupQuery(event.target.value)}
+                  placeholder="Tapez le nom du parent ou d'un enfant"
+                  className="w-full"
+                />
+                <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-700 bg-slate-950/50 p-2">
+                  {parentLookupResults.length > 0 ? parentLookupResults.map(({ parent, matchedStudents }) => {
+                    const active = parent.id === form.parentId;
+                    const displayedStudents = matchedStudents.length > 0
+                      ? matchedStudents
+                      : (parent.students ?? []).slice(0, 3);
+                    return (
+                      <button
+                        key={parent.id}
+                        type="button"
+                        onClick={() => selectFamilyForPayment(parent, matchedStudents)}
+                        className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+                          active
+                            ? "border-brand-500 bg-brand-500/15 text-white"
+                            : "border-slate-700 bg-slate-900/70 text-ink-dim hover:border-brand-400/50 hover:text-white"
+                        }`}
+                      >
+                        <span className="flex flex-wrap items-start justify-between gap-2">
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-semibold">{parent.fullName}</span>
+                            <span className="mt-1 block text-xs">
+                              {[parent.phone, parent.email].filter(Boolean).join(" - ") || "Parent inscrit"}
+                            </span>
+                          </span>
+                          <span className="shrink-0 rounded-full border border-white/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide">
+                            {active ? "Cible" : "Choisir"}
+                          </span>
+                        </span>
+                        {displayedStudents.length > 0 && (
+                          <span className="mt-2 flex flex-wrap gap-1.5">
+                            {displayedStudents.map((student) => (
+                              <span
+                                key={student.id}
+                                className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+                                  matchedStudents.some((matched) => matched.id === student.id)
+                                    ? "bg-emerald-500/20 text-emerald-100"
+                                    : "bg-slate-800 text-ink-dim"
+                                }`}
+                              >
+                                {student.fullName} - {student.className}
+                              </span>
+                            ))}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  }) : (
+                    <p className="px-3 py-2 text-xs font-semibold text-ink-dim">
+                      Aucun parent trouve pour cette recherche.
+                    </p>
+                  )}
+                </div>
               </div>
               <p className="text-xs text-ink-dim">
-                Les notifications partent uniquement vers ce parent cible.
+                Cherchez par parent ou par enfant; choisir une famille remplit le parent cible et selectionne les enfants correspondants.
               </p>
               {fieldErrors.parentId && <p className="text-xs text-danger">{fieldErrors.parentId}</p>}
             </div>
@@ -2674,7 +2768,7 @@ export function PaymentsPage() {
                 </div>
                 <div className="space-y-2 rounded-xl border border-slate-700 bg-slate-950/50 p-3">
                   <p className="text-xs font-semibold text-ink-dim">
-                    {form.studentIds.length} sur {selectedParent.students?.length ?? 0} enfant(s) selectionne(s). Le paiement, les echeances, la repartition manuelle et le recu seront limites a cette selection.
+                    {form.studentIds.length} sur {selectedParent.students?.length ?? 0} enfant(s) sélectionné(s). Le paiement, les échéances, la répartition manuelle et le reçu seront limités à cette sélection.
                   </p>
                   {selectedParent.students?.map((student) => {
                     const active = form.studentIds.includes(student.id);
@@ -2693,7 +2787,7 @@ export function PaymentsPage() {
                           <span className="block text-sm font-semibold">{student.fullName}</span>
                           <span className="block text-xs">{student.className} · Frais annuels $ {student.annualFee.toFixed(2)}</span>
                         </span>
-                        <span className="text-xs font-bold uppercase tracking-wide">{active ? "Selectionne" : "Choisir"}</span>
+                        <span className="text-xs font-bold uppercase tracking-wide">{active ? "Sélectionné" : "Choisir"}</span>
                       </button>
                     );
                   })}
@@ -2706,13 +2800,13 @@ export function PaymentsPage() {
               <div className="lg:col-span-2 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">Finance context</p>
+                    <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">Contexte financier</p>
                     <h3 className="mt-1 text-lg font-bold text-white">{selectedParentFinance.profile.activeTuitionPlan}</h3>
                     <p className="mt-1 text-sm text-cyan-100">
                       Paid {fmtUsd(selectedParentFinance.profile.totalPaid)} · Debt {fmtUsd(selectedParentFinance.profile.totalDebt)} · Reductions {fmtUsd(selectedParentFinance.profile.totalReduction)}
                     </p>
                     <p className="mt-1 text-xs text-cyan-100/85">
-                      Completion {selectedParentFinance.profile.completionRate.toFixed(1)}% · {selectedParentFinance.profile.overdueInstallments} echeance(s) en retard.
+                      Couverture {selectedParentFinance.profile.completionRate.toFixed(1)} % · {selectedParentFinance.profile.overdueInstallments} échéance(s) en retard.
                     </p>
                   </div>
                   {financeLoading && <p className="text-xs font-semibold text-cyan-100">Actualisation du profil finance...</p>}
@@ -2720,7 +2814,7 @@ export function PaymentsPage() {
 
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   {financeInstallmentSuggestions.length === 0 ? (
-                    <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3 text-sm text-cyan-100">Aucune echeance ouverte pour la selection actuelle.</div>
+                    <div className="rounded-xl border border-white/10 bg-slate-950/30 p-3 text-sm text-cyan-100">Aucune échéance ouverte pour la sélection actuelle.</div>
                   ) : financeInstallmentSuggestions.map((suggestion) => (
                     <button
                       key={`${suggestion.studentId}-${suggestion.label}-${suggestion.dueDate}`}
@@ -2744,7 +2838,7 @@ export function PaymentsPage() {
                         </span>
                       </div>
                       <div className="mt-3 flex items-center justify-between text-xs text-cyan-100/85">
-                        <span>Due {new Date(suggestion.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}</span>
+                        <span>Échéance {new Date(suggestion.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}</span>
                         <span className="font-mono font-bold text-white">{fmtUsd(suggestion.balance)}</span>
                       </div>
                     </button>
@@ -2770,7 +2864,7 @@ export function PaymentsPage() {
                       disabled={tuitionEngineBusy || !form.parentId || amountNum <= 0 || ((selectedParent?.students?.length ?? 0) > 0 && form.studentIds.length === 0)}
                       className="rounded-xl border border-emerald-400/40 bg-emerald-500/20 px-4 py-2 text-sm font-bold text-emerald-50 hover:bg-emerald-500/30 disabled:opacity-50"
                     >
-                      {tuitionEngineBusy ? "Calcul..." : allocationMode === "MANUAL" && tuitionPreview ? "Recalculer manuel" : "Previsualiser la repartition"}
+                      {tuitionEngineBusy ? "Calcul..." : allocationMode === "MANUAL" && tuitionPreview ? "Recalculer manuellement" : "Prévisualiser la répartition"}
                     </button>
                     <button
                       type="button"
@@ -2782,7 +2876,7 @@ export function PaymentsPage() {
                     </button>
                     {!tuitionPreview && (
                       <p className="w-full text-xs font-semibold text-emerald-100/80">
-                        La confirmation est active seulement apres la previsualisation, pour que le financier voie la repartition avant l'enregistrement.
+                        La confirmation est active seulement après la prévisualisation, pour que le financier voie la répartition avant l'enregistrement.
                       </p>
                     )}
                   </div>
@@ -2835,9 +2929,9 @@ export function PaymentsPage() {
                   <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-300/10 p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-100">Repartition manuelle exacte</p>
+                        <p className="text-xs font-black uppercase tracking-[0.16em] text-amber-100">Répartition manuelle exacte</p>
                         <p className="mt-1 text-sm font-semibold text-amber-50">
-                          Le financier saisit le montant exact a appliquer sur chaque enfant et chaque echeance ouverte.
+                          Le financier saisit le montant exact à appliquer sur chaque enfant et chaque échéance ouverte.
                         </p>
                       </div>
                       <div className="rounded-lg border border-amber-200/25 bg-slate-950/30 px-3 py-2 text-right text-xs">
@@ -2850,7 +2944,7 @@ export function PaymentsPage() {
 
                     {manualAllocationExceedsAmount && (
                       <div className="mt-3 rounded-lg border border-red-300/35 bg-red-400/10 p-3 text-xs font-bold text-red-100">
-                        Le total manuel depasse le montant recu. Corrigez les champs avant de confirmer.
+                        Le total manuel dépasse le montant reçu. Corrigez les champs avant de confirmer.
                       </div>
                     )}
 
@@ -2874,7 +2968,7 @@ export function PaymentsPage() {
                             </div>
                             <div>
                               <label className="mb-1 block text-[11px] font-black uppercase tracking-wide text-amber-100">
-                                Montant a allouer
+                                Montant à allouer
                               </label>
                               <input
                                 type="number"
@@ -2892,7 +2986,7 @@ export function PaymentsPage() {
                       </div>
                     ) : (
                       <div className="mt-3 rounded-lg border border-white/10 bg-slate-950/30 p-3 text-sm font-semibold text-ink-dim">
-                        Aucune echeance ouverte disponible pour les enfants selectionnes.
+                        Aucune échéance ouverte disponible pour les enfants sélectionnés.
                       </div>
                     )}
                   </div>
@@ -2901,7 +2995,7 @@ export function PaymentsPage() {
                 {tuitionPreview && (
                   <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
                     <div className="rounded-xl border border-white/10 bg-slate-950/35 p-3">
-                      <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-100">Tuition calculation</p>
+                      <p className="text-xs font-black uppercase tracking-[0.16em] text-emerald-100">Calcul de scolarité</p>
                       <div className="mt-3 space-y-3">
                         {tuitionPreview.calculations.map((row) => (
                           <div key={row.studentId} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
@@ -2931,7 +3025,7 @@ export function PaymentsPage() {
                           <p className="mt-1 text-xs text-ink-dim">{tuitionPreview.allocationPreview.message}</p>
                           {allocationMode === "AUTO" && (
                             <div className="mt-2 rounded-lg border border-cyan-300/20 bg-cyan-300/10 p-3 text-xs font-semibold text-cyan-50">
-                              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-cyan-100">Comment le systeme a reparti</p>
+                              <p className="text-[11px] font-black uppercase tracking-[0.16em] text-cyan-100">Comment le système a réparti</p>
                               <ol className="mt-2 list-decimal space-y-1 pl-4">
                                 {buildAllocationNarrative(tuitionPreview.allocationPreview, allocationMode).map((step) => (
                                   <li key={step}>{step}</li>
@@ -2941,7 +3035,7 @@ export function PaymentsPage() {
                           )}
                           {allocationMode === "MANUAL" && (
                             <div className="mt-2 rounded-lg border border-amber-300/20 bg-amber-300/10 p-3 text-xs font-semibold text-amber-50">
-                              <p>Les montants saisis dans la section manuelle ci-dessus sont recalcules ici avant enregistrement. Si le total est inferieur au montant recu, le reste sera conserve en avance.</p>
+                              <p>Les montants saisis dans la section manuelle ci-dessus sont recalculés ici avant enregistrement. Si le total est inférieur au montant reçu, le reste sera conservé en avance.</p>
                               <p className="mt-2 font-mono">Saisi {fmtUsd(manualAllocationTotal)} / {fmtUsd(amountNum)}</p>
                             </div>
                           )}

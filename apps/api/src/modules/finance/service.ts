@@ -341,16 +341,16 @@ function buildOverdueAlertSeries(input: {
 
   const firstDelayDays = Math.max(dayjs().startOf("day").diff(dayjs(firstInstallment.dueDate).startOf("day"), "day"), 0);
   const maxDelayDays = Math.max(dayjs().startOf("day").diff(dayjs(mostLateInstallment.dueDate).startOf("day"), "day"), 0);
-  const planLabel = input.activeTuitionPlan !== "No active tuition plan"
+  const planLabel = input.activeTuitionPlan !== "Aucun plan de scolarité actif"
     ? input.activeTuitionPlan
-    : PAYMENT_OPTION_LABELS[firstInstallment.paymentOptionType] ?? "plan de tuition";
+    : PAYMENT_OPTION_LABELS[firstInstallment.paymentOptionType] ?? "plan de scolarité";
 
   return [
     {
       id: `derived-overdue-1-${input.parentId}`,
       type: "OVERDUE_INSTALLMENT_REMINDER_1",
-      title: "Alerte 1 - echeance de tuition depassee",
-      message: `${firstInstallment.studentName} a depasse l'echeance \"${firstInstallment.label}\" du ${formatAlertDueDate(firstInstallment.dueDate)} selon le plan ${planLabel}. Solde en retard: ${formatAlertCurrency(firstInstallment.balance)}.`,
+      title: "Alerte 1 - échéance de scolarité dépassée",
+      message: `${firstInstallment.studentName} a dépassé l'échéance « ${firstInstallment.label} » du ${formatAlertDueDate(firstInstallment.dueDate)} selon le plan ${planLabel}. Solde en retard : ${formatAlertCurrency(firstInstallment.balance)}.`,
       severity: "MEDIUM",
       status: "OPEN",
       createdAt: new Date().toISOString()
@@ -358,8 +358,8 @@ function buildOverdueAlertSeries(input: {
     {
       id: `derived-overdue-2-${input.parentId}`,
       type: "OVERDUE_INSTALLMENT_REMINDER_2",
-      title: "Alerte 2 - regularisation attendue immediatement",
-      message: `${input.overdueInstallments.length} echeance(s) sont en retard pour ${input.academicYearName}, avec jusqu'a ${maxDelayDays} jour(s) de depassement. Dette totale suivie: ${formatAlertCurrency(input.totalDebt)}.`,
+      title: "Alerte 2 - régularisation attendue immédiatement",
+      message: `${input.overdueInstallments.length} échéance(s) sont en retard pour ${input.academicYearName}, avec jusqu'à ${maxDelayDays} jour(s) de dépassement. Dette totale suivie : ${formatAlertCurrency(input.totalDebt)}.`,
       severity: input.overdueInstallments.length >= 2 || maxDelayDays >= 14 ? "HIGH" : "MEDIUM",
       status: "OPEN",
       createdAt: new Date().toISOString()
@@ -367,8 +367,8 @@ function buildOverdueAlertSeries(input: {
     {
       id: `derived-overdue-3-${input.parentId}`,
       type: "OVERDUE_INSTALLMENT_REMINDER_3",
-      title: "Alerte 3 - dossier remonte au financier",
-      message: `Le parent et le financier doivent traiter ce retard maintenant. Premiere echeance non reglee depuis ${firstDelayDays} jour(s), derniere echeance critique ${mostLateInstallment.label} pour ${mostLateInstallment.studentName}.`,
+      title: "Alerte 3 - dossier remonté au financier",
+      message: `Le parent et le financier doivent traiter ce retard maintenant. Première échéance non réglée depuis ${firstDelayDays} jour(s), dernière échéance critique : ${mostLateInstallment.label} pour ${mostLateInstallment.studentName}.`,
       severity: "HIGH",
       status: "OPEN",
       createdAt: new Date().toISOString()
@@ -680,24 +680,24 @@ function buildOverdueReminderMessages(input: {
   }
 
   const subject = input.stage >= 6
-    ? `Avertissement ${input.stage}/7 - retard de tuition critique`
-    : `Avertissement ${input.stage}/7 - echeance de tuition depassee`;
+    ? `Avertissement ${input.stage}/7 - retard de scolarité critique`
+    : `Avertissement ${input.stage}/7 - échéance de scolarité dépassée`;
   const emailBody = [
     `Bonjour ${input.parentName},`,
     "",
-    `Votre echeance "${input.installmentLabel}" pour ${input.studentName} est en retard depuis ${input.delayDays} jour(s).`,
-    `Plan de tuition: ${input.planName}`,
-    `Date limite: ${dueDate}`,
-    `Montant attendu: ${formatAlertCurrency(input.amountDue)}`,
-    `Montant deja paye: ${formatAlertCurrency(input.amountPaid)}`,
-    `Solde a regulariser: ${amount}`,
+    `Votre échéance « ${input.installmentLabel} » pour ${input.studentName} est en retard depuis ${input.delayDays} jour(s).`,
+    `Plan de scolarité : ${input.planName}`,
+    `Date limite : ${dueDate}`,
+    `Montant attendu : ${formatAlertCurrency(input.amountDue)}`,
+    `Montant déjà payé : ${formatAlertCurrency(input.amountPaid)}`,
+    `Solde à régulariser : ${amount}`,
     "",
-    "Merci de regulariser ce paiement ou de contacter le service financier si un arrangement est necessaire.",
+    "Merci de régulariser ce paiement ou de contacter le service financier si un arrangement est nécessaire.",
     "",
-    `Reference EduPay: ${input.marker}`
+    `Référence EduPay : ${input.marker}`
   ].join("\n");
-  const smsBody = `EduPay avertissement ${input.stage}/7: echeance ${input.installmentLabel} en retard pour ${input.studentName}. Solde: ${amount}. Date limite: ${dueDate}. Ref ${input.marker}`;
-  const dashboardBody = `Avertissement ${input.stage}/7: echeance ${input.installmentLabel} en retard pour ${input.studentName}. Solde ${amount}. Date limite ${dueDate}.`;
+  const smsBody = `EduPay avertissement ${input.stage}/7 : échéance ${input.installmentLabel} en retard pour ${input.studentName}. Solde : ${amount}. Date limite : ${dueDate}. Réf. ${input.marker}`;
+  const dashboardBody = `Avertissement ${input.stage}/7 : échéance ${input.installmentLabel} en retard pour ${input.studentName}. Solde : ${amount}. Date limite : ${dueDate}.`;
   return { subject, emailBody, smsBody, dashboardBody };
 }
 
@@ -968,7 +968,7 @@ export async function runOverdueTuitionReminderSweep(input: {
             installmentId: installment.id,
             debtId: debt.id,
             type: FinancialAlertType.OVERDUE_INSTALLMENT,
-            title: `Avertissement ${stageConfig.stage}/7 - retard tuition`,
+            title: `Avertissement ${stageConfig.stage}/7 - retard de scolarité`,
             message: messages.dashboardBody,
             severity: stageConfig.severity,
             status: "OPEN",
@@ -1284,7 +1284,7 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
     });
 
   const activePlanNames = Array.from(new Set(studentRows.map((student) => student.planName))).filter(Boolean);
-  const activeTuitionPlan = activePlanNames.length === 1 ? activePlanNames[0] : activePlanNames.length > 1 ? "Mixed tuition plans" : "No active tuition plan";
+  const activeTuitionPlan = activePlanNames.length === 1 ? activePlanNames[0] : activePlanNames.length > 1 ? "Plans de scolarité mixtes" : "Aucun plan de scolarité actif";
 
   const overdueInstallmentRows = finalizedInstallments.filter((installment) => installment.isOverdue);
 
@@ -1749,7 +1749,7 @@ export async function upsertParentPlanAssignment(input: {
 
   if (hasLockedInstallments) {
     if (!assignmentAlreadyMatches) {
-      throw new Error("Ce plan ne peut pas etre remplace car des paiements sont deja alloues a cet eleve.");
+      throw new Error("Ce plan ne peut pas être remplacé car des paiements sont déjà alloués à cet élève.");
     }
     return existingAssignment;
   }
@@ -1889,7 +1889,7 @@ export async function createSpecialFinancialAgreement(input: {
     Number(installment.amountPaid || 0) > 0 || installment.allocations.length > 0
   );
   if (hasLockedInstallments) {
-    throw new Error("Ce dossier a deja des paiements alloues. Annulez ou regularisez les paiements avant de remplacer le plan par un accord manuel.");
+    throw new Error("Ce dossier a déjà des paiements alloués. Annulez ou régularisez les paiements avant de remplacer le plan par un accord manuel.");
   }
 
   const profile = await prisma.parentFinancialProfile.upsert({
@@ -2236,16 +2236,16 @@ function summarizeTuitionMessage(input: {
     .sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime())[0];
 
   return [
-    `Total amount received: ${formatAlertCurrency(input.totalReceived)}.`,
+    `Montant total reçu : ${formatAlertCurrency(input.totalReceived)}.`,
     byStudent.length
-      ? `Allocated: ${byStudent.map((row) => `${row.key} ${formatAlertCurrency(row.amount)}`).join("; ")}.`
-      : "No allocation was applied.",
+      ? `Montants imputés : ${byStudent.map((row) => `${row.key} ${formatAlertCurrency(row.amount)}`).join("; ")}.`
+      : "Aucune imputation n'a été appliquée.",
     unpaid.length
-      ? `Remaining unpaid: ${formatAlertCurrency(unpaid.reduce((sum, line) => sum + line.outstandingAfter, 0))}.`
-      : "All targeted obligations are fully paid.",
-    next ? `Next required payment: ${next.studentName} - ${next.label}, ${formatAlertCurrency(next.outstandingAfter)} by ${dayjs(next.dueDate).format("DD/MM/YYYY")}.` : "No next payment is currently required.",
-    overdue.length ? `Overdue balance: ${formatAlertCurrency(overdue.reduce((sum, line) => sum + line.outstandingAfter, 0))}.` : "No overdue balance remains in this allocation preview.",
-    input.advanceBalance > 0 ? `Advance payment balance: ${formatAlertCurrency(input.advanceBalance)}.` : ""
+      ? `Solde restant impayé : ${formatAlertCurrency(unpaid.reduce((sum, line) => sum + line.outstandingAfter, 0))}.`
+      : "Toutes les obligations ciblées sont entièrement réglées.",
+    next ? `Prochain paiement requis : ${next.studentName} - ${next.label}, ${formatAlertCurrency(next.outstandingAfter)} avant le ${dayjs(next.dueDate).format("DD/MM/YYYY")}.` : "Aucun prochain paiement n'est requis actuellement.",
+    overdue.length ? `Solde en retard : ${formatAlertCurrency(overdue.reduce((sum, line) => sum + line.outstandingAfter, 0))}.` : "Aucun solde en retard ne reste dans cet aperçu d'imputation.",
+    input.advanceBalance > 0 ? `Avance conservée : ${formatAlertCurrency(input.advanceBalance)}.` : ""
   ].filter(Boolean).join(" ");
 }
 
@@ -2305,41 +2305,41 @@ export function buildTuitionParentNotificationMessages(input: {
     .sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime())[0];
   const allocationLines = Object.entries(byStudent).map(([studentName, summary]) => language === "en"
     ? `- ${studentName}: paid ${formatAlertCurrency(summary.allocated)}, remaining ${formatAlertCurrency(summary.remaining)}`
-    : `- ${studentName}: paye ${formatAlertCurrency(summary.allocated)}, reste ${formatAlertCurrency(summary.remaining)}`
+    : `- ${studentName} : payé ${formatAlertCurrency(summary.allocated)}, reste ${formatAlertCurrency(summary.remaining)}`
   );
   const nextLine = nextPayment
     ? language === "en"
       ? `${nextPayment.studentName} - ${nextPayment.label}: ${formatAlertCurrency(nextPayment.outstandingAfter)} due by ${dayjs(nextPayment.dueDate).format("DD/MM/YYYY")}`
-      : `${nextPayment.studentName} - ${nextPayment.label}: ${formatAlertCurrency(nextPayment.outstandingAfter)} a payer avant le ${dayjs(nextPayment.dueDate).format("DD/MM/YYYY")}`
+      : `${nextPayment.studentName} - ${nextPayment.label} : ${formatAlertCurrency(nextPayment.outstandingAfter)} à payer avant le ${dayjs(nextPayment.dueDate).format("DD/MM/YYYY")}`
     : language === "en" ? "No next payment is currently required." : "Aucun prochain paiement n'est requis actuellement.";
   if (language === "fr") {
-    const subject = `Recu de tuition EduPay ${input.receiptNumber}`;
+    const subject = `Reçu de scolarité EduPay ${input.receiptNumber}`;
     const emailBody = [
       `Bonjour ${input.parentName},`,
       "",
-      "EduPay a enregistre un paiement de tuition sur votre compte famille.",
+      "EduPay a enregistré un paiement de scolarité sur votre compte famille.",
       "",
       `Transaction: ${input.transactionNumber}`,
-      `Recu: ${input.receiptNumber}`,
-      `Mode de paiement: ${input.paymentMethod}`,
-      `Mode d'affectation: ${input.allocationMode}`,
-      `Montant recu: ${formatAlertCurrency(input.allocationPreview.totalReceived)}`,
-      `Montant impute: ${formatAlertCurrency(input.allocationPreview.allocatedTotal)}`,
-      `Solde restant: ${formatAlertCurrency(input.allocationPreview.missingAmount)}`,
-      `Avance conservee: ${formatAlertCurrency(input.allocationPreview.advanceBalance)}`,
+      `Reçu : ${input.receiptNumber}`,
+      `Mode de paiement : ${input.paymentMethod}`,
+      `Mode d'affectation : ${input.allocationMode}`,
+      `Montant reçu : ${formatAlertCurrency(input.allocationPreview.totalReceived)}`,
+      `Montant imputé : ${formatAlertCurrency(input.allocationPreview.allocatedTotal)}`,
+      `Solde restant : ${formatAlertCurrency(input.allocationPreview.missingAmount)}`,
+      `Avance conservée : ${formatAlertCurrency(input.allocationPreview.advanceBalance)}`,
       "",
-      "Affectation par enfant:",
+      "Imputation par enfant :",
       allocationLines.join("\n") || "- Aucune affectation appliquee.",
       "",
-      `Prochain paiement: ${nextLine}`,
+      `Prochain paiement : ${nextLine}`,
       "",
-      `Note finance: ${input.allocationPreview.message}`,
+      `Note financière : ${input.allocationPreview.message}`,
       "",
-      "Veuillez conserver ce message avec votre recu EduPay."
+      "Veuillez conserver ce message avec votre reçu EduPay."
     ].join("\n");
     const smsBody = [
-      `EduPay ${input.receiptNumber}: recu ${formatAlertCurrency(input.allocationPreview.totalReceived)}`,
-      `impute ${formatAlertCurrency(input.allocationPreview.allocatedTotal)}`,
+      `EduPay ${input.receiptNumber} : reçu ${formatAlertCurrency(input.allocationPreview.totalReceived)}`,
+      `imputé ${formatAlertCurrency(input.allocationPreview.allocatedTotal)}`,
       `reste ${formatAlertCurrency(input.allocationPreview.missingAmount)}.`,
       `Prochain: ${nextLine}`
     ].join(" ");
@@ -3329,7 +3329,7 @@ export async function cancelRegisteredPayment(input: {
   }
 
   if (String(payment.status) === "CANCELLED") {
-    throw new Error("Ce paiement est deja annule.");
+    throw new Error("Ce paiement est déjà annulé.");
   }
 
   const cancelledPayment = await prisma.$transaction(async (tx) => {

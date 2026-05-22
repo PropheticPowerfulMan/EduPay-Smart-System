@@ -106,6 +106,22 @@ function reportCase(result: ReturnType<typeof simulateTuitionEngineScenario>) {
   }));
 }
 
+function applyPaymentStateToChildren(
+  children: Parameters<typeof simulateTuitionEngineScenario>[0]["children"],
+  result: ReturnType<typeof simulateTuitionEngineScenario>
+) {
+  return children.map((child) => {
+    const alreadyPaidBySequence = { ...(child.alreadyPaidBySequence ?? {}) };
+    for (const line of result.allocationPreview.lines.filter((row) => row.studentId === child.id && row.allocated > 0)) {
+      const sequence = Number(line.installmentId.split("-").at(-1));
+      if (Number.isFinite(sequence)) {
+        alreadyPaidBySequence[sequence] = round((alreadyPaidBySequence[sequence] ?? 0) + line.allocated);
+      }
+    }
+    return { ...child, alreadyPaidBySequence };
+  });
+}
+
 describe("EduPay Tuition Payment Engine", () => {
   it("applies family discount first, then plan discount, and auto-allocates a complex 10-child payment", () => {
     const result = simulateTuitionEngineScenario({
@@ -301,6 +317,177 @@ describe("EduPay Tuition Payment Engine", () => {
     expect(result.calculations.find((row) => row.studentId === "mixed-plan-b")?.finalTuition).toBe(3928.725);
     expect(result.calculations.find((row) => row.studentId === "mixed-plan-c")?.finalTuition).toBe(4780.44);
     expect(result.calculations.find((row) => row.studentId === "mixed-plan-d")?.finalTuition).toBe(2774.25);
+  });
+
+  it("simulates one parent enrolling 4 children in different classes for admin and parent dashboards", () => {
+    const result = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,
+      amount: 6200,
+      children: [
+        { id: "family4-k5", fullName: "Family 4 K5", className: "K5", paymentOptionType: PaymentOptionType.STANDARD_MONTHLY },
+        { id: "family4-g2", fullName: "Family 4 Grade 2", className: "Grade 2", paymentOptionType: PaymentOptionType.FULL_PRESEPTEMBER },
+        { id: "family4-g7", fullName: "Family 4 Grade 7", className: "Grade 7", paymentOptionType: PaymentOptionType.TWO_INSTALLMENTS },
+        { id: "family4-g11", fullName: "Family 4 Grade 11", className: "Grade 11", paymentOptionType: PaymentOptionType.THREE_INSTALLMENTS }
+      ]
+    });
+
+    assertDiscountOrder(result);
+    assertFinancialIntegrity(result);
+
+    const adminDashboardRows = reportCase(result);
+    const parentDashboardChildren = result.calculations.map((row) => ({
+      studentId: row.studentId,
+      studentName: row.studentName,
+      expectedTotal: row.finalTuition,
+      reductionTotal: row.totalReductionAmount,
+      installmentCount: row.schedule.length,
+      paid: round(result.allocationPreview.lines
+        .filter((line) => line.studentId === row.studentId)
+        .reduce((sum, line) => sum + line.allocated, 0)),
+      balance: round(result.allocationPreview.lines
+        .filter((line) => line.studentId === row.studentId)
+        .reduce((sum, line) => sum + line.outstandingAfter, 0))
+    }));
+
+    expect(result.calculations).toHaveLength(4);
+    expect(result.totals.baseAnnualTuition).toBe(16867.5);
+    expect(result.totals.familyDiscount).toBe(1686.75);
+    expect(result.totals.planDiscount).toBe(643.635);
+    expect(result.totals.finalTuition).toBe(14537.115);
+    expect(result.totals.allocated).toBe(6200);
+    expect(result.totals.remaining).toBe(8337.115);
+    expect(adminDashboardRows).toHaveLength(4);
+    expect(parentDashboardChildren).toHaveLength(4);
+    expect(parentDashboardChildren.reduce((sum, child) => round(sum + child.expectedTotal), 0)).toBe(result.totals.finalTuition);
+    expect(parentDashboardChildren.reduce((sum, child) => round(sum + child.paid), 0)).toBe(result.totals.allocated);
+    expect(parentDashboardChildren.reduce((sum, child) => round(sum + child.balance), 0)).toBe(result.totals.remaining);
+    expect(parentDashboardChildren.find((child) => child.studentId === "family4-k5")?.installmentCount).toBe(7);
+    expect(parentDashboardChildren.find((child) => child.studentId === "family4-g2")?.installmentCount).toBe(1);
+    expect(parentDashboardChildren.find((child) => child.studentId === "family4-g7")?.installmentCount).toBe(2);
+    expect(parentDashboardChildren.find((child) => child.studentId === "family4-g11")?.installmentCount).toBe(3);
+  });
+
+  it("simulates multiple parent payments across all 4 children and keeps admin, parent, receipt, and ecosystem traces consistent", () => {
+    const family4Children = [
+      { id: "multi-pay-k5", fullName: "Multi Pay K5", className: "K5", paymentOptionType: PaymentOptionType.STANDARD_MONTHLY },
+      { id: "multi-pay-g2", fullName: "Multi Pay Grade 2", className: "Grade 2", paymentOptionType: PaymentOptionType.FULL_PRESEPTEMBER },
+      { id: "multi-pay-g7", fullName: "Multi Pay Grade 7", className: "Grade 7", paymentOptionType: PaymentOptionType.TWO_INSTALLMENTS },
+      { id: "multi-pay-g11", fullName: "Multi Pay Grade 11", className: "Grade 11", paymentOptionType: PaymentOptionType.THREE_INSTALLMENTS }
+    ];
+
+    const firstPayment = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,
+      amount: 6200,
+      children: family4Children
+    });
+    const afterFirstPayment = applyPaymentStateToChildren(family4Children, firstPayment);
+
+    const manualPreview = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,
+      amount: 0,
+      allocationMode: "MANUAL",
+      children: afterFirstPayment
+    });
+    let manualRemaining = 3000;
+    const manualTargets = manualPreview.allocationPreview.lines
+      .filter((line) => line.outstandingBefore > 0)
+      .map((line) => {
+        if (manualRemaining <= 0) return null;
+        const amount = round(Math.min(line.outstandingBefore, manualRemaining));
+        manualRemaining = round(manualRemaining - amount);
+        return { installmentId: line.installmentId, amount };
+      })
+      .filter((row): row is { installmentId: string; amount: number } => Boolean(row) && row.amount > 0);
+    const manualAmount = round(manualTargets.reduce((sum, row) => sum + row.amount, 0));
+    const secondPayment = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,
+      amount: manualAmount,
+      allocationMode: "MANUAL",
+      manualAllocations: manualTargets,
+      children: afterFirstPayment
+    });
+    const afterSecondPayment = applyPaymentStateToChildren(afterFirstPayment, secondPayment);
+
+    const thirdPayment = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,
+      amount: 7000,
+      children: afterSecondPayment
+    });
+
+    const paymentTimeline = [firstPayment, secondPayment, thirdPayment];
+    const adminLedger = paymentTimeline.flatMap((payment, paymentIndex) =>
+      payment.allocationPreview.lines
+        .filter((line) => line.allocated > 0)
+        .map((line) => ({
+          paymentNumber: paymentIndex + 1,
+          studentId: line.studentId,
+          studentName: line.studentName,
+          installmentId: line.installmentId,
+          label: line.label,
+          allocated: line.allocated,
+          outstandingAfter: line.outstandingAfter
+        }))
+    );
+    const parentDashboard = thirdPayment.calculations.map((row) => {
+      const paidBeforeThird = afterSecondPayment.find((child) => child.id === row.studentId)?.alreadyPaidBySequence ?? {};
+      const paid = round(
+        Object.values(paidBeforeThird).reduce((sum, value) => sum + Number(value || 0), 0) +
+        thirdPayment.allocationPreview.lines
+          .filter((line) => line.studentId === row.studentId)
+          .reduce((sum, line) => sum + line.allocated, 0)
+      );
+      const balance = round(thirdPayment.allocationPreview.lines
+        .filter((line) => line.studentId === row.studentId)
+        .reduce((sum, line) => sum + line.outstandingAfter, 0));
+      return {
+        studentId: row.studentId,
+        studentName: row.studentName,
+        expectedTotal: row.finalTuition,
+        paid,
+        balance
+      };
+    });
+    const receiptTraces = paymentTimeline.map((payment, index) => ({
+      receiptNumber: `REC-SIM-FAMILY4-${index + 1}`,
+      mode: payment.allocationPreview.mode,
+      totalReceived: payment.allocationPreview.totalReceived,
+      allocatedTotal: payment.allocationPreview.allocatedTotal,
+      missingAmount: payment.allocationPreview.missingAmount,
+      perChildCount: new Set(payment.allocationPreview.lines.map((line) => line.studentId)).size
+    }));
+    const orbitSyncContracts = paymentTimeline.map((payment, index) => ({
+      reference: `SIM-FAMILY4-PAY-${index + 1}`,
+      amount: payment.amount,
+      studentExternalIds: family4Children.map((child) => `EXT-${child.id}`),
+      localStudentIds: family4Children.map((child) => child.id),
+      metadata: {
+        allocationMode: payment.allocationPreview.mode,
+        allocatedTotal: payment.allocationPreview.allocatedTotal,
+        remainingBalance: payment.allocationPreview.missingAmount
+      }
+    }));
+
+    expect(firstPayment.totals.finalTuition).toBe(14537.115);
+    expect(firstPayment.totals.allocated).toBe(6200);
+    expect(secondPayment.allocationPreview.mode).toBe("MANUAL");
+    expect(secondPayment.totals.allocated).toBe(manualAmount);
+    expect(manualAmount).toBe(3000);
+    expect(thirdPayment.totals.allocated).toBe(5337.115);
+    expect(thirdPayment.totals.advance).toBe(1662.885);
+    expect(thirdPayment.totals.remaining).toBe(0);
+    expect(adminLedger.length).toBeGreaterThan(4);
+    expect(parentDashboard).toHaveLength(4);
+    expect(parentDashboard.reduce((sum, child) => round(sum + child.expectedTotal), 0)).toBe(14537.115);
+    expect(parentDashboard.reduce((sum, child) => round(sum + child.paid), 0)).toBe(14537.115);
+    expect(parentDashboard.every((child) => child.balance === 0)).toBe(true);
+    expect(receiptTraces).toEqual([
+      expect.objectContaining({ receiptNumber: "REC-SIM-FAMILY4-1", mode: "AUTO", totalReceived: 6200, perChildCount: 4 }),
+      expect.objectContaining({ receiptNumber: "REC-SIM-FAMILY4-2", mode: "MANUAL", totalReceived: 3000, perChildCount: 4 }),
+      expect.objectContaining({ receiptNumber: "REC-SIM-FAMILY4-3", mode: "AUTO", totalReceived: 7000, allocatedTotal: 5337.115, missingAmount: 0, perChildCount: 2 })
+    ]);
+    expect(orbitSyncContracts).toHaveLength(3);
+    expect(orbitSyncContracts.every((contract) => contract.studentExternalIds.length === 4 && contract.localStudentIds.length === 4)).toBe(true);
+    expect(orbitSyncContracts[2].metadata.remainingBalance).toBe(0);
   });
 
   it("supports administrator-defined custom agreement plans without creating impossible totals", () => {

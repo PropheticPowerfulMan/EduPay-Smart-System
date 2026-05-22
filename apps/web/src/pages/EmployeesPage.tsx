@@ -155,28 +155,30 @@ function XIcon() {
 
 function ModalShell({ title, subtitle, actions, onClose, children }: { title: string; subtitle?: string; actions?: React.ReactNode; onClose: () => void; children: React.ReactNode }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
-      <div className="edupay-scrollbar relative my-4 max-h-[calc(100dvh-2rem)] w-full max-w-3xl overflow-y-auto rounded-3xl border border-white/10 glass shadow-2xl animate-fadeInUp" onClick={(event) => event.stopPropagation()}>
-        <button
-          type="button"
-          aria-label="Fermer"
-          onClick={onClose}
-          className="absolute right-4 top-4 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-slate-950/80 text-white/80 shadow-lg backdrop-blur transition-all hover:border-white/30 hover:bg-slate-900 hover:text-white"
-        >
-          <XIcon />
-        </button>
-        <div className="sticky top-0 z-[1] rounded-t-3xl border-b border-white/10 bg-[rgba(6,23,34,0.56)] px-6 pb-5 pt-6 backdrop-blur-2xl">
-          <div className="flex flex-col gap-4 pr-12 sm:flex-row sm:items-start sm:justify-between">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-3 py-4 sm:px-5 sm:py-6" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="edupay-scrollbar relative flex max-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/10 glass shadow-2xl animate-fadeInUp" onClick={(event) => event.stopPropagation()}>
+        <div className="sticky top-0 z-[1] border-b border-white/10 bg-slate-950/90 px-4 py-4 backdrop-blur-xl sm:px-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-300">Employés</p>
             <h2 className="mt-2 truncate font-display text-2xl font-bold text-white">{title}</h2>
             {subtitle ? <p className="mt-2 text-sm text-ink-dim">{subtitle}</p> : null}
             </div>
-            {actions ? <div className="flex flex-wrap items-center gap-2 sm:justify-end">{actions}</div> : null}
+            <div className="flex items-center gap-2">
+              {actions}
+              <button
+                type="button"
+                aria-label="Fermer"
+                onClick={onClose}
+                className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-ink-dim transition-colors hover:text-white"
+              >
+                <XIcon />
+              </button>
+            </div>
           </div>
         </div>
-        <div className="p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
           {children}
         </div>
       </div>
