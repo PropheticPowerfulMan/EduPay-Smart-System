@@ -39,7 +39,14 @@ const LOCAL_API_FALLBACK_ENABLED =
     PLACEHOLDER_API_URL
   );
 
-type DemoStudent = { id: string; fullName: string; gender?: "F" | "M" | "O" | ""; classId: string; className: string; annualFee: number; createdAt?: string; payments?: DemoPayment[] };
+type DemoSpecialAgreement = {
+  title?: string;
+  customTotal?: number;
+  reductionAmount?: number;
+  notes?: string;
+  installmentMode?: "ONE_TIME" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS";
+};
+type DemoStudent = { id: string; fullName: string; gender?: "F" | "M" | "O" | ""; classId: string; className: string; annualFee: number; createdAt?: string; payments?: DemoPayment[]; paymentOptionType?: DemoPaymentOptionType; specialAgreement?: DemoSpecialAgreement };
 type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; physicalAddress?: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
 type DemoTuitionAllocationLine = {
   installmentId: string;
@@ -526,6 +533,50 @@ function buildOwnerAgreementInstallments(customTotal: number) {
     { label: "Regularisation mi-annee", dueDate: buildAcademicDueDate(1, 31), amountDue: second, notes: "Created during parent onboarding" },
     { label: "Solde final", dueDate: buildAcademicDueDate(5, 31), amountDue: third, notes: "Created during parent onboarding" }
   ];
+}
+
+function buildDemoSpecialAgreementInstallments(customTotal: number, reductionAmount = 0, installmentMode: DemoSpecialAgreement["installmentMode"] = "THREE_INSTALLMENTS") {
+  const safeTotal = Math.max(Number(customTotal || 0), 0);
+  const safeReduction = Math.max(Number(reductionAmount || 0), 0);
+  const balanceDue = roundAmount(Math.max(safeTotal - safeReduction, 0));
+  if (balanceDue <= 0) return [];
+
+  if (installmentMode === "ONE_TIME") {
+    return [{ label: "Versement unique", dueDate: buildAcademicDueDate(8, 31), amountDue: balanceDue, notes: "Created during parent onboarding" }];
+  }
+
+  if (installmentMode === "TWO_INSTALLMENTS") {
+    const first = roundAmount(balanceDue * 0.6);
+    const second = roundAmount(balanceDue - first);
+    return [
+      { label: "Premier versement", dueDate: buildAcademicDueDate(8, 31), amountDue: first, notes: "Created during parent onboarding" },
+      { label: "Solde", dueDate: buildAcademicDueDate(1, 31), amountDue: second, notes: "Created during parent onboarding" }
+    ];
+  }
+
+  return buildOwnerAgreementInstallments(balanceDue);
+}
+
+function buildDemoAgreementOverride(student: DemoStudent): DemoFinanceOverride {
+  const agreement = student.specialAgreement;
+  const customTotal = Number(agreement?.customTotal ?? student.annualFee ?? 0);
+  const reductionAmount = Number(agreement?.reductionAmount ?? 0);
+  return {
+    mode: "AGREEMENT",
+    agreement: {
+      title: agreement?.title?.trim() || `Accord spécial parent-école - ${student.fullName}`,
+      customTotal,
+      reductionAmount,
+      status: "APPROVED",
+      privateNotes: "",
+      notes: agreement?.notes?.trim() || "Created during parent onboarding",
+      installments: buildDemoSpecialAgreementInstallments(customTotal, reductionAmount, agreement?.installmentMode)
+    }
+  };
+}
+
+function resolveDemoClassName(classId: string, fallbackName = "") {
+  return demoClasses.find((entry) => entry.id === classId)?.name || fallbackName || classId;
 }
 
 function roundAmount(value: number) {
@@ -1851,6 +1902,16 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     } as T;
   }
 
+  const deleteManualMessageMatch = normalizedPath.match(/^\/api\/notifications\/messages\/([^/]+)$/);
+  if (deleteManualMessageMatch && method === "DELETE") {
+    const targetId = deleteManualMessageMatch[1];
+    const existing = getDemoManualMessages();
+    const message = existing.find((entry) => entry.id === targetId);
+    if (!message) throw new Error("Message introuvable.");
+    saveDemoManualMessages(existing.filter((entry) => entry.id !== targetId));
+    return { deletedId: targetId } as T;
+  }
+
   const paymentVerifyMatch = normalizedPath.match(/^\/api\/payments\/verify\/([^/]+)$/);
   if (paymentVerifyMatch && method === "GET") {
     const tx = decodeURIComponent(paymentVerifyMatch[1]);
@@ -2100,12 +2161,14 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       photoUrl: String(body.photoUrl ?? ""),
       createdAt: new Date().toISOString(),
       students: Array.isArray(body.students)
-        ? (body.students as Array<DemoStudent & { paymentOptionType?: DemoPaymentOptionType }>).map((student) => ({
+        ? (body.students as Array<DemoStudent>).map((student) => ({
             ...student,
             id: buildUniqueDemoEntityId("STU", student.fullName || "Student", existingStudentIds),
             gender: student.gender || "",
             createdAt: student.createdAt || new Date().toISOString(),
-            paymentOptionType: student.paymentOptionType ?? "STANDARD_MONTHLY"
+            className: resolveDemoClassName(student.classId, student.className),
+            paymentOptionType: student.paymentOptionType ?? "STANDARD_MONTHLY",
+            specialAgreement: student.specialAgreement
           }))
         : []
     };
@@ -2115,20 +2178,9 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     if (parent.email) {
       saveDemoParentCredential({ parentId: parent.id, email: parent.email, password: temporaryPassword });
     }
-    for (const student of parent.students as Array<DemoStudent & { paymentOptionType?: DemoPaymentOptionType }>) {
+    for (const student of parent.students as Array<DemoStudent>) {
       if (student.paymentOptionType === "SPECIAL_OWNER_AGREEMENT") {
-        overrides[student.id] = {
-          mode: "AGREEMENT",
-          agreement: {
-            title: `Accord special parent-ecole - ${student.fullName}`,
-            customTotal: Number(student.annualFee ?? 0),
-            reductionAmount: 0,
-            status: "APPROVED",
-            privateNotes: "",
-            notes: "Created during parent onboarding",
-            installments: buildOwnerAgreementInstallments(Number(student.annualFee ?? 0))
-          }
-        };
+        overrides[student.id] = buildDemoAgreementOverride(student);
       } else {
         overrides[student.id] = {
           mode: "OFFICIAL",
@@ -2150,9 +2202,60 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
 
   const parentMatch = normalizedPath.match(/^\/api\/parents\/([^/]+)$/);
   if (parentMatch && method === "PUT") {
-    const parents = getDemoParents().map((parent) => parent.id === parentMatch[1] ? { ...parent, ...body } as DemoParent : parent);
+    const existingParents = getDemoParents();
+    const targetParent = existingParents.find((parent) => parent.id === parentMatch[1]);
+    if (!targetParent) throw new Error("Parent non trouvé.");
+
+    const usedStudentIds = existingParents
+      .filter((parent) => parent.id !== parentMatch[1])
+      .flatMap((parent) => parent.students.map((student) => student.id));
+
+    const nextStudents = Array.isArray(body.students)
+      ? (body.students as Array<DemoStudent>).map((student) => {
+          const existingStudent = targetParent.students.find((item) => item.id === student.id);
+          const studentId = existingStudent?.id || buildUniqueDemoEntityId("STU", student.fullName || "Student", usedStudentIds);
+          usedStudentIds.push(studentId);
+          return {
+            ...existingStudent,
+            ...student,
+            id: studentId,
+            gender: student.gender || existingStudent?.gender || "",
+            className: resolveDemoClassName(student.classId, existingStudent?.className || student.className),
+            annualFee: Number(student.annualFee ?? existingStudent?.annualFee ?? 0),
+            paymentOptionType: student.paymentOptionType ?? existingStudent?.paymentOptionType ?? "STANDARD_MONTHLY",
+            specialAgreement: student.specialAgreement,
+            createdAt: existingStudent?.createdAt || new Date().toISOString()
+          } satisfies DemoStudent;
+        })
+      : targetParent.students;
+
+    const updatedParent: DemoParent = {
+      ...targetParent,
+      ...body,
+      fullName: String(body.fullName ?? targetParent.fullName),
+      nom: String(body.nom ?? targetParent.nom),
+      postnom: String(body.postnom ?? targetParent.postnom),
+      prenom: String(body.prenom ?? targetParent.prenom),
+      phone: String(body.phone ?? targetParent.phone),
+      email: String(body.email ?? targetParent.email),
+      physicalAddress: String(body.physicalAddress ?? targetParent.physicalAddress ?? ""),
+      photoUrl: String(body.photoUrl ?? targetParent.photoUrl ?? ""),
+      students: nextStudents,
+    };
+
+    const parents = existingParents.map((parent) => parent.id === parentMatch[1] ? updatedParent : parent);
+    const overrides = getDemoFinanceOverrides();
+    for (const student of targetParent.students) {
+      delete overrides[student.id];
+    }
+    for (const student of updatedParent.students) {
+      overrides[student.id] = student.paymentOptionType === "SPECIAL_OWNER_AGREEMENT"
+        ? buildDemoAgreementOverride(student)
+        : { mode: "OFFICIAL", paymentOptionType: student.paymentOptionType ?? "STANDARD_MONTHLY" };
+    }
+    saveDemoFinanceOverrides(overrides);
     writeJson(DEMO_PARENTS_KEY, parents);
-    return parents.find((parent) => parent.id === parentMatch[1]) as T;
+    return updatedParent as T;
   }
   if (parentMatch && method === "DELETE") {
     writeJson(DEMO_PARENTS_KEY, getDemoParents().filter((parent) => parent.id !== parentMatch[1]));

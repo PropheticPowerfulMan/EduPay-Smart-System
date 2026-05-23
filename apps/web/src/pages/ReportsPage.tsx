@@ -140,32 +140,53 @@ export function ReportsPage() {
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [detailsLoading, setDetailsLoading] = useState(true);
+  const [detailsError, setDetailsError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
     Promise.all([
       api<FinanceOverviewResponse>("/api/finance/overview"),
-      api<ExpenseOverviewResponse>("/api/expenses/overview"),
-      api<AccountingEntry[]>("/api/expenses/accounting-entries"),
-      api<CashflowEntry[]>("/api/expenses/cashflow-entries"),
-      api<PayrollRun[]>("/api/expenses/payroll/runs")
+      api<ExpenseOverviewResponse>("/api/expenses/overview")
     ])
-      .then(([nextFinanceOverview, nextExpenseOverview, nextAccountingEntries, nextCashflowEntries, nextPayrollRuns]) => {
+      .then(([nextFinanceOverview, nextExpenseOverview]) => {
         if (!active) return;
         setFinanceOverview(nextFinanceOverview);
         setExpenseOverview(nextExpenseOverview);
-        setAccountingEntries(nextAccountingEntries);
-        setCashflowEntries(nextCashflowEntries);
-        setPayrollRuns(nextPayrollRuns);
         setError(null);
       })
       .catch((loadError) => {
         if (!active) return;
-        setError(loadError instanceof Error ? loadError.message : "Impossible de charger les rapports executifs.");
+        setError(loadError instanceof Error ? loadError.message : "Impossible de charger les rapports exécutifs.");
       })
       .finally(() => {
         if (active) setLoading(false);
       });
+
+    Promise.allSettled([
+      api<AccountingEntry[]>("/api/expenses/accounting-entries"),
+      api<CashflowEntry[]>("/api/expenses/cashflow-entries"),
+      api<PayrollRun[]>("/api/expenses/payroll/runs")
+    ]).then((results) => {
+      if (!active) return;
+
+      const [accountingResult, cashflowResult, payrollResult] = results;
+
+      if (accountingResult.status === "fulfilled") {
+        setAccountingEntries(accountingResult.value);
+      }
+      if (cashflowResult.status === "fulfilled") {
+        setCashflowEntries(cashflowResult.value);
+      }
+      if (payrollResult.status === "fulfilled") {
+        setPayrollRuns(payrollResult.value);
+      }
+
+      setDetailsError(results.some((result) => result.status === "rejected")
+        ? "Certaines listes détaillées restent en cours de récupération ou indisponibles temporairement."
+        : null);
+      setDetailsLoading(false);
+    });
 
     return () => {
       active = false;
@@ -176,16 +197,16 @@ export function ReportsPage() {
     if (!financeOverview || !expenseOverview) return;
     exportWorkbook(`rapport-executif-${new Date().toISOString().slice(0, 10)}`, [
       {
-        name: "Synthese",
+        name: "Synthèse",
         rows: [
           {
             "Exercice": financeOverview.academicYear.name,
-            "Revenu collecte": financeOverview.collectedRevenue,
+            "Revenu collecté": financeOverview.collectedRevenue,
             "Revenu attendu": financeOverview.expectedRevenue,
             "Dette globale": financeOverview.totalDebt,
-            "Depenses": expenseOverview.expenses.totalExpenses,
+            "Dépenses": expenseOverview.expenses.totalExpenses,
             "Profit ou perte": expenseOverview.cashflow.profitLoss,
-            "Tresorerie": expenseOverview.cashflow.availableCash,
+            "Trésorerie": expenseOverview.cashflow.availableCash,
             "Masse salariale": expenseOverview.payroll.totalPayroll
           }
         ]
@@ -194,39 +215,39 @@ export function ReportsPage() {
         name: "Budgets",
         rows: expenseOverview.budgets.map((budget) => ({
           "Budget": budget.name,
-          "Departement": budget.department,
-          "Categorie": budget.categoryName || "Global",
-          "Planifie": budget.plannedAmount,
-          "Consomme": budget.consumedAmount,
+          "Département": budget.department,
+          "Catégorie": budget.categoryName || "Global",
+          "Planifié": budget.plannedAmount,
+          "Consommé": budget.consumedAmount,
           "Reste": budget.remainingAmount,
           "Utilisation %": Number(budget.utilization.toFixed(2)),
           "Statut": budget.status,
-          "Periode": budget.periodName
+          "Période": budget.periodName
         }))
       },
       {
-        name: "Comptabilite",
+        name: "Comptabilité",
         rows: accountingEntries.map((entry) => ({
           "Date": new Date(entry.entryDate).toLocaleDateString("fr-FR"),
           "Type": entry.entryType,
           "Direction": entry.direction,
           "Titre": entry.title,
-          "Departement": entry.department || "",
+          "Département": entry.department || "",
           "Montant": entry.amount,
           "Devise": entry.currency,
           "Source": entry.expense?.title || entry.payrollRun?.title || entry.payrollItem?.salarySlipNumber || ""
         }))
       },
       {
-        name: "Tresorerie",
+        name: "Trésorerie",
         rows: cashflowEntries.map((entry) => ({
           "Date": new Date(entry.referenceDate).toLocaleDateString("fr-FR"),
           "Source": entry.sourceType,
           "Direction": entry.direction,
-          "Methode": entry.method || "",
+          "Méthode": entry.method || "",
           "Montant": entry.amount,
           "Devise": entry.currency,
-          "Reference": entry.expense?.title || entry.payrollRun?.title || entry.payrollItem?.salarySlipNumber || "",
+          "Référence": entry.expense?.title || entry.payrollRun?.title || entry.payrollItem?.salarySlipNumber || "",
           "Notes": entry.notes || ""
         }))
       },
@@ -234,21 +255,21 @@ export function ReportsPage() {
         name: "Paie",
         rows: payrollRuns.map((run) => ({
           "Run": run.title,
-          "Departement": run.department || "Tous",
-          "Frequence": run.frequency,
+          "Département": run.department || "Tous",
+          "Fréquence": run.frequency,
           "Statut": run.status,
-          "Periode": run.period?.name || "",
+          "Période": run.period?.name || "",
           "Net": run.totalNet,
-          "Deductions": run.totalDeductions,
+          "Déductions": run.totalDeductions,
           "Bulletins": run.items.length,
-          "Traite le": run.processedAt ? new Date(run.processedAt).toLocaleDateString("fr-FR") : ""
+          "Traité le": run.processedAt ? new Date(run.processedAt).toLocaleDateString("fr-FR") : ""
         }))
       }
     ]);
   }
 
   if (loading) {
-    return <div className="card glass border border-white/10 p-10 text-sm text-ink-dim">Chargement des rapports executifs...</div>;
+    return <div className="card glass border border-white/10 p-10 text-sm text-ink-dim">Chargement des rapports exécutifs...</div>;
   }
 
   if (error || !financeOverview || !expenseOverview) {
@@ -257,15 +278,20 @@ export function ReportsPage() {
 
   return (
     <div className="space-y-6">
+      {(detailsLoading || detailsError) && (
+        <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-50">
+          {detailsError ?? "Les journaux comptables, la trésorerie et la paie continuent de se charger en arrière-plan."}
+        </div>
+      )}
       <section className="card glass overflow-hidden border border-white/10 shadow-xl">
         <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.24),_transparent_30%),linear-gradient(135deg,rgba(8,47,73,0.94),rgba(2,6,23,0.98))] p-6 sm:p-8">
           <div className="pointer-events-none absolute right-0 top-0 h-40 w-40 rounded-full bg-cyan-400/10 blur-3xl" />
           <div className="relative flex flex-wrap items-start justify-between gap-4">
             <div className="max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-200">Rapports executifs</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-200">Rapports exécutifs</p>
               <h1 className="mt-3 font-display text-3xl font-bold text-white sm:text-4xl">Centre de pilotage financier visible et exportable</h1>
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-200">
-                Cette vue consolide revenu, budgets, comptabilite, tresorerie et masse salariale. Elle sert de preuve visible dans l'interface et de point d'export Excel.
+                Cette vue consolide revenu, budgets, comptabilité, trésorerie et masse salariale. Elle sert de preuve visible dans l'interface et de point d'export Excel.
               </p>
             </div>
             <div className="flex flex-wrap gap-3">
@@ -273,16 +299,16 @@ export function ReportsPage() {
                 <FileSpreadsheet className="h-4 w-4" /> Exporter pack Excel
               </button>
               <Link to="/operations" className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-sm font-semibold text-white hover:border-cyan-300/25 hover:bg-white/[0.1]">
-                <ReceiptText className="h-4 w-4" /> Ouvrir les operations
+                <ReceiptText className="h-4 w-4" /> Ouvrir les opérations
               </Link>
             </div>
           </div>
           <div className="relative mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {[
-              { label: "Revenu collecte", value: currency.format(financeOverview.collectedRevenue), icon: WalletCards },
-              { label: "Depenses totales", value: currency.format(expenseOverview.expenses.totalExpenses), icon: Landmark },
+              { label: "Revenu collecté", value: currency.format(financeOverview.collectedRevenue), icon: WalletCards },
+              { label: "Dépenses totales", value: currency.format(expenseOverview.expenses.totalExpenses), icon: Landmark },
               { label: "Profit / perte", value: currency.format(expenseOverview.cashflow.profitLoss), icon: TrendingUp },
-              { label: "Tresorerie disponible", value: currency.format(expenseOverview.cashflow.availableCash), icon: Download }
+              { label: "Trésorerie disponible", value: currency.format(expenseOverview.cashflow.availableCash), icon: Download }
             ].map((card) => (
               <div key={card.label} className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur">
                 <div className="flex items-center justify-between gap-3">
@@ -301,7 +327,7 @@ export function ReportsPage() {
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <SectionCard title="Compte de resultat simplifie" subtitle="Revenu, depenses et resultat mensuel sur la periode courante.">
+        <SectionCard title="Compte de résultat simplifié" subtitle="Revenu, dépenses et résultat mensuel sur la période courante.">
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={expenseOverview.monthlyPerformance}>
@@ -326,7 +352,7 @@ export function ReportsPage() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Position budgetaire" subtitle="Alertes et taux de consommation a surveiller maintenant.">
+        <SectionCard title="Position budgétaire" subtitle="Alertes et taux de consommation à surveiller maintenant.">
           <div className="space-y-3">
             {expenseOverview.budgetAlerts.map((budget) => (
               <article key={budget.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
@@ -338,19 +364,19 @@ export function ReportsPage() {
                   <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-200">{budget.utilization.toFixed(1)}%</span>
                 </div>
                 <div className="mt-3 grid gap-3 sm:grid-cols-3 text-sm">
-                  <div><p className="text-ink-dim">Planifie</p><p className="font-semibold text-white">{currency.format(budget.plannedAmount)}</p></div>
-                  <div><p className="text-ink-dim">Consomme</p><p className="font-semibold text-amber-200">{currency.format(budget.consumedAmount)}</p></div>
+                  <div><p className="text-ink-dim">Planifié</p><p className="font-semibold text-white">{currency.format(budget.plannedAmount)}</p></div>
+                  <div><p className="text-ink-dim">Consommé</p><p className="font-semibold text-amber-200">{currency.format(budget.consumedAmount)}</p></div>
                   <div><p className="text-ink-dim">Reste</p><p className="font-semibold text-emerald-300">{currency.format(budget.remainingAmount)}</p></div>
                 </div>
               </article>
             ))}
-            {!expenseOverview.budgetAlerts.length && <p className="text-sm text-ink-dim">Aucune alerte budgetaire sur la periode.</p>}
+            {!expenseOverview.budgetAlerts.length && <p className="text-sm text-ink-dim">Aucune alerte budgétaire sur la période.</p>}
           </div>
         </SectionCard>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <SectionCard title="Depenses par departement" subtitle="Lecture immediate des postes qui consomment le plus.">
+        <SectionCard title="Dépenses par département" subtitle="Lecture immédiate des postes qui consomment le plus.">
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={expenseOverview.departmentSpending} layout="vertical" margin={{ left: 24 }}>
@@ -364,27 +390,27 @@ export function ReportsPage() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Synthese comptable et cash" subtitle="Volumes visibles avant de descendre dans les journaux detailles.">
+        <SectionCard title="Synthèse comptable et cash" subtitle="Volumes visibles avant de descendre dans les journaux détaillés.">
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-              <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Ecritures comptables</p>
+              <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Écritures comptables</p>
               <p className="mt-3 text-3xl font-bold text-white">{accountingEntries.length}</p>
-              <p className="mt-2 text-sm text-ink-dim">Montant total: {currency.format(accountingEntries.reduce((sum, entry) => sum + entry.amount, 0))}</p>
+              <p className="mt-2 text-sm text-ink-dim">Montant total : {currency.format(accountingEntries.reduce((sum, entry) => sum + entry.amount, 0))}</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-              <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Lignes de tresorerie</p>
+              <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Lignes de trésorerie</p>
               <p className="mt-3 text-3xl font-bold text-white">{cashflowEntries.length}</p>
-              <p className="mt-2 text-sm text-ink-dim">Sorties: {currency.format(cashflowEntries.reduce((sum, entry) => sum + entry.amount, 0))}</p>
+              <p className="mt-2 text-sm text-ink-dim">Sorties : {currency.format(cashflowEntries.reduce((sum, entry) => sum + entry.amount, 0))}</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
               <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Runs de paie</p>
               <p className="mt-3 text-3xl font-bold text-white">{payrollRuns.length}</p>
-              <p className="mt-2 text-sm text-ink-dim">Masse nette: {currency.format(payrollRuns.reduce((sum, run) => sum + run.totalNet, 0))}</p>
+              <p className="mt-2 text-sm text-ink-dim">Masse nette : {currency.format(payrollRuns.reduce((sum, run) => sum + run.totalNet, 0))}</p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
               <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Dette institutionnelle</p>
               <p className="mt-3 text-3xl font-bold text-white">{currency.format(expenseOverview.liabilities.institutionalObligations)}</p>
-              <p className="mt-2 text-sm text-ink-dim">Dette fournisseurs: {currency.format(expenseOverview.liabilities.supplierDebt)}</p>
+              <p className="mt-2 text-sm text-ink-dim">Dette fournisseurs : {currency.format(expenseOverview.liabilities.supplierDebt)}</p>
             </div>
           </div>
         </SectionCard>

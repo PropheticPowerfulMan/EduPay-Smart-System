@@ -1,21 +1,42 @@
+import { Suspense, lazy, useEffect } from "react";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { Sidebar } from "./components/Sidebar";
-import { AIAssistantPage } from "./pages/AIAssistantPage";
-import { FinanceDashboardPage } from "./pages/FinanceDashboardPage";
-import { FinancialOperationsPage } from "./pages/FinancialOperationsPage";
-import { EmployeesPage } from "./pages/EmployeesPage";
-import { FinanceParentAdminPage } from "./pages/FinanceParentAdminPage";
-import { FinanceParentPage } from "./pages/FinanceParentPage";
 import { LoginPage } from "./pages/LoginPage";
-import { MessagesPage } from "./pages/MessagesPage";
-import { ParentsManagementPage } from "./pages/ParentsManagementPage";
-import { PaymentsPage } from "./pages/PaymentsPage";
 import { ReceiptVerificationPage } from "./pages/ReceiptVerificationPage";
-import { ReportsPage } from "./pages/ReportsPage";
-import { StudentsDirectoryPage } from "./pages/StudentsDirectoryPage";
 import { STAFF_ROLES, useAuthStore } from "./store/auth";
 import type { Role } from "./store/auth";
+
+const loadAIAssistantPage = () => import("./pages/AIAssistantPage");
+const loadFinanceDashboardPage = () => import("./pages/FinanceDashboardPage");
+const loadFinancialOperationsPage = () => import("./pages/FinancialOperationsPage");
+
+const AIAssistantPage = lazy(() => loadAIAssistantPage().then((module) => ({ default: module.AIAssistantPage })));
+const FinanceDashboardPage = lazy(() => loadFinanceDashboardPage().then((module) => ({ default: module.FinanceDashboardPage })));
+const FinancialOperationsPage = lazy(() => loadFinancialOperationsPage().then((module) => ({ default: module.FinancialOperationsPage })));
+const EmployeesPage = lazy(() => import("./pages/EmployeesPage").then((module) => ({ default: module.EmployeesPage })));
+const FinanceParentAdminPage = lazy(() => import("./pages/FinanceParentAdminPage").then((module) => ({ default: module.FinanceParentAdminPage })));
+const FinanceParentPage = lazy(() => import("./pages/FinanceParentPage").then((module) => ({ default: module.FinanceParentPage })));
+const MessagesPage = lazy(() => import("./pages/MessagesPage").then((module) => ({ default: module.MessagesPage })));
+const ParentsManagementPage = lazy(() => import("./pages/ParentsManagementPage").then((module) => ({ default: module.ParentsManagementPage })));
+const PaymentsPage = lazy(() => import("./pages/PaymentsPage").then((module) => ({ default: module.PaymentsPage })));
+const ReportsPage = lazy(() => import("./pages/ReportsPage").then((module) => ({ default: module.ReportsPage })));
+const StudentsDirectoryPage = lazy(() => import("./pages/StudentsDirectoryPage").then((module) => ({ default: module.StudentsDirectoryPage })));
+
+function PageLoadingFallback() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center px-4">
+      <div className="glass flex items-center gap-3 rounded-2xl border border-brand-300/20 px-5 py-4 text-sm font-semibold text-ink-dim shadow-xl">
+        <div className="h-3 w-3 animate-pulse rounded-full bg-brand-300" />
+        Chargement de l'espace EduPay...
+      </div>
+    </div>
+  );
+}
+
+function withPageLoader(element: React.ReactNode) {
+  return <Suspense fallback={<PageLoadingFallback />}>{element}</Suspense>;
+}
 
 function getHomePathByRole(role: Role | null) {
   if (!role) return "/login";
@@ -23,6 +44,15 @@ function getHomePathByRole(role: Role | null) {
 }
 
 function ProtectedLayout() {
+  const role = useAuthStore((s) => s.role);
+
+  useEffect(() => {
+    if (!role || role === "PARENT") return;
+
+    void loadFinanceDashboardPage();
+    void loadFinancialOperationsPage();
+  }, [role]);
+
   return (
     <div className="edupay-app-shell min-h-screen bg-slate-950 text-ink">
       <Navbar />
@@ -57,7 +87,7 @@ function RoleHome() {
     return <Navigate to="/parent" replace />;
   }
   if (role && STAFF_ROLES.includes(role)) {
-    return <FinanceDashboardPage />;
+    return withPageLoader(<FinanceDashboardPage />);
   }
   return <Navigate to="/login" replace />;
 }
@@ -95,18 +125,18 @@ export function App() {
         <Route path="/" element={<ProtectedLayout />}>
           <Route index element={<RoleHome />} />
           <Route element={<RoleRoute allowedRoles={STAFF_ROLES} />}>
-            <Route path="operations" element={<FinancialOperationsPage />} />
-            <Route path="reports" element={<ReportsPage />} />
-            <Route path="payments" element={<PaymentsPage />} />
-            <Route path="messages" element={<MessagesPage />} />
-            <Route path="parent-payments" element={<FinanceParentAdminPage />} />
-            <Route path="students" element={<StudentsDirectoryPage />} />
-            <Route path="employees" element={<EmployeesPage />} />
-            <Route path="ai" element={<AIAssistantPage />} />
-            <Route path="parents" element={<ParentsManagementPage />} />
+            <Route path="operations" element={withPageLoader(<FinancialOperationsPage />)} />
+            <Route path="reports" element={withPageLoader(<ReportsPage />)} />
+            <Route path="payments" element={withPageLoader(<PaymentsPage />)} />
+            <Route path="messages" element={withPageLoader(<MessagesPage />)} />
+            <Route path="parent-payments" element={withPageLoader(<FinanceParentAdminPage />)} />
+            <Route path="students" element={withPageLoader(<StudentsDirectoryPage />)} />
+            <Route path="employees" element={withPageLoader(<EmployeesPage />)} />
+            <Route path="ai" element={withPageLoader(<AIAssistantPage />)} />
+            <Route path="parents" element={withPageLoader(<ParentsManagementPage />)} />
           </Route>
           <Route element={<RoleRoute allowedRoles={["PARENT"]} />}>
-            <Route path="parent" element={<FinanceParentPage />} />
+            <Route path="parent" element={withPageLoader(<FinanceParentPage />)} />
           </Route>
           <Route path="*" element={<NotFoundPage />} />
         </Route>

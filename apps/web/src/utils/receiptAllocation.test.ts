@@ -22,8 +22,8 @@ describe("receipt allocation snapshot", () => {
     expect(snapshot.modeLabel).toBe("Imputation automatique");
     expect(snapshot.metrics.map((item) => item.label)).toEqual([
       "Montant reçu",
-      "Montant impute",
-      "Solde non impute",
+      "Montant imputé",
+      "Solde non imputé",
       "Avance",
     ]);
     expect(snapshot.perChild).toHaveLength(4);
@@ -41,6 +41,6 @@ describe("receipt allocation snapshot", () => {
       perChild: [],
     });
 
-    expect(note).toBe("Solde non impute: $ 25");
+    expect(note).toBe("Solde non imputé : $ 25");
   });
 });

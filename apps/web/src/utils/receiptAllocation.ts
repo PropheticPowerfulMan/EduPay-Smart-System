@@ -27,6 +27,11 @@ export type ReceiptAllocationSnapshot = {
   overflowChildCount: number;
 };
 
+type ReceiptAllocationSnapshotOptions = {
+  maxVisibleChildren?: number;
+  maxVisibleMetrics?: number;
+};
+
 function roundMoney(value: number) {
   const rounded = Math.round((Number(value || 0) + Number.EPSILON) * 100000) / 100000;
   const nearestInteger = Math.round(rounded);
@@ -45,26 +50,32 @@ export function getReceiptAllocationModeLabel(mode: ReceiptAllocationSummary["mo
 
 export function buildReceiptAllocationStatusNote(summary: ReceiptAllocationSummary) {
   if (summary.missingAmount > 0) {
-    return `Solde non impute: $ ${formatMoney(summary.missingAmount)}`;
+    return `Solde non imputé : $ ${formatMoney(summary.missingAmount)}`;
   }
   if (summary.advanceBalance > 0) {
-    return `Excédent conserve en avance: $ ${formatMoney(summary.advanceBalance)}`;
+    return `Excédent conservé en avance : $ ${formatMoney(summary.advanceBalance)}`;
   }
   return summary.mode === "AUTO"
-    ? "Imputation complete selon l'ordre d'échéance."
-    : "Imputation complete selon la ventilation saisie.";
+    ? "Imputation complète selon l'ordre d'échéance."
+    : "Imputation complète selon la ventilation saisie.";
 }
 
-export function buildReceiptAllocationSnapshot(summary: ReceiptAllocationSummary, maxVisibleChildren = 4): ReceiptAllocationSnapshot {
+export function buildReceiptAllocationSnapshot(
+  summary: ReceiptAllocationSummary,
+  options: ReceiptAllocationSnapshotOptions = {}
+): ReceiptAllocationSnapshot {
+  const maxVisibleChildren = options.maxVisibleChildren ?? 4;
+  const maxVisibleMetrics = options.maxVisibleMetrics ?? 4;
+
   return {
     modeLabel: getReceiptAllocationModeLabel(summary.mode),
     statusNote: buildReceiptAllocationStatusNote(summary),
     metrics: [
       { label: "Montant reçu", amount: roundMoney(summary.totalReceived) },
-      { label: "Montant impute", amount: roundMoney(summary.allocatedTotal) },
-      { label: "Solde non impute", amount: roundMoney(summary.missingAmount) },
+      { label: "Montant imputé", amount: roundMoney(summary.allocatedTotal) },
+      { label: "Solde non imputé", amount: roundMoney(summary.missingAmount) },
       { label: "Avance", amount: roundMoney(summary.advanceBalance) },
-    ],
+    ].slice(0, maxVisibleMetrics),
     perChild: summary.perChild.slice(0, maxVisibleChildren).map((child) => ({
       studentName: child.studentName,
       allocated: roundMoney(child.allocated),

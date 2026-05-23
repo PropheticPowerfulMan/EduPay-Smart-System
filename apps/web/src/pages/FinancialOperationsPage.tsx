@@ -21,6 +21,7 @@ import { api } from "../services/api";
 import { useI18n } from "../i18n";
 import { useAuthStore } from "../store/auth";
 import { exportWorkbook } from "../utils/financeExcel";
+import { printHtmlDocument as sharedPrintHtmlDocument } from "../utils/printDocument";
 
 type ExpenseAttachment = {
   id: string;
@@ -243,6 +244,31 @@ type PayrollFormState = {
   department: string;
   frequency: string;
   notes: string;
+};
+
+const EMPTY_EXPENSE_OVERVIEW: ExpenseOverview = {
+  expenses: {
+    totalExpenses: 0,
+    approvedExpenses: 0,
+    pendingExpenses: 0,
+    rejectedExpenses: 0,
+    pendingApprovalSteps: 0,
+  },
+  payroll: {
+    activeProfiles: 0,
+    runCount: 0,
+    totalPayroll: 0,
+    salaryLiability: 0,
+  },
+  cashflow: {
+    availableCash: 0,
+    profitLoss: 0,
+  },
+  liabilities: {
+    supplierDebt: 0,
+    payrollLiability: 0,
+    institutionalObligations: 0,
+  }
 };
 
 const PAYMENT_METHODS = ["CASH", "BANK_TRANSFER", "MPESA", "AIRTEL_MONEY", "ORANGE_MONEY", "CHEQUE", "INTERNAL_TRANSFER"];
@@ -505,6 +531,7 @@ export function FinancialOperationsPage() {
   const [salaryForm, setSalaryForm] = useState<SalaryFormState>(EMPTY_SALARY_FORM);
   const [payrollForm, setPayrollForm] = useState<PayrollFormState>(EMPTY_PAYROLL_FORM);
   const availableCash = overview?.cashflow.availableCash ?? 0;
+  const safeOverview = overview ?? EMPTY_EXPENSE_OVERVIEW;
 
   useEffect(() => {
     let active = true;
@@ -737,56 +764,14 @@ export function FinancialOperationsPage() {
 
   function printHtmlDocument(html: string) {
     setActionError(null);
-
-    const iframe = document.createElement("iframe");
-    iframe.setAttribute("aria-hidden", "true");
-    iframe.style.position = "fixed";
-    iframe.style.right = "0";
-    iframe.style.bottom = "0";
-    iframe.style.width = "0";
-    iframe.style.height = "0";
-    iframe.style.border = "0";
-    iframe.style.opacity = "0";
-    iframe.style.pointerEvents = "none";
-
-    document.body.appendChild(iframe);
-
-    const cleanup = () => {
-      window.setTimeout(() => {
-        iframe.remove();
-      }, 300);
-    };
-
-    const frameWindow = iframe.contentWindow;
-    const frameDocument = iframe.contentDocument ?? frameWindow?.document;
-    if (!frameWindow || !frameDocument) {
-      cleanup();
-      return;
-    }
-
-    frameDocument.open();
-    frameDocument.write(html);
-    frameDocument.close();
-
-    const triggerPrint = () => {
-      frameWindow.focus();
-      frameWindow.print();
-      frameWindow.addEventListener("afterprint", cleanup, { once: true });
-      window.setTimeout(cleanup, 2000);
-    };
-
-    const fontsReady = frameDocument.fonts?.ready;
-    if (fontsReady) {
-      fontsReady.catch(() => undefined).finally(() => {
-        window.setTimeout(triggerPrint, 220);
-      });
-      return;
-    }
-
-    window.setTimeout(triggerPrint, 320);
+    sharedPrintHtmlDocument(html);
   }
 
   function printSalarySlip(run: PayrollRun, item: PayrollRun["items"][number]) {
+    const brand = schoolBranding;
+    const logoSrc = escapeHtml(new URL(brand.logoSrc, window.location.href).toString());
+    const generatedAt = new Date();
+    const documentReference = escapeHtml(`KCS-PAYROLL-${generatedAt.toISOString().slice(0, 10)}-${item.salarySlipNumber}`);
     const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -794,28 +779,55 @@ export function FinancialOperationsPage() {
   <title>Fiche salariale ${item.salarySlipNumber}</title>
   <style>
     @page { size: A4; margin: 16mm; }
-    body { font-family: Arial, Helvetica, sans-serif; background: #f8fafc; color: #0f172a; padding: 24px; }
-    .sheet { max-width: 780px; margin: 0 auto; background: white; border: 1px solid #cbd5e1; border-radius: 18px; overflow: hidden; }
-    .hero { padding: 28px; background: linear-gradient(135deg, #082f49, #0f172a); color: white; }
+    body { position: relative; font-family: Arial, Helvetica, sans-serif; background: #f8fafc; color: #0f172a; padding: 24px; }
+    .watermark-text { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 96px; font-weight: 900; letter-spacing: 16px; color: rgba(11,46,89,0.05); transform: rotate(-22deg); pointer-events: none; user-select: none; }
+    .watermark-logo { position: fixed; left: 50%; top: 50%; width: 320px; height: 320px; opacity: 0.08; transform: translate(-50%, -50%); object-fit: contain; filter: grayscale(100%) contrast(1.05); pointer-events: none; user-select: none; }
+    .sheet { position: relative; z-index: 2; max-width: 780px; margin: 0 auto; background: white; border: 1px solid #cbd5e1; border-radius: 18px; overflow: hidden; box-shadow: 0 20px 60px rgba(15,23,42,0.08); }
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:12px; padding: 0 4px 10px; color:#64748b; font-size:10px; text-transform:uppercase; letter-spacing:0.16em; }
+    .topbar strong { color:#0b2e59; }
+    .hero { padding: 28px; background: linear-gradient(135deg, #082f49, #1f4f8f); color: white; display:flex; justify-content:space-between; gap:20px; align-items:flex-start; }
+    .hero-main { display:flex; align-items:center; gap:16px; }
+    .hero-logo { width: 64px; height: 64px; object-fit: contain; border-radius: 999px; background: white; padding: 6px; border: 1px solid rgba(255,255,255,0.2); }
     .hero h1 { margin: 8px 0 0; font-size: 28px; }
     .hero p { margin: 6px 0 0; color: #cbd5e1; }
+    .hero-meta { text-align:right; font-size:12px; color: rgba(255,255,255,0.86); }
     .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; padding: 24px 28px 12px; }
     .card { border: 1px solid #e2e8f0; border-radius: 14px; padding: 16px; }
     .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: #64748b; }
-    .value { margin-top: 8px; font-size: 18px; font-weight: 700; }
+    .value { margin-top: 8px; font-size: 18px; font-weight: 700; color: #0b2e59; }
     .table-wrap { padding: 0 28px 28px; }
     table { width: 100%; border-collapse: collapse; margin-top: 12px; }
     th, td { border-bottom: 1px solid #e2e8f0; padding: 12px 10px; text-align: left; font-size: 13px; }
     th { color: #475569; text-transform: uppercase; font-size: 11px; letter-spacing: 0.08em; }
-    .foot { padding: 0 28px 28px; font-size: 12px; color: #475569; }
+    .compliance { margin: 0 28px 18px; border: 1px solid rgba(15,118,110,0.2); border-left: 5px solid #0f766e; border-radius: 14px; background: rgba(240,253,250,0.96); padding: 12px 14px; color: #134e4a; font-size: 11px; line-height: 1.5; }
+    .signatures { display:grid; grid-template-columns: 1fr 1fr; gap:16px; padding: 0 28px 20px; }
+    .signature-box { min-height: 82px; border:1px dashed rgba(11,46,89,0.24); border-radius:14px; background: rgba(255,255,255,0.88); padding:12px; }
+    .signature-title { font-size:10px; text-transform:uppercase; letter-spacing:0.14em; font-weight:800; color:#64748b; }
+    .signature-line { margin-top:38px; border-top:1px solid rgba(11,46,89,0.24); padding-top:6px; font-size:11px; color:#0b2e59; font-weight:700; }
+    .foot { padding: 0 28px 28px; font-size: 12px; color: #475569; display:flex; justify-content:space-between; gap:12px; border-top: 1px solid #e2e8f0; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   </style>
 </head>
 <body>
+  <div class="watermark-text">${escapeHtml(brand.shortName)}</div>
+  <img class="watermark-logo" src="${logoSrc}" alt="" />
+  <div class="topbar"><span><strong>${escapeHtml(brand.shortName)}</strong> · fiche salariale officielle</span><span>Référence ${documentReference}</span></div>
   <div class="sheet">
     <div class="hero">
-      <div class="label">EduPay Smart System</div>
-      <h1>Fiche salariale</h1>
-      <p>${item.salaryProfile.fullName} • ${item.salaryProfile.position} • ${run.period?.name ?? "Periode active"}</p>
+      <div class="hero-main">
+        <img class="hero-logo" src="${logoSrc}" alt="Logo ${escapeHtml(brand.schoolName)}" />
+        <div>
+          <div class="label" style="color:${escapeHtml(brand.colors.accent)}">${escapeHtml(brand.appName)}</div>
+          <h1>Fiche salariale</h1>
+          <p>${item.salaryProfile.fullName} • ${item.salaryProfile.position} • ${run.period?.name ?? "Periode active"}</p>
+        </div>
+      </div>
+      <div class="hero-meta">
+        <div style="font-weight:700;">${escapeHtml(brand.schoolName)}</div>
+        <div style="margin-top:4px;">${escapeHtml(brand.tagline)}</div>
+        <div style="margin-top:10px;">${escapeHtml(generatedAt.toLocaleDateString("fr-FR"))}</div>
+        <div>${escapeHtml(generatedAt.toLocaleTimeString("fr-FR"))}</div>
+      </div>
     </div>
     <div class="grid">
       <div class="card"><div class="label">Numero de fiche</div><div class="value">${item.salarySlipNumber}</div></div>
@@ -840,7 +852,12 @@ export function FinancialOperationsPage() {
         </tbody>
       </table>
     </div>
-    <div class="foot">Document genere par EduPay Financial ERP le ${new Date().toLocaleDateString("fr-FR")}.</div>
+    <div class="compliance">Cette fiche salariale est éditée selon la charte ${escapeHtml(brand.shortName)} pour consultation, archivage et validation interne. Le montant net correspond au run de paie affiché sur ce document.</div>
+    <div class="signatures">
+      <div class="signature-box"><div class="signature-title">Validation RH</div><div class="signature-line">Ressources humaines</div></div>
+      <div class="signature-box"><div class="signature-title">Visa financier</div><div class="signature-line">Service paie / comptabilité</div></div>
+    </div>
+    <div class="foot"><span>Document généré par ${escapeHtml(brand.appName)} pour ${escapeHtml(brand.schoolName)}.</span><span>${escapeHtml(generatedAt.toLocaleString("fr-FR"))}</span></div>
   </div>
 </body>
 </html>`;
@@ -952,10 +969,13 @@ export function FinancialOperationsPage() {
     metrics: Array<{ label: string; value: string; detail: string }>
   ) {
     const brand = schoolBranding;
+    const logoSrc = escapeHtml(new URL(brand.logoSrc, window.location.href).toString());
     const primary = brand.colors.primary;
     const secondary = brand.colors.secondary;
     const accent = brand.colors.accent;
     const surface = brand.colors.surface;
+    const generatedAt = new Date();
+    const documentReference = escapeHtml(`KCS-LEDGER-${generatedAt.toISOString().slice(0, 10)}-${String(rows.length).padStart(4, "0")}`);
     const headHtml = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
     const rowsHtml = rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("");
     const metricHtml = metrics.map((metric) => `
@@ -975,6 +995,8 @@ export function FinancialOperationsPage() {
     body { font-family: Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; padding: 24px; background: ${surface}; }
     .watermark-text { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 112px; font-weight: 900; letter-spacing: 16px; color: rgba(11,46,89,0.05); transform: rotate(-22deg); pointer-events: none; user-select: none; }
     .watermark-logo { position: fixed; left: 50%; top: 50%; width: 360px; height: 360px; opacity: 0.08; transform: translate(-50%, -50%); object-fit: contain; filter: grayscale(100%) contrast(1.05); pointer-events: none; user-select: none; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:12px; padding: 0 2px 10px; font-size:10px; text-transform:uppercase; letter-spacing:0.16em; color:#64748b; }
+    .topbar strong { color:${primary}; }
     .sheet { position: relative; z-index: 2; background: white; border: 1px solid #cbd5e1; border-radius: 18px; overflow: hidden; box-shadow: 0 20px 60px rgba(15,23,42,0.08); }
     .hero { display:flex; justify-content:space-between; gap:24px; align-items:flex-start; background: linear-gradient(135deg, ${primary}, ${secondary}); color: white; padding: 24px 28px; }
     .hero-main { display:flex; align-items:center; gap:16px; }
@@ -992,17 +1014,23 @@ export function FinancialOperationsPage() {
     th, td { border-bottom: 1px solid #e2e8f0; padding: 10px 12px; text-align: left; font-size: 12px; }
     th { background: #eff6ff; color: ${primary}; text-transform: uppercase; letter-spacing: 0.08em; font-size: 10px; }
     tr:nth-child(even) td { background: #fbfdff; }
-    .foot { padding: 0 28px 24px; color: #475569; font-size: 12px; border-top: 1px solid #e2e8f0; margin-top: 4px; }
+    .compliance { margin: 0 28px 18px; border: 1px solid rgba(15,118,110,0.2); border-left: 5px solid #0f766e; border-radius: 14px; background: rgba(240,253,250,0.96); padding: 12px 14px; color: #134e4a; font-size: 11px; line-height: 1.5; }
+    .signatures { display:grid; grid-template-columns: 1fr 1fr; gap:16px; padding: 0 28px 20px; }
+    .signature-box { min-height: 82px; border:1px dashed rgba(11,46,89,0.24); border-radius:14px; background: rgba(255,255,255,0.88); padding:12px; }
+    .signature-title { font-size:10px; text-transform:uppercase; letter-spacing:0.14em; font-weight:800; color:#64748b; }
+    .signature-line { margin-top:38px; border-top:1px solid rgba(11,46,89,0.24); padding-top:6px; font-size:11px; color:${primary}; font-weight:700; }
+    .foot { padding: 0 28px 24px; color: #475569; font-size: 12px; border-top: 1px solid #e2e8f0; margin-top: 4px; display:flex; justify-content:space-between; gap:12px; }
     @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   </style>
 </head>
 <body>
+  <div class="topbar"><span><strong>${escapeHtml(brand.shortName)}</strong> · rapport financier officiel</span><span>Référence ${documentReference}</span></div>
   <div class="watermark-text">${escapeHtml(brand.shortName)}</div>
-  <img class="watermark-logo" src="${brand.logoSrc}" alt="" />
+  <img class="watermark-logo" src="${logoSrc}" alt="" />
   <div class="sheet">
     <div class="hero">
       <div class="hero-main">
-        <img class="hero-logo" src="${brand.logoSrc}" alt="Logo ${escapeHtml(brand.schoolName)}" />
+        <img class="hero-logo" src="${logoSrc}" alt="Logo ${escapeHtml(brand.schoolName)}" />
         <div>
           <div style="font-size:12px;font-weight:800;letter-spacing:0.18em;text-transform:uppercase;color:${accent};">${escapeHtml(brand.shortName)} Financial Report</div>
           <h1>${escapeHtml(title)}</h1>
@@ -1012,8 +1040,8 @@ export function FinancialOperationsPage() {
       <div class="hero-meta">
         <div style="font-weight:700;">${escapeHtml(brand.schoolName)}</div>
         <div style="margin-top:4px;">${escapeHtml(brand.tagline)}</div>
-        <div style="margin-top:10px;">${new Date().toLocaleDateString("fr-FR")}</div>
-        <div>${new Date().toLocaleTimeString("fr-FR")}</div>
+        <div style="margin-top:10px;">${generatedAt.toLocaleDateString("fr-FR")}</div>
+        <div>${generatedAt.toLocaleTimeString("fr-FR")}</div>
       </div>
     </div>
     <div class="metrics">${metricHtml}</div>
@@ -1023,7 +1051,9 @@ export function FinancialOperationsPage() {
         <tbody>${rowsHtml}</tbody>
       </table>
     </div>
-    <div class="foot">Document officiel ${escapeHtml(brand.appName)} genere pour ${escapeHtml(brand.schoolName)} le ${new Date().toLocaleString("fr-FR")}. Palette imprimee selon la charte ${escapeHtml(brand.shortName)}.</div>
+    <div class="compliance">Ce journal financier est édité selon la charte ${escapeHtml(brand.shortName)} pour audit, pilotage et archivage. Les indicateurs de synthèse et le tableau détaillé correspondent aux lignes visibles dans l'interface au moment de l'impression.</div>
+    <div class="signatures"><div class="signature-box"><div class="signature-title">Contrôle comptable</div><div class="signature-line">Service financier</div></div><div class="signature-box"><div class="signature-title">Visa de direction</div><div class="signature-line">Direction administrative</div></div></div>
+    <div class="foot"><span>Document officiel ${escapeHtml(brand.appName)} généré pour ${escapeHtml(brand.schoolName)}.</span><span>${generatedAt.toLocaleString("fr-FR")}</span></div>
   </div>
 </body>
 </html>`;
@@ -1462,18 +1492,7 @@ export function FinancialOperationsPage() {
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[65vh] items-center justify-center">
-        <div className="space-y-4 text-center">
-          <div className="mx-auto h-12 w-12 animate-pulse rounded-2xl bg-brand-500/30" />
-          <p className="text-sm font-semibold text-ink-dim">Chargement du centre operationnel financier...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error || !overview) {
+  if (error && !overview) {
     return (
       <div className="flex min-h-[65vh] items-center justify-center px-4">
         <div className="glass max-w-xl rounded-2xl border border-red-500/20 p-8 text-center shadow-xl">
@@ -1517,7 +1536,7 @@ export function FinancialOperationsPage() {
       title: L("Paie", "Payroll"),
       description: L("Profils salariaux, runs, bulletins et export.", "Salary profiles, runs, payslips and exports."),
       count: payrollRuns.length,
-      metric: currency.format(overview.payroll.totalPayroll),
+      metric: loading ? L("Chargement...", "Loading...") : currency.format(safeOverview.payroll.totalPayroll),
       icon: Users,
       tone: "border-brand-300/20 bg-brand-500/10 text-brand-100"
     },
@@ -1535,7 +1554,7 @@ export function FinancialOperationsPage() {
       title: L("Trésorerie", "Cash flow"),
       description: L("Mouvements de trésorerie, méthodes et solde disponible.", "Cash movements, methods and available balance."),
       count: cashflowEntries.length,
-      metric: currency.format(overview.cashflow.availableCash),
+      metric: loading ? L("Chargement...", "Loading...") : currency.format(safeOverview.cashflow.availableCash),
       icon: CircleDollarSign,
       tone: "border-emerald-300/20 bg-emerald-500/10 text-emerald-100"
     },
@@ -1565,6 +1584,11 @@ export function FinancialOperationsPage() {
 
   return (
     <div className="edupay-operations space-y-6 pb-10 animate-fadeInUp">
+      {loading && (
+        <div className="rounded-2xl border border-brand-300/20 bg-brand-500/10 px-4 py-3 text-sm text-brand-100">
+          Chargement des données opérationnelles en arrière-plan. La page reste disponible pendant la synchronisation.
+        </div>
+      )}
       <section className="glass min-w-0 border border-brand-300/15 px-4 py-5 shadow-xl sm:px-6 sm:py-6">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 max-w-4xl">
@@ -1580,11 +1604,11 @@ export function FinancialOperationsPage() {
           <div className="grid min-w-0 gap-3 sm:grid-cols-2 lg:w-[380px]">
             <div className="min-w-0 rounded-2xl border border-brand-500/25 bg-brand-500/10 px-4 py-3">
               <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">{L("Cash disponible", "Available cash")}</p>
-              <p className="mt-1 font-display text-xl font-bold text-white sm:text-2xl">{currency.format(overview.cashflow.availableCash)}</p>
+              <p className="mt-1 font-display text-xl font-bold text-white sm:text-2xl">{currency.format(safeOverview.cashflow.availableCash)}</p>
             </div>
             <div className="min-w-0 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
               <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">{L("Étapes en attente", "Pending steps")}</p>
-              <p className="mt-1 font-display text-xl font-bold text-white sm:text-2xl">{overview.expenses.pendingApprovalSteps}</p>
+              <p className="mt-1 font-display text-xl font-bold text-white sm:text-2xl">{safeOverview.expenses.pendingApprovalSteps}</p>
             </div>
             <button onClick={exportOperationsWorkbook} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/25 bg-cyan-400/10 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-400/20 sm:col-span-2">
               <Download className="h-4 w-4" /> {L("Exporter le pack Excel", "Export Excel pack")}
@@ -1598,7 +1622,7 @@ export function FinancialOperationsPage() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">{L("Dépenses", "Expenses")}</p>
-              <p className="mt-3 font-display text-2xl font-bold text-white">{currency.format(overview.expenses.totalExpenses)}</p>
+              <p className="mt-3 font-display text-2xl font-bold text-white">{currency.format(safeOverview.expenses.totalExpenses)}</p>
               <p className="mt-2 text-xs text-ink-dim">{L(`${expenseStats.approved} approuvée(s), ${expenseStats.pending} en attente`, `${expenseStats.approved} approved, ${expenseStats.pending} pending`)}</p>
             </div>
             <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-3 text-red-300"><ReceiptText className="h-5 w-5" /></div>
@@ -1619,7 +1643,7 @@ export function FinancialOperationsPage() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">{L("Profils salariaux", "Salary profiles")}</p>
               <p className="mt-3 font-display text-2xl font-bold text-white">{salaryProfiles.length}</p>
-              <p className="mt-2 text-xs text-ink-dim">{L(`${currency.format(overview.payroll.totalPayroll)} de masse salariale`, `${currency.format(overview.payroll.totalPayroll)} payroll mass`)}</p>
+              <p className="mt-2 text-xs text-ink-dim">{L(`${currency.format(safeOverview.payroll.totalPayroll)} de masse salariale`, `${currency.format(safeOverview.payroll.totalPayroll)} payroll mass`)}</p>
             </div>
             <div className="rounded-2xl border border-brand-500/30 bg-brand-500/10 p-3 text-brand-100"><Users className="h-5 w-5" /></div>
           </div>
@@ -1628,7 +1652,7 @@ export function FinancialOperationsPage() {
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">{L("Passifs", "Liabilities")}</p>
-              <p className="mt-3 font-display text-2xl font-bold text-white">{currency.format(overview.liabilities.supplierDebt + overview.liabilities.payrollLiability)}</p>
+              <p className="mt-3 font-display text-2xl font-bold text-white">{currency.format(safeOverview.liabilities.supplierDebt + safeOverview.liabilities.payrollLiability)}</p>
               <p className="mt-2 text-xs text-ink-dim">{L("Obligations salariales et fournisseurs", "Payroll and supplier obligations")}</p>
             </div>
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3 text-amber-300"><AlertTriangle className="h-5 w-5" /></div>
@@ -2308,7 +2332,7 @@ export function FinancialOperationsPage() {
               </div>
               <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Balance disponible</p>
-                <p className="mt-2 text-2xl font-bold text-emerald-300">{currency.format(overview.cashflow.availableCash)}</p>
+                <p className="mt-2 text-2xl font-bold text-emerald-300">{currency.format(safeOverview.cashflow.availableCash)}</p>
                 <p className="mt-2 text-xs text-emerald-100/80">Encaisse encore disponible après les sorties enregistrées.</p>
               </div>
               <div className="rounded-2xl border border-brand-400/20 bg-brand-500/10 p-4">

@@ -10,6 +10,8 @@ import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/au
 import { sendEmail, sendSms } from "../../utils/messaging";
 import { createSpecialFinancialAgreement, getPaymentOptionLabel, upsertParentPlanAssignment } from "../finance/service";
 
+type OwnerAgreementInstallmentMode = "ONE_TIME" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS";
+
 function generateAccessCode() {
   const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
   return `ACC-PAR-${suffix}`;
@@ -31,7 +33,14 @@ const studentInputSchema = z.object({
   gender: z.enum(["F", "M", "O", ""]).optional().default(""),
   classId: z.string().min(1),
   annualFee: z.union([z.string(), z.number()]).transform((v) => parseFloat(String(v))),
-  paymentOptionType: z.nativeEnum(PaymentOptionType).optional().default(PaymentOptionType.STANDARD_MONTHLY)
+  paymentOptionType: z.nativeEnum(PaymentOptionType).optional().default(PaymentOptionType.STANDARD_MONTHLY),
+  specialAgreement: z.object({
+    title: z.string().optional().default(""),
+    customTotal: z.union([z.string(), z.number()]).transform((v) => parseFloat(String(v))),
+    reductionAmount: z.union([z.string(), z.number()]).optional().transform((v) => v === undefined ? 0 : parseFloat(String(v))),
+    notes: z.string().optional().default(""),
+    installmentMode: z.enum(["ONE_TIME", "TWO_INSTALLMENTS", "THREE_INSTALLMENTS"]).optional().default("THREE_INSTALLMENTS")
+  }).optional()
 });
 
 const parentSchema = z.object({
@@ -80,17 +89,86 @@ function buildAcademicDueDate(month: number, day: number) {
   return new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999)).toISOString();
 }
 
-function buildOwnerAgreementInstallments(customTotal: number) {
+function roundCurrency(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function toCurrencyNumber(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function buildOwnerAgreementInstallments(customTotal: number, reductionAmount = 0, installmentMode: OwnerAgreementInstallmentMode = "THREE_INSTALLMENTS") {
   const safeTotal = Math.max(Number(customTotal || 0), 0);
-  const first = Math.round((safeTotal * 0.4) * 100) / 100;
-  const second = Math.round((safeTotal * 0.3) * 100) / 100;
-  const third = Math.round((safeTotal - first - second) * 100) / 100;
+  const safeReduction = Math.max(Number(reductionAmount || 0), 0);
+  const balanceDue = roundCurrency(Math.max(safeTotal - safeReduction, 0));
+  if (balanceDue <= 0) return [];
+
+  if (installmentMode === "ONE_TIME") {
+    return [
+      { label: "Versement unique", dueDate: buildAcademicDueDate(8, 31), amountDue: balanceDue, notes: "Created during parent onboarding" }
+    ];
+  }
+
+  if (installmentMode === "TWO_INSTALLMENTS") {
+    const first = roundCurrency(balanceDue * 0.6);
+    const second = roundCurrency(balanceDue - first);
+    return [
+      { label: "Premier versement", dueDate: buildAcademicDueDate(8, 31), amountDue: first, notes: "Created during parent onboarding" },
+      { label: "Solde", dueDate: buildAcademicDueDate(1, 31), amountDue: second, notes: "Created during parent onboarding" }
+    ];
+  }
+
+  const first = roundCurrency(balanceDue * 0.4);
+  const second = roundCurrency(balanceDue * 0.3);
+  const third = roundCurrency(balanceDue - first - second);
 
   return [
     { label: "Engagement initial", dueDate: buildAcademicDueDate(8, 31), amountDue: first, notes: "Created during parent onboarding" },
     { label: "Regularisation mi-annee", dueDate: buildAcademicDueDate(1, 31), amountDue: second, notes: "Created during parent onboarding" },
     { label: "Solde final", dueDate: buildAcademicDueDate(5, 31), amountDue: third, notes: "Created during parent onboarding" }
   ];
+}
+
+function hasSpecialAgreementChanged(
+  specialAgreement: { title?: string; customTotal?: number; reductionAmount?: number; notes?: string; installmentMode?: OwnerAgreementInstallmentMode } | undefined,
+  currentAgreement: {
+    title?: string | null;
+    customTotal?: number | null;
+    reductionAmount?: number | null;
+    notes?: string | null;
+    installments?: Array<{ label?: string | null; dueDate?: Date | null; amountDue?: number | null }>;
+  } | null | undefined,
+  annualFee: number
+) {
+  const expectedInstallments = buildOwnerAgreementInstallments(
+    toCurrencyNumber(specialAgreement?.customTotal ?? annualFee),
+    toCurrencyNumber(specialAgreement?.reductionAmount ?? 0),
+    specialAgreement?.installmentMode ?? "THREE_INSTALLMENTS"
+  );
+  const currentInstallments = (currentAgreement?.installments ?? []).map((installment) => ({
+    label: String(installment.label || "").trim(),
+    dueDate: installment.dueDate ? new Date(installment.dueDate).toISOString() : "",
+    amountDue: roundCurrency(toCurrencyNumber(installment.amountDue))
+  }));
+  const expectedInstallmentSignature = JSON.stringify(expectedInstallments.map((installment) => ({
+    label: String(installment.label || "").trim(),
+    dueDate: installment.dueDate,
+    amountDue: roundCurrency(toCurrencyNumber(installment.amountDue))
+  })));
+  const currentInstallmentSignature = JSON.stringify(currentInstallments);
+
+  if (!specialAgreement) {
+    return !currentAgreement
+      || roundCurrency(Number(currentAgreement.customTotal || 0)) !== roundCurrency(Number(annualFee || 0))
+      || currentInstallmentSignature !== expectedInstallmentSignature;
+  }
+
+  return (specialAgreement.title || "").trim() !== String(currentAgreement?.title || "").trim()
+    || roundCurrency(toCurrencyNumber(specialAgreement.customTotal)) !== roundCurrency(toCurrencyNumber(currentAgreement?.customTotal))
+    || roundCurrency(toCurrencyNumber(specialAgreement.reductionAmount)) !== roundCurrency(toCurrencyNumber(currentAgreement?.reductionAmount))
+    || (specialAgreement.notes || "").trim() !== String(currentAgreement?.notes || "").trim()
+    || currentInstallmentSignature !== expectedInstallmentSignature;
 }
 
 async function generateUniqueParentId(tx: typeof prisma, schoolId: string, fullName: string) {
@@ -470,23 +548,41 @@ async function ensureParentPortalUser(options: {
 async function assignOnboardingFinance(options: {
   schoolId: string;
   parentId: string;
-  students: Array<{ id: string; fullName: string; annualFee: number; paymentOptionType: PaymentOptionType }>;
+  students: Array<{
+    id: string;
+    fullName: string;
+    annualFee: number;
+    paymentOptionType: PaymentOptionType;
+    specialAgreement?: {
+      title?: string;
+      customTotal?: number;
+      reductionAmount?: number;
+      notes?: string;
+      installmentMode?: OwnerAgreementInstallmentMode;
+    };
+  }>;
 }) {
   for (const student of options.students) {
     if (student.paymentOptionType === PaymentOptionType.SPECIAL_OWNER_AGREEMENT) {
-      if (student.annualFee <= 0) {
+      const customTotal = Math.max(toCurrencyNumber(student.specialAgreement?.customTotal ?? student.annualFee ?? 0), 0);
+      const reductionAmount = Math.max(toCurrencyNumber(student.specialAgreement?.reductionAmount ?? 0), 0);
+      const title = student.specialAgreement?.title?.trim() || `Accord spécial propriétaire - ${student.fullName}`;
+      const notes = student.specialAgreement?.notes?.trim() || "Created during parent onboarding";
+      const installmentMode = student.specialAgreement?.installmentMode ?? "THREE_INSTALLMENTS";
+
+      if (customTotal <= 0) {
         throw new Error("Le total de l'accord spécial doit être positif.");
       }
       await createSpecialFinancialAgreement({
         schoolId: options.schoolId,
         parentId: options.parentId,
         studentId: student.id,
-        title: `Accord spécial propriétaire - ${student.fullName}`,
-        customTotal: student.annualFee,
-        reductionAmount: 0,
+        title,
+        customTotal,
+        reductionAmount,
         status: AgreementStatus.APPROVED,
-        notes: "Created during parent onboarding",
-        installments: buildOwnerAgreementInstallments(student.annualFee)
+        notes,
+        installments: buildOwnerAgreementInstallments(customTotal, reductionAmount, installmentMode)
       });
     } else {
       await upsertParentPlanAssignment({
@@ -687,7 +783,19 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       });
 
       const unmatchedLocalStudents = [...(localParent?.students || [])];
-      const createdStudents: Array<{ id: string; fullName: string; annualFee: number; paymentOptionType: PaymentOptionType }> = [];
+      const createdStudents: Array<{
+        id: string;
+        fullName: string;
+        annualFee: number;
+        paymentOptionType: PaymentOptionType;
+        specialAgreement?: {
+          title?: string;
+          customTotal?: number;
+          reductionAmount?: number;
+          notes?: string;
+          installmentMode?: OwnerAgreementInstallmentMode;
+        };
+      }> = [];
       for (const requestedStudent of payload.students) {
         const expectedClassName = classNameById.get(classIdResolution.get(requestedStudent.classId) ?? requestedStudent.classId) || fallbackClassNameFromId(requestedStudent.classId);
         const matchIndex = unmatchedLocalStudents.findIndex((student) => (
@@ -706,6 +814,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
           fullName: student.fullName,
           annualFee: requestedStudent.annualFee,
           paymentOptionType: requestedStudent.paymentOptionType,
+          specialAgreement: requestedStudent.specialAgreement
         });
       }
 
@@ -776,7 +885,19 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
           userId: user.id
         }
       });
-      const createdStudents: Array<{ id: string; fullName: string; annualFee: number; paymentOptionType: PaymentOptionType }> = [];
+      const createdStudents: Array<{
+        id: string;
+        fullName: string;
+        annualFee: number;
+        paymentOptionType: PaymentOptionType;
+        specialAgreement?: {
+          title?: string;
+          customTotal?: number;
+          reductionAmount?: number;
+          notes?: string;
+          installmentMode?: OwnerAgreementInstallmentMode;
+        };
+      }> = [];
       for (const st of payload.students) {
         const studentId = await generateUniqueStudentId(tx as typeof prisma, req.user!.schoolId, st.fullName);
         await tx.student.create({
@@ -790,7 +911,13 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
             schoolId: req.user!.schoolId
           }
         });
-        createdStudents.push({ id: studentId, fullName: st.fullName, annualFee: st.annualFee, paymentOptionType: st.paymentOptionType });
+        createdStudents.push({
+          id: studentId,
+          fullName: st.fullName,
+          annualFee: st.annualFee,
+          paymentOptionType: st.paymentOptionType,
+          specialAgreement: st.specialAgreement
+        });
       }
       return { parentId: p.id, createdStudents };
     });
@@ -985,8 +1112,55 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
     }
 
     const classIdResolution = await resolveStudentClassIds(req.user!.schoolId, payload.students);
+    const currentStudents = await prisma.student.findMany({
+      where: { parentId: id, schoolId: req.user!.schoolId },
+      select: {
+        id: true,
+        fullName: true,
+        gender: true,
+        classId: true,
+        annualFee: true,
+        planAssignments: {
+          where: { isActive: true },
+          take: 1,
+          orderBy: { updatedAt: "desc" },
+          select: {
+            paymentOptionType: true,
+            financialAgreement: {
+              select: {
+                title: true,
+                customTotal: true,
+                reductionAmount: true,
+                notes: true,
+                installments: {
+                  orderBy: { dueDate: "asc" },
+                  select: {
+                    label: true,
+                    dueDate: true,
+                    amountDue: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+    const currentStudentById = new Map(currentStudents.map((student) => [student.id, student]));
 
-    const updatedStudentAssignments: Array<{ id: string; fullName: string; annualFee: number; paymentOptionType: PaymentOptionType }> = [];
+    const updatedStudentAssignments: Array<{
+      id: string;
+      fullName: string;
+      annualFee: number;
+      paymentOptionType: PaymentOptionType;
+      specialAgreement?: {
+        title?: string;
+        customTotal?: number;
+        reductionAmount?: number;
+        notes?: string;
+        installmentMode?: OwnerAgreementInstallmentMode;
+      };
+    }> = [];
     await prisma.$transaction(async (tx) => {
       await tx.parent.update({
         where: { id },
@@ -1030,16 +1204,33 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
 
       for (const student of payload.students) {
         if (student.id && existingStudentIds.has(student.id)) {
+          const resolvedClassId = classIdResolution.get(student.classId) ?? student.classId;
+          const currentStudent = currentStudentById.get(student.id);
           const updatedStudent = await tx.student.update({
             where: { id: student.id },
             data: {
               fullName: student.fullName,
-              classId: classIdResolution.get(student.classId) ?? student.classId,
+              gender: student.gender || null,
+              classId: resolvedClassId,
               annualFee: student.annualFee
             },
             select: { id: true, fullName: true, annualFee: true }
           });
-          updatedStudentAssignments.push({ ...updatedStudent, paymentOptionType: student.paymentOptionType });
+
+          const currentAssignment = currentStudent?.planAssignments?.[0];
+          const financeChanged = !currentStudent
+            || resolvedClassId !== currentStudent.classId
+            || roundCurrency(Number(student.annualFee || 0)) !== roundCurrency(Number(currentStudent.annualFee || 0))
+            || student.paymentOptionType !== currentAssignment?.paymentOptionType
+            || (student.paymentOptionType === PaymentOptionType.SPECIAL_OWNER_AGREEMENT && hasSpecialAgreementChanged(student.specialAgreement, currentAssignment?.financialAgreement, student.annualFee));
+
+          if (financeChanged) {
+            updatedStudentAssignments.push({
+              ...updatedStudent,
+              paymentOptionType: student.paymentOptionType,
+              specialAgreement: student.specialAgreement
+            });
+          }
           continue;
         }
 
@@ -1048,6 +1239,7 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
           data: {
             id: studentId,
             fullName: student.fullName,
+            gender: student.gender || null,
             classId: classIdResolution.get(student.classId) ?? student.classId,
             annualFee: student.annualFee,
             parentId: id,
@@ -1055,15 +1247,21 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
           },
           select: { id: true, fullName: true, annualFee: true }
         });
-        updatedStudentAssignments.push({ ...createdStudent, paymentOptionType: student.paymentOptionType });
+        updatedStudentAssignments.push({
+          ...createdStudent,
+          paymentOptionType: student.paymentOptionType,
+          specialAgreement: student.specialAgreement
+        });
       }
     });
 
-    await assignOnboardingFinance({
-      schoolId: req.user!.schoolId,
-      parentId: id,
-      students: updatedStudentAssignments
-    });
+    if (updatedStudentAssignments.length > 0) {
+      await assignOnboardingFinance({
+        schoolId: req.user!.schoolId,
+        parentId: id,
+        students: updatedStudentAssignments
+      });
+    }
 
     const parent = await prisma.parent.findUnique({
       where: { id },

@@ -1573,10 +1573,10 @@ export async function getSchoolFinanceOverview(input: { schoolId: string; academ
     }
   }
 
-  const reductionReport = await getReductionAnalytics({
-    schoolId: input.schoolId,
+  const reductionReport = buildReductionAnalyticsFromSnapshots({
     academicYearName: academicYear.name,
-    periodType: ReportType.CUMULATIVE
+    periodType: ReportType.CUMULATIVE,
+    parentSnapshots
   });
 
   const alerts = parentSnapshots.flatMap((snapshot) => snapshot.alerts);
@@ -1622,35 +1622,29 @@ export async function getSchoolFinanceOverview(input: { schoolId: string; academ
   };
 }
 
-export async function getReductionAnalytics(input: {
-  schoolId: string;
-  academicYearName?: string;
+function buildReductionAnalyticsFromSnapshots(input: {
+  academicYearName: string;
   periodType: ReportType;
   referenceDate?: string;
+  parentSnapshots: Awaited<ReturnType<typeof getParentFinancialSnapshot>>[];
 }) {
-  const { academicYear } = await getTargetAcademicYear(input.schoolId, input.academicYearName);
   const bounds = resolvePeriodBounds(input.periodType, input.referenceDate);
-  const parents = await prisma.parent.findMany({ where: { schoolId: input.schoolId }, select: { id: true } });
-  const parentSnapshots = await Promise.all(parents.map((parent) => getParentFinancialSnapshot({
-    schoolId: input.schoolId,
-    parentId: parent.id,
-    academicYearName: academicYear.name
-  })));
 
-  const reductions = parentSnapshots
+  const reductions = input.parentSnapshots
     .flatMap((snapshot) => snapshot.reductions)
-    .filter((reduction): reduction is NonNullable<(typeof parentSnapshots)[number]["reductions"][number]> => Boolean(reduction))
+    .filter((reduction): reduction is NonNullable<(typeof input.parentSnapshots)[number]["reductions"][number]> => Boolean(reduction))
     .filter((reduction) => {
       const date = new Date(reduction.effectiveDate);
       return date >= bounds.start && date <= bounds.end;
     })
     .map((reduction) => {
-      const ownerSnapshot = parentSnapshots.find((snapshot) => snapshot.parent.id === reduction.parentId);
+      const ownerSnapshot = input.parentSnapshots.find((snapshot) => snapshot.parent.id === reduction.parentId);
       return {
         ...reduction,
         parentName: ownerSnapshot?.parent.fullName ?? null
       };
     });
+
   const uniqueReductions = Array.from(
     reductions.reduce((acc, reduction) => {
       const key = [
@@ -1672,7 +1666,7 @@ export async function getReductionAnalytics(input: {
   );
 
   return {
-    academicYear: academicYear.name,
+    academicYear: input.academicYearName,
     periodType: input.periodType,
     periodLabel: bounds.label,
     totalReductions: roundCurrency(uniqueReductions.reduce((sum, reduction) => sum + reduction.amount, 0)),
@@ -1687,6 +1681,28 @@ export async function getReductionAnalytics(input: {
     scholarships,
     reductions: uniqueReductions
   };
+}
+
+export async function getReductionAnalytics(input: {
+  schoolId: string;
+  academicYearName?: string;
+  periodType: ReportType;
+  referenceDate?: string;
+}) {
+  const { academicYear } = await getTargetAcademicYear(input.schoolId, input.academicYearName);
+  const parents = await prisma.parent.findMany({ where: { schoolId: input.schoolId }, select: { id: true } });
+  const parentSnapshots = await Promise.all(parents.map((parent) => getParentFinancialSnapshot({
+    schoolId: input.schoolId,
+    parentId: parent.id,
+    academicYearName: academicYear.name
+  })));
+
+  return buildReductionAnalyticsFromSnapshots({
+    academicYearName: academicYear.name,
+    periodType: input.periodType,
+    referenceDate: input.referenceDate,
+    parentSnapshots
+  });
 }
 
 export async function upsertParentPlanAssignment(input: {
@@ -2329,7 +2345,7 @@ export function buildTuitionParentNotificationMessages(input: {
       `Avance conservée : ${formatAlertCurrency(input.allocationPreview.advanceBalance)}`,
       "",
       "Imputation par enfant :",
-      allocationLines.join("\n") || "- Aucune affectation appliquee.",
+      allocationLines.join("\n") || "- Aucune affectation appliquée.",
       "",
       `Prochain paiement : ${nextLine}`,
       "",

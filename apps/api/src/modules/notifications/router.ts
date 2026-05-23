@@ -87,6 +87,24 @@ notificationRouter.get("/messages", authorize("ADMIN", "ACCOUNTANT"), async (req
   })));
 });
 
+notificationRouter.delete("/messages/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
+  const log = await prisma.notificationLog.findFirst({
+    where: {
+      id: req.params.id,
+      schoolId: req.user!.schoolId,
+      type: "MANUAL_MESSAGE",
+    },
+    select: { id: true },
+  });
+
+  if (!log) {
+    return res.status(404).json({ message: "Message introuvable." });
+  }
+
+  await prisma.notificationLog.delete({ where: { id: log.id } });
+  return res.status(200).json({ deletedId: log.id });
+});
+
 notificationRouter.post("/messages", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
   const payload = manualMessageSchema.parse(req.body);
   const parents = await prisma.parent.findMany({

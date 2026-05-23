@@ -5,6 +5,8 @@ import { schoolBranding } from "../config/branding";
 import { api } from "../services/api";
 import { useAuthStore } from "../store/auth";
 import { exportWorkbook } from "../utils/financeExcel";
+import { exportElementToPdf } from "../utils/pdfDocument";
+import { printHtmlDocument as sharedPrintHtmlDocument } from "../utils/printDocument";
 
 type Employee = {
   id: string;
@@ -470,48 +472,7 @@ function buildEmployeeReportHtml(employee: Employee, snapshot: EmployeeFinanceSn
 }
 
 function printHtmlDocument(html: string) {
-  const iframe = document.createElement("iframe");
-  iframe.style.position = "fixed";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
-  iframe.style.opacity = "0";
-  iframe.style.pointerEvents = "none";
-  iframe.style.border = "0";
-  document.body.appendChild(iframe);
-
-  const cleanup = () => {
-    window.setTimeout(() => {
-      iframe.remove();
-    }, 0);
-  };
-
-  const frameWindow = iframe.contentWindow;
-  const frameDocument = iframe.contentDocument ?? frameWindow?.document;
-  if (!frameWindow || !frameDocument) {
-    cleanup();
-    return;
-  }
-
-  frameDocument.open();
-  frameDocument.write(html);
-  frameDocument.close();
-
-  const triggerPrint = () => {
-    frameWindow.focus();
-    frameWindow.print();
-    frameWindow.addEventListener("afterprint", cleanup, { once: true });
-    window.setTimeout(cleanup, 2000);
-  };
-
-  const fontsReady = frameDocument.fonts?.ready;
-  if (fontsReady) {
-    fontsReady.catch(() => undefined).finally(() => {
-      window.setTimeout(triggerPrint, 220);
-    });
-    return;
-  }
-
-  window.setTimeout(triggerPrint, 320);
+  sharedPrintHtmlDocument(html);
 }
 
 async function exportEmployeeReportPdf(employee: Employee, snapshot: EmployeeFinanceSnapshot) {
@@ -528,35 +489,10 @@ async function exportEmployeeReportPdf(employee: Employee, snapshot: EmployeeFin
     const reportNode = mount.querySelector(".report") as HTMLElement | null;
     if (!reportNode) throw new Error("Support de rapport introuvable.");
 
-    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
-    await document.fonts?.ready;
-
-    const canvas = await html2canvas(reportNode, {
-      scale: 2,
-      useCORS: true,
+    await exportElementToPdf(reportNode, {
+      filename: `dossier-financier-${slugify(employee.fullName)}.pdf`,
       backgroundColor: "#edf2f7",
     });
-
-    const pdf = new jsPDF("p", "mm", "a4");
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const imageWidth = pageWidth;
-    const imageHeight = (canvas.height * imageWidth) / canvas.width;
-    const imageData = canvas.toDataURL("image/png");
-
-    let remainingHeight = imageHeight;
-    let position = 0;
-    pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight);
-    remainingHeight -= pageHeight;
-
-    while (remainingHeight > 0) {
-      position = remainingHeight - imageHeight;
-      pdf.addPage();
-      pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight);
-      remainingHeight -= pageHeight;
-    }
-
-    pdf.save(`dossier-financier-${slugify(employee.fullName)}.pdf`);
   } finally {
     mount.remove();
   }

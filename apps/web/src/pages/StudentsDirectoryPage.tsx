@@ -4,6 +4,8 @@ import { SearchField } from "../components/SearchField";
 import { schoolBranding } from "../config/branding";
 import { api } from "../services/api";
 import { exportWorkbook } from "../utils/financeExcel";
+import { exportElementToPdf } from "../utils/pdfDocument";
+import { printHtmlDocument } from "../utils/printDocument";
 
 type SharedDirectoryStudent = {
   id: string;
@@ -324,6 +326,8 @@ function buildStudentReportHtml(input: {
 }) {
   const { student, parent, snapshot } = input;
   const brand = schoolBranding;
+  const generatedAt = new Date();
+  const documentReference = escapeHtml(`KCS-STU-${generatedAt.toISOString().slice(0, 10)}-${(student.displayId || student.studentNumber || student.id).replace(/[^A-Za-z0-9-]/g, "")}`);
   const logoSrc = escapeHtml(new URL(brand.logoSrc, window.location.href).toString());
   const { financeStudent, installments, reductions, debts, agreements, paymentHistory, alerts } = getStudentFinanceData(snapshot, student);
 
@@ -414,6 +418,8 @@ function buildStudentReportHtml(input: {
         * { box-sizing: border-box; }
         body { margin: 0; padding: 28px; font-family: "Segoe UI", Arial, sans-serif; color: var(--ink); background: linear-gradient(180deg, #fff, var(--brand-surface)); }
         .watermark { position: fixed; right: 18px; bottom: 28px; width: 220px; opacity: 0.06; filter: grayscale(100%); }
+        .topbar { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:10px; color: var(--muted); font-size:10px; text-transform:uppercase; letter-spacing:0.16em; }
+        .topbar strong { color: var(--brand-primary); }
         .header { display: flex; justify-content: space-between; gap: 24px; border-radius: 20px; padding: 20px 22px; color: white; background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary)); }
         .header-brand { display: flex; gap: 16px; align-items: center; }
         .header-logo { width: 76px; height: 76px; border-radius: 22px; background: white; padding: 8px; object-fit: contain; }
@@ -440,10 +446,16 @@ function buildStudentReportHtml(input: {
         .alert-high { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.08); }
         .alert-medium { border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.08); }
         .footer { margin-top: 18px; display: flex; justify-content: space-between; gap: 12px; font-size: 11px; color: var(--muted); }
+        .compliance { margin-top: 16px; border: 1px solid rgba(15, 118, 110, 0.2); border-left: 5px solid #0f766e; border-radius: 14px; background: rgba(240, 253, 250, 0.96); padding: 12px 14px; color: #134e4a; font-size: 11px; line-height: 1.5; }
+        .signatures { margin-top: 16px; display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:16px; }
+        .signature-box { min-height:82px; border:1px dashed rgba(11,46,89,0.24); border-radius:14px; background: rgba(255,255,255,0.88); padding:12px; }
+        .signature-title { font-size:10px; text-transform:uppercase; letter-spacing:0.14em; font-weight:800; color:var(--muted); }
+        .signature-line { margin-top:38px; border-top:1px solid rgba(11,46,89,0.24); padding-top:6px; font-size:11px; color:var(--brand-primary); font-weight:700; }
       </style>
     </head>
     <body>
       <img class="watermark" src="${logoSrc}" alt="" />
+      <div class="topbar"><span><strong>${escapeHtml(brand.shortName)}</strong> · dossier administratif élève</span><span>Référence ${documentReference}</span></div>
       <div class="header">
         <div class="header-brand">
           <img class="header-logo" src="${logoSrc}" alt="Logo ${escapeHtml(brand.schoolName)}" />
@@ -457,7 +469,7 @@ function buildStudentReportHtml(input: {
           <div class="eyebrow">Élève</div>
           <strong>${escapeHtml(student.fullName)}</strong>
           <div class="school-meta">ID ${escapeHtml(student.displayId || student.studentNumber || student.id)}</div>
-          <div class="school-meta">Émis le ${escapeHtml(new Date().toLocaleString("fr-FR"))}</div>
+          <div class="school-meta">Émis le ${escapeHtml(generatedAt.toLocaleString("fr-FR"))}</div>
         </div>
       </div>
       <section class="panel">
@@ -488,7 +500,9 @@ function buildStudentReportHtml(input: {
       <section class="panel"><h2>Accords spéciaux</h2><table><thead><tr><th>Accord</th><th>Option</th><th>Total</th><th>Réduction</th><th>Statut</th><th>Date</th></tr></thead><tbody>${agreementRows}</tbody></table></section>
       <section class="panel"><h2>Dettes et reports</h2><table><thead><tr><th>Ligne</th><th>Motif</th><th>Montant initial</th><th>Reste à payer</th><th>Statut</th><th>Échéance</th></tr></thead><tbody>${debtRows}</tbody></table></section>
       <section class="panel"><h2>Alertes financières</h2><div class="alerts">${alertRows}</div></section>
-      <div class="footer"><span>Document officiel ${escapeHtml(brand.appName)} généré pour ${escapeHtml(brand.schoolName)}.</span><span>Année académique ${escapeHtml(snapshot?.academicYear.name || "-")}</span></div>
+      <div class="compliance">Ce dossier reprend l'état académique et financier détaillé de l'élève tel qu'affiché dans EduPay. Il est édité selon la charte ${escapeHtml(brand.shortName)} pour contrôle, suivi et archivage.</div>
+      <div class="signatures"><div class="signature-box"><div class="signature-title">Validation scolaire</div><div class="signature-line">Direction des études</div></div><div class="signature-box"><div class="signature-title">Visa financier</div><div class="signature-line">Service comptable</div></div></div>
+      <div class="footer"><span>Document officiel ${escapeHtml(brand.appName)} généré pour ${escapeHtml(brand.schoolName)}.</span><span>Année académique ${escapeHtml(snapshot?.academicYear.name || "-")} · ${escapeHtml(generatedAt.toLocaleString("fr-FR"))}</span></div>
     </body>
   </html>`;
 }
@@ -516,65 +530,27 @@ async function mountStudentReportFrame(student: SharedDirectoryStudent, parent: 
 }
 
 async function exportStudentReportPdf(student: SharedDirectoryStudent, parent: SharedDirectoryParent | undefined, snapshot: StudentFinanceSnapshot | null) {
-  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([import("html2canvas"), import("jspdf")]);
   const frame = await mountStudentReportFrame(student, parent, snapshot);
 
   try {
-    await frame.contentDocument?.fonts?.ready?.catch(() => undefined);
     const body = frame.contentDocument?.body;
     if (!body) throw new Error("Document PDF élève introuvable.");
 
-    const canvas = await html2canvas(body, {
-      scale: 2,
-      useCORS: true,
+    await exportElementToPdf(body, {
+      filename: `dossier-eleve-${slugify(student.fullName)}-${new Date().toISOString().slice(0, 10)}.pdf`,
       backgroundColor: "#ffffff",
       width: Math.max(body.scrollWidth, 1024),
       height: body.scrollHeight,
       windowWidth: Math.max(body.scrollWidth, 1024),
       windowHeight: body.scrollHeight,
     });
-
-    const pdf = new jsPDF("p", "mm", "a4");
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const imageData = canvas.toDataURL("image/png");
-    const imageWidth = pageWidth;
-    const imageHeight = (canvas.height * imageWidth) / canvas.width;
-    let heightLeft = imageHeight;
-    let position = 0;
-
-    pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight, undefined, "FAST");
-    heightLeft -= pageHeight;
-    while (heightLeft > 0) {
-      position = heightLeft - imageHeight;
-      pdf.addPage();
-      pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight, undefined, "FAST");
-      heightLeft -= pageHeight;
-    }
-    pdf.save(`dossier-eleve-${slugify(student.fullName)}-${new Date().toISOString().slice(0, 10)}.pdf`);
   } finally {
     frame.remove();
   }
 }
 
 function printStudentReport(student: SharedDirectoryStudent, parent: SharedDirectoryParent | undefined, snapshot: StudentFinanceSnapshot | null) {
-  const popup = window.open("", "_blank", "width=1080,height=900");
-  if (!popup) return;
-  popup.document.open();
-  popup.document.write(buildStudentReportHtml({ student, parent, snapshot }));
-  popup.document.close();
-
-  const triggerPrint = () => {
-    popup.focus();
-    popup.print();
-  };
-
-  const fontsReady = popup.document.fonts?.ready;
-  if (fontsReady) {
-    fontsReady.catch(() => undefined).finally(() => window.setTimeout(triggerPrint, 200));
-    return;
-  }
-  window.setTimeout(triggerPrint, 300);
+  printHtmlDocument(buildStudentReportHtml({ student, parent, snapshot }));
 }
 
 function exportStudentReportExcel(student: SharedDirectoryStudent, parent: SharedDirectoryParent | undefined, snapshot: StudentFinanceSnapshot | null) {

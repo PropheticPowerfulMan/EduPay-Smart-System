@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import { SearchField } from "../components/SearchField";
 import { schoolBranding } from "../config/branding";
 import { api } from "../services/api";
 import { exportWorkbook } from "../utils/financeExcel";
+import { exportElementToPdf } from "../utils/pdfDocument";
+import { printHtmlDocument } from "../utils/printDocument";
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 type Student = {
@@ -116,6 +119,16 @@ type PlanScheduleItem = {
   windowLabel?: string;
 };
 
+type SpecialAgreementInstallmentMode = "ONE_TIME" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS";
+
+type SpecialAgreementDraft = {
+  title: string;
+  customTotal: string;
+  reductionAmount: string;
+  notes: string;
+  installmentMode: SpecialAgreementInstallmentMode;
+};
+
 type FinanceCatalog = {
   academicYear?: { name?: string };
   plans: TuitionPlan[];
@@ -128,6 +141,7 @@ type StudentFormState = {
   classId: string;
   annualFee: string;
   paymentOptionType: string;
+  specialAgreement?: SpecialAgreementDraft;
 };
 
 type FormState = {
@@ -185,6 +199,14 @@ const EMPTY_FORM: FormState = {
 };
 
 const EMPTY_STUDENT: StudentFormState = { fullName: "", gender: "", classId: "", annualFee: "", paymentOptionType: "STANDARD_MONTHLY" };
+
+const EMPTY_SPECIAL_AGREEMENT: SpecialAgreementDraft = {
+  title: "",
+  customTotal: "",
+  reductionAmount: "0",
+  notes: "",
+  installmentMode: "THREE_INSTALLMENTS"
+};
 
 const SCHOOL_SECTIONS: SchoolClass[] = [
   ...Array.from({ length: 3 }, (_v, index) => {
@@ -413,6 +435,8 @@ function slugify(value: string) {
 
 function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSnapshot | null) {
   const brand = schoolBranding;
+  const generatedAt = new Date();
+  const documentReference = escapeHtml(`KCS-PAR-${generatedAt.toISOString().slice(0, 10)}-${(parent.displayId || parent.id).replace(/[^A-Za-z0-9-]/g, "")}`);
   const logoSrc = escapeHtml(new URL(brand.logoSrc, window.location.href).toString());
   const studentRows = parent.students.map((student) => {
     const financeRow = financeSnapshot?.students.find((entry) => entry.id === student.id);
@@ -496,6 +520,18 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
           filter: grayscale(100%);
           pointer-events: none;
         }
+        .topbar {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+          margin-bottom: 10px;
+          color: var(--muted);
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.16em;
+        }
+        .topbar strong { color: var(--brand-primary); }
         h1, h2, h3, p { margin: 0; }
         .header {
           position: relative;
@@ -606,6 +642,45 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
           font-size: 11px;
           color: var(--muted);
         }
+        .compliance {
+          margin-top: 16px;
+          border: 1px solid rgba(15, 118, 110, 0.2);
+          border-left: 5px solid #0f766e;
+          border-radius: 14px;
+          background: rgba(240, 253, 250, 0.96);
+          padding: 12px 14px;
+          color: #134e4a;
+          font-size: 11px;
+          line-height: 1.5;
+        }
+        .signatures {
+          margin-top: 16px;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 16px;
+        }
+        .signature-box {
+          min-height: 82px;
+          border: 1px dashed rgba(11, 46, 89, 0.24);
+          border-radius: 14px;
+          background: rgba(255,255,255,0.88);
+          padding: 12px;
+        }
+        .signature-title {
+          font-size: 10px;
+          text-transform: uppercase;
+          letter-spacing: 0.14em;
+          font-weight: 800;
+          color: var(--muted);
+        }
+        .signature-line {
+          margin-top: 38px;
+          border-top: 1px solid rgba(11, 46, 89, 0.24);
+          padding-top: 6px;
+          font-size: 11px;
+          color: var(--brand-primary);
+          font-weight: 700;
+        }
         @media print {
           body { padding: 12px; }
           .panel, .header { break-inside: avoid; }
@@ -614,6 +689,10 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
     </head>
     <body>
       <img class="watermark" src="${logoSrc}" alt="" />
+      <div class="topbar">
+        <span><strong>${escapeHtml(brand.shortName)}</strong> · dossier administratif parent</span>
+        <span>Référence ${documentReference}</span>
+      </div>
       <div class="header">
         <div class="header-brand">
           <img class="header-logo" src="${logoSrc}" alt="Logo ${escapeHtml(brand.schoolName)}" />
@@ -627,7 +706,7 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
           <span class="eyebrow">Dossier parent</span>
           <strong>${escapeHtml(parent.fullName)}</strong>
           <p class="school-meta">ID ${escapeHtml(parent.displayId || parent.id)}</p>
-          <p class="school-meta">Émis le ${escapeHtml(new Date().toLocaleString("fr-FR"))}</p>
+          <p class="school-meta">Émis le ${escapeHtml(generatedAt.toLocaleString("fr-FR"))}</p>
         </div>
       </div>
       <section class="panel">
@@ -686,9 +765,22 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
           <tbody>${debtRows}</tbody>
         </table>
       </section>
+      <div class="compliance">
+        Ce rapport reprend les informations d'identité, d'inscription et de situation financière visibles dans EduPay pour ce parent. Il est généré selon la charte ${escapeHtml(brand.shortName)} pour archivage administratif.
+      </div>
+      <div class="signatures">
+        <div class="signature-box">
+          <div class="signature-title">Validation administrative</div>
+          <div class="signature-line">Gestion des parents</div>
+        </div>
+        <div class="signature-box">
+          <div class="signature-title">Visa financier</div>
+          <div class="signature-line">Service comptable</div>
+        </div>
+      </div>
       <div class="footer">
         <span>Document officiel ${escapeHtml(brand.appName)} généré pour ${escapeHtml(brand.schoolName)}.</span>
-        <span>Charte ${escapeHtml(brand.shortName)} · ${escapeHtml(new Date().toLocaleString("fr-FR"))}</span>
+        <span>Charte ${escapeHtml(brand.shortName)} · ${escapeHtml(generatedAt.toLocaleString("fr-FR"))}</span>
       </div>
     </body>
   </html>`;
@@ -717,76 +809,28 @@ function mountParentReportFrame(parent: Parent, financeSnapshot: ParentFinanceSn
 }
 
 async function exportParentReportPdf(parent: Parent, financeSnapshot: ParentFinanceSnapshot | null) {
-  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-    import("html2canvas"),
-    import("jspdf")
-  ]);
-
   const frame = await mountParentReportFrame(parent, financeSnapshot);
 
   try {
-    await frame.contentDocument?.fonts?.ready?.catch(() => undefined);
     const body = frame.contentDocument?.body;
     if (!body) {
       throw new Error("Document PDF introuvable.");
     }
-
-    const canvas = await html2canvas(body, {
-      scale: 2,
-      useCORS: true,
+    await exportElementToPdf(body, {
+      filename: `rapport-parent-${slugify(parent.fullName)}-${new Date().toISOString().slice(0, 10)}.pdf`,
       backgroundColor: "#ffffff",
       width: Math.max(body.scrollWidth, 1024),
       height: body.scrollHeight,
       windowWidth: Math.max(body.scrollWidth, 1024),
       windowHeight: body.scrollHeight,
     });
-
-    const pdf = new jsPDF("p", "mm", "a4");
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const imageData = canvas.toDataURL("image/png");
-    const imageWidth = pageWidth;
-    const imageHeight = (canvas.height * imageWidth) / canvas.width;
-    let heightLeft = imageHeight;
-    let position = 0;
-
-    pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight, undefined, "FAST");
-    heightLeft -= pageHeight;
-
-    while (heightLeft > 0) {
-      position = heightLeft - imageHeight;
-      pdf.addPage();
-      pdf.addImage(imageData, "PNG", 0, position, imageWidth, imageHeight, undefined, "FAST");
-      heightLeft -= pageHeight;
-    }
-
-    pdf.save(`rapport-parent-${slugify(parent.fullName)}-${new Date().toISOString().slice(0, 10)}.pdf`);
   } finally {
     frame.remove();
   }
 }
 
 function printParentReport(parent: Parent, financeSnapshot: ParentFinanceSnapshot | null) {
-  const popup = window.open("", "_blank", "width=1080,height=900");
-  if (!popup) return;
-  popup.document.open();
-  popup.document.write(buildParentReportHtml(parent, financeSnapshot));
-  popup.document.close();
-
-  const triggerPrint = () => {
-    popup.focus();
-    popup.print();
-  };
-
-  const fontsReady = popup.document.fonts?.ready;
-  if (fontsReady) {
-    fontsReady
-      .catch(() => undefined)
-      .finally(() => window.setTimeout(triggerPrint, 200));
-    return;
-  }
-
-  window.setTimeout(triggerPrint, 300);
+  printHtmlDocument(buildParentReportHtml(parent, financeSnapshot));
 }
 
 function exportParentReportExcel(parent: Parent, financeSnapshot: ParentFinanceSnapshot | null) {
@@ -866,9 +910,26 @@ function getPaymentOptionLabel(option: string) {
   return PAYMENT_OPTION_LABELS[option] || option;
 }
 
+function getPaymentOptionSelectLabel(plan: TuitionPlan) {
+  if (plan.paymentOptionType === "SPECIAL_OWNER_AGREEMENT") {
+    return "Accord spécial parent-école";
+  }
+
+  return `${getPaymentOptionLabel(plan.paymentOptionType)} · ${formatMoney(plan.finalAmount)}`;
+}
+
 function formatAmountInput(amount?: number) {
   if (typeof amount !== "number" || Number.isNaN(amount)) return "";
   return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+}
+
+function parseAmount(value?: string | number) {
+  const parsed = typeof value === "number" ? value : Number.parseFloat(String(value || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function roundCurrency(value: number) {
+  return Math.round(value * 100) / 100;
 }
 
 function buildAcademicDueDate(month: number, day: number) {
@@ -886,27 +947,60 @@ function splitOwnerAgreementTotal(total: number) {
   return [first, second, third];
 }
 
+function normalizeSpecialAgreementDraft(student: StudentFormState): SpecialAgreementDraft {
+  const current = student.specialAgreement || EMPTY_SPECIAL_AGREEMENT;
+  return {
+    title: current.title || (student.fullName.trim() ? `Accord spécial - ${student.fullName.trim()}` : "Accord spécial parent-école"),
+    customTotal: current.customTotal || student.annualFee || "",
+    reductionAmount: current.reductionAmount || "0",
+    notes: current.notes || "",
+    installmentMode: current.installmentMode || "THREE_INSTALLMENTS"
+  };
+}
+
+function buildAgreementSchedule(total: number, reductionAmount: number, installmentMode: SpecialAgreementInstallmentMode): PlanScheduleItem[] {
+  const balance = roundCurrency(Math.max(total - reductionAmount, 0));
+  if (balance <= 0) return [];
+
+  if (installmentMode === "ONE_TIME") {
+    return [{ label: "Versement unique", amount: balance, dueDate: buildAcademicDueDate(8, 31), windowLabel: "Avant la rentrée" }];
+  }
+
+  if (installmentMode === "TWO_INSTALLMENTS") {
+    const first = roundCurrency(balance * 0.6);
+    const second = roundCurrency(balance - first);
+    return [
+      { label: "Premier versement", amount: first, dueDate: buildAcademicDueDate(8, 31), windowLabel: "Avant septembre" },
+      { label: "Solde", amount: second, dueDate: buildAcademicDueDate(1, 31), windowLabel: "Avant fin janvier" }
+    ];
+  }
+
+  const [initialAmount, midYearAmount, finalAmount] = splitOwnerAgreementTotal(balance);
+  return [
+    { label: "Engagement initial", amount: initialAmount, dueDate: buildAcademicDueDate(8, 31), windowLabel: "Avant septembre" },
+    { label: "Régularisation mi-année", amount: midYearAmount, dueDate: buildAcademicDueDate(1, 31), windowLabel: "Avant fin janvier" },
+    { label: "Solde final", amount: finalAmount, dueDate: buildAcademicDueDate(5, 31), windowLabel: "Avant fin mai" }
+  ];
+}
+
 function buildSpecialOwnerAgreementPlan(student: StudentFormState, className: string, officialPlans: TuitionPlan[]): TuitionPlan | null {
   const gradeGroup = resolveGradeGroup(className);
-  const parsedAmount = Number.parseFloat(student.annualFee);
-  const customTotal = Number.isFinite(parsedAmount) && parsedAmount > 0 ? parsedAmount : 0;
-
-  const [initialAmount, midYearAmount, finalAmount] = splitOwnerAgreementTotal(customTotal);
+  const agreement = normalizeSpecialAgreementDraft(student);
+  const customTotal = Math.max(parseAmount(agreement.customTotal), 0);
+  const reductionAmount = roundCurrency(Math.max(parseAmount(agreement.reductionAmount), 0));
+  const finalAmount = roundCurrency(Math.max(customTotal - reductionAmount, 0));
+  const schedule = buildAgreementSchedule(customTotal, reductionAmount, agreement.installmentMode);
 
   return {
     id: `special-owner-${gradeGroup}`,
-    name: customTotal > 0 ? "Accord spécial parent-école" : "Accord spécial parent-école à définir",
+    name: agreement.title.trim() || (customTotal > 0 ? "Accord spécial parent-école" : "Accord spécial parent-école à définir"),
     paymentOptionType: "SPECIAL_OWNER_AGREEMENT",
     gradeGroup,
     discountRate: 0,
     originalAmount: customTotal,
-    finalAmount: customTotal,
-    reductionAmount: 0,
-    scheduleJson: customTotal > 0 ? [
-      { label: "Engagement initial", amount: initialAmount, dueDate: buildAcademicDueDate(8, 31), windowLabel: "Avant septembre" },
-      { label: "Régularisation mi-année", amount: midYearAmount, dueDate: buildAcademicDueDate(1, 31), windowLabel: "Avant fin janvier" },
-      { label: "Solde final", amount: finalAmount, dueDate: buildAcademicDueDate(5, 31), windowLabel: "Avant fin mai" }
-    ] : []
+    finalAmount,
+    reductionAmount,
+    scheduleJson: schedule
   };
 }
 
@@ -1490,12 +1584,21 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
         gender: s.gender || "",
         classId: s.classId,
         annualFee: String(s.annualFee),
-        paymentOptionType: s.paymentOptionType || "STANDARD_MONTHLY"
+        paymentOptionType: s.paymentOptionType || "STANDARD_MONTHLY",
+        specialAgreement: s.paymentOptionType === "SPECIAL_OWNER_AGREEMENT"
+          ? {
+            ...EMPTY_SPECIAL_AGREEMENT,
+            title: `Accord spécial - ${s.fullName}`,
+            customTotal: String(s.annualFee),
+            reductionAmount: "0"
+          }
+          : undefined
       }))
     };
   });
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [specialAgreementTarget, setSpecialAgreementTarget] = useState<number | null>(null);
   const classOptions = useMemo(() => getSchoolClassOptions(classes), [classes]);
 
   const getClassName = (classId: string) => classOptions.find((entry) => entry.id === classId)?.name || "";
@@ -1548,20 +1651,68 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
     });
   };
 
+  const setStudentSpecialAgreement = (idx: number, key: keyof SpecialAgreementDraft, value: string) => {
+    setForm((current) => {
+      const students = [...current.students];
+      const student = students[idx] || { ...EMPTY_STUDENT };
+      const draft = normalizeSpecialAgreementDraft(student);
+      const nextDraft = { ...draft, [key]: value };
+      students[idx] = {
+        ...student,
+        paymentOptionType: "SPECIAL_OWNER_AGREEMENT",
+        annualFee: nextDraft.customTotal,
+        specialAgreement: nextDraft
+      };
+      return { ...current, defaultPaymentOptionType: "SPECIAL_OWNER_AGREEMENT", students };
+    });
+    setErrors((current) => ({ ...current, [`studentAnnualFee-${idx}`]: "" }));
+  };
+
+  const applyStudentPlanSelection = (student: StudentFormState, paymentOptionType: string) => {
+    const matchingPlan = getMatchingPlans(student.classId, student).find((plan) => plan.paymentOptionType === paymentOptionType);
+    if (paymentOptionType === "SPECIAL_OWNER_AGREEMENT") {
+      const specialAgreement = normalizeSpecialAgreementDraft(student);
+      return {
+        ...student,
+        paymentOptionType,
+        annualFee: specialAgreement.customTotal || student.annualFee,
+        specialAgreement
+      };
+    }
+
+    return {
+      ...student,
+      paymentOptionType,
+      annualFee: matchingPlan ? formatAmountInput(matchingPlan.finalAmount) : student.annualFee,
+      specialAgreement: student.specialAgreement
+    };
+  };
+
+  const openSpecialAgreementDialog = (idx: number) => {
+    setForm((current) => {
+      const students = [...current.students];
+      const student = students[idx] || { ...EMPTY_STUDENT };
+      const specialAgreement = normalizeSpecialAgreementDraft(student);
+      students[idx] = {
+        ...student,
+        paymentOptionType: "SPECIAL_OWNER_AGREEMENT",
+        annualFee: specialAgreement.customTotal || student.annualFee,
+        specialAgreement
+      };
+      return { ...current, defaultPaymentOptionType: "SPECIAL_OWNER_AGREEMENT", students };
+    });
+    setSpecialAgreementTarget(idx);
+  };
+
   const updateStudentClass = (idx: number, classId: string) => {
     setForm((current) => {
       const students = [...current.students];
       const student = students[idx] || { ...EMPTY_STUDENT };
       const nextStudent = { ...student, classId };
       const paymentOptionType = getPreferredOption(classId, student.paymentOptionType, nextStudent);
-      const matchingPlan = getMatchingPlans(classId, nextStudent).find((plan) => plan.paymentOptionType === paymentOptionType);
       students[idx] = {
-        ...student,
-        classId,
-        paymentOptionType,
-        annualFee: paymentOptionType === "SPECIAL_OWNER_AGREEMENT"
-          ? student.annualFee
-          : matchingPlan ? formatAmountInput(matchingPlan.finalAmount) : student.annualFee
+        ...applyStudentPlanSelection({ ...student, classId }, paymentOptionType),
+        classId
       };
       return { ...current, students };
     });
@@ -1571,46 +1722,49 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
     setForm((current) => {
       const students = [...current.students];
       const student = students[idx] || { ...EMPTY_STUDENT };
-      const matchingPlan = getMatchingPlans(student.classId, student).find((plan) => plan.paymentOptionType === paymentOptionType);
-      students[idx] = {
-        ...student,
-        paymentOptionType,
-        annualFee: paymentOptionType === "SPECIAL_OWNER_AGREEMENT"
-          ? ""
-          : matchingPlan ? formatAmountInput(matchingPlan.finalAmount) : student.annualFee
-      };
+      students[idx] = applyStudentPlanSelection(student, paymentOptionType);
       return { ...current, defaultPaymentOptionType: paymentOptionType, students };
     });
+    if (paymentOptionType === "SPECIAL_OWNER_AGREEMENT") {
+      setSpecialAgreementTarget(idx);
+    }
   };
 
   const updateFamilyTuitionPlan = (paymentOptionType: string) => {
     setForm((current) => {
       const students = current.students.map((student) => {
         if (!student.classId) {
-          return {
-            ...student,
-            paymentOptionType,
-            annualFee: paymentOptionType === "SPECIAL_OWNER_AGREEMENT" ? "" : student.annualFee
-          };
+          return paymentOptionType === "SPECIAL_OWNER_AGREEMENT"
+            ? applyStudentPlanSelection(student, paymentOptionType)
+            : { ...student, paymentOptionType };
         }
 
-        const matchingPlan = getMatchingPlans(student.classId, { ...student, paymentOptionType }).find((plan) => plan.paymentOptionType === paymentOptionType);
-        return {
-          ...student,
-          paymentOptionType,
-          annualFee: paymentOptionType === "SPECIAL_OWNER_AGREEMENT"
-            ? ""
-            : matchingPlan ? formatAmountInput(matchingPlan.finalAmount) : student.annualFee
-        };
+        return applyStudentPlanSelection(student, paymentOptionType);
       });
 
       return { ...current, defaultPaymentOptionType: paymentOptionType, students };
     });
+    if (paymentOptionType === "SPECIAL_OWNER_AGREEMENT" && form.students.length > 0) {
+      const firstTarget = form.students.findIndex((student) => student.paymentOptionType === "SPECIAL_OWNER_AGREEMENT" || !student.paymentOptionType);
+      setSpecialAgreementTarget(firstTarget >= 0 ? firstTarget : 0);
+    }
+  };
+
+  const moveToNextSpecialAgreementTarget = (currentIndex: number) => {
+    const nextIndex = form.students.findIndex((student, index) => index > currentIndex && student.paymentOptionType === "SPECIAL_OWNER_AGREEMENT");
+    setSpecialAgreementTarget(nextIndex >= 0 ? nextIndex : null);
   };
 
   const addStudent = () => setForm((f) => ({
     ...f,
-    students: [...f.students, { ...EMPTY_STUDENT, paymentOptionType: f.defaultPaymentOptionType }]
+    students: [
+      ...f.students,
+      {
+        ...EMPTY_STUDENT,
+        paymentOptionType: f.defaultPaymentOptionType,
+        specialAgreement: f.defaultPaymentOptionType === "SPECIAL_OWNER_AGREEMENT" ? { ...EMPTY_SPECIAL_AGREEMENT } : undefined
+      }
+    ]
   }));
   const removeStudent = (idx: number) => setForm((f) => ({ ...f, students: f.students.filter((_, i) => i !== idx) }));
 
@@ -1648,9 +1802,14 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
     if (!form.phone.trim()) e.phone = t("pmRequired");
     form.students.forEach((student, idx) => {
       if (student.paymentOptionType === "SPECIAL_OWNER_AGREEMENT") {
-        const amount = Number.parseFloat(student.annualFee);
+        const agreement = normalizeSpecialAgreementDraft(student);
+        const amount = parseAmount(agreement.customTotal);
+        const reductionAmount = parseAmount(agreement.reductionAmount);
         if (!Number.isFinite(amount) || amount <= 0) {
-          e[`studentAnnualFee-${idx}`] = "Pour l'accord spécial, le montant doit être saisi manuellement par le financier.";
+          e[`studentAnnualFee-${idx}`] = "Pour l'accord spécial, le montant convenu doit être saisi dans la boîte de dialogue.";
+        }
+        if (reductionAmount < 0 || reductionAmount > amount) {
+          e[`studentAnnualFee-${idx}`] = "La réduction spéciale doit rester comprise entre 0 et le montant convenu.";
         }
       }
     });
@@ -1661,7 +1820,26 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
     setSaving(true);
-    await onSave(form, initial?.id);
+    const normalizedForm: FormState = {
+      ...form,
+      students: form.students.map((student) => {
+        if (student.paymentOptionType !== "SPECIAL_OWNER_AGREEMENT") {
+          return { ...student, specialAgreement: undefined };
+        }
+
+        const specialAgreement = normalizeSpecialAgreementDraft(student);
+        return {
+          ...student,
+          annualFee: specialAgreement.customTotal,
+          specialAgreement: {
+            ...specialAgreement,
+            title: specialAgreement.title.trim(),
+            notes: specialAgreement.notes.trim()
+          }
+        };
+      })
+    };
+    await onSave(normalizedForm, initial?.id);
     setSaving(false);
   };
 
@@ -1788,7 +1966,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
           <div className="flex flex-col gap-1">
             <p className="text-sm font-bold uppercase tracking-[0.08em] text-white">Plan de scolarité du parent</p>
             <p className="text-xs text-cyan-100/80">
-              Choisissez l'un des 5 plans. Les 4 plans officiels gardent leur montant automatique selon la classe. Le 5e plan d'accord spécial parent-école reste manuel: le financier doit saisir lui-même le montant convenu.
+              Choisissez l'un des 5 plans. Les 4 plans officiels gardent leur montant automatique selon la classe. Le 5e plan ouvre une fiche dédiée pour saisir l'accord spécial de chaque enfant.
             </p>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -1813,7 +1991,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                         {optionType === "TWO_INSTALLMENTS" && "Deux grandes tranches avec réduction partielle."}
                         {optionType === "THREE_INSTALLMENTS" && "Trois tranches et remise légère."}
                         {optionType === "STANDARD_MONTHLY" && "Plan mensuel standard sans réduction."}
-                        {optionType === "SPECIAL_OWNER_AGREEMENT" && "Accord spécial parent-école: montant non prérempli, à fixer manuellement par le financier."}
+                        {optionType === "SPECIAL_OWNER_AGREEMENT" && "Accord spécial parent-école: une boîte de dialogue dédiée s'ouvre pour définir le montant, la remise et l'échéancier."}
                       </span>
                     </span>
                     <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${selected ? "bg-cyan-200 text-slate-950" : "bg-white/10 text-ink-dim"}`}>
@@ -1843,7 +2021,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="text-sm font-bold text-white">Élève {idx + 1}</p>
-                  <p className="text-xs leading-relaxed text-ink-dim">Choisissez une classe puis un plan adapté. Les plans officiels remplissent le montant automatiquement; l'accord spécial parent-école doit être saisi manuellement.</p>
+                  <p className="text-xs leading-relaxed text-ink-dim">Choisissez une classe puis un plan adapté. Les plans officiels remplissent le montant automatiquement; l'accord spécial parent-école se configure dans sa propre fiche.</p>
                 </div>
                 <button type="button" onClick={() => removeStudent(idx)}
                   className="p-2 rounded-lg bg-danger/20 border border-danger/40 text-danger hover:bg-danger/30 transition-all active:scale-95">
@@ -1885,9 +2063,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                   <select value={st.paymentOptionType} onChange={(e) => updateStudentPlan(idx, e.target.value)} className="w-full">
                     {getMatchingPlans(st.classId, st).length > 0 ? getMatchingPlans(st.classId, st).map((plan) => (
                       <option key={`${plan.gradeGroup}-${plan.paymentOptionType}`} value={plan.paymentOptionType}>
-                        {plan.paymentOptionType === "SPECIAL_OWNER_AGREEMENT"
-                          ? `${getPaymentOptionLabel(plan.paymentOptionType)} - montant à saisir`
-                          : `${getPaymentOptionLabel(plan.paymentOptionType)} - ${formatMoney(plan.finalAmount)}`}
+                        {getPaymentOptionSelectLabel(plan)}
                       </option>
                     )) : TUITION_OPTION_ORDER.map((value) => (
                       <option key={value} value={value}>{getPaymentOptionLabel(value)}</option>
@@ -1898,13 +2074,56 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                       ? `Segment : ${GRADE_GROUP_LABELS[resolveGradeGroup(getClassName(st.classId))] || "À définir"}`
                       : "Sélectionnez d'abord la classe de l'enfant pour filtrer les plans compatibles."}
                   </p>
+                  {st.paymentOptionType === "SPECIAL_OWNER_AGREEMENT" && (
+                    <p className="text-[11px] leading-relaxed text-amber-100/90">Option 5 sélectionnée : la configuration détaillée s'ouvre dans une fenêtre dédiée afin d'éviter les libellés trop longs dans la liste.</p>
+                  )}
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-ink-dim">{t("pmAnnualFee")} (USD)</label>
-                  <input type="number" value={st.annualFee} onChange={(e) => setStudent(idx, "annualFee", e.target.value)} className="w-full" placeholder="500" />
-                  <p className="text-[11px] leading-relaxed text-ink-dim">{st.paymentOptionType === "SPECIAL_OWNER_AGREEMENT" ? "Montant à saisir manuellement selon l'accord conclu entre l'école et la famille." : "Montant pré-rempli depuis le plan choisi, modifiable si nécessaire."}</p>
-                  {errors[`studentAnnualFee-${idx}`] && <p className="text-xs text-danger">{errors[`studentAnnualFee-${idx}`]}</p>}
-                </div>
+                {st.paymentOptionType === "SPECIAL_OWNER_AGREEMENT" ? (
+                  <div className="space-y-2 rounded-2xl border border-amber-400/20 bg-amber-500/10 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-bold text-white">Fiche d'accord spécial</p>
+                        <p className="mt-1 text-[11px] leading-relaxed text-amber-100/90">
+                          Définissez ici le montant convenu, le nom du plan spécial, la remise éventuelle et le rythme de paiement pour cet enfant.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => openSpecialAgreementDialog(idx)}
+                        className="shrink-0 self-start whitespace-nowrap rounded-lg border border-amber-300/40 bg-amber-400/10 px-3 py-2 text-xs font-bold text-amber-100 transition-colors hover:bg-amber-400/20"
+                      >
+                        Configurer
+                      </button>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <div className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Montant convenu</p>
+                        <p className="mt-1 text-sm font-black text-white">
+                          {parseAmount(normalizeSpecialAgreementDraft(st).customTotal) > 0 ? formatMoney(parseAmount(normalizeSpecialAgreementDraft(st).customTotal)) : "À définir"}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Réduction spéciale</p>
+                        <p className="mt-1 text-sm font-black text-emerald-300">{formatMoney(parseAmount(normalizeSpecialAgreementDraft(st).reductionAmount))}</p>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Cadence</p>
+                        <p className="mt-1 text-sm font-black text-cyan-200">
+                          {normalizeSpecialAgreementDraft(st).installmentMode === "ONE_TIME" ? "Versement unique" : normalizeSpecialAgreementDraft(st).installmentMode === "TWO_INSTALLMENTS" ? "2 tranches" : "3 tranches"}
+                        </p>
+                      </div>
+                    </div>
+                    <p className="text-[11px] leading-relaxed text-amber-100/90">{normalizeSpecialAgreementDraft(st).title || "Accord spécial parent-école"}</p>
+                    {errors[`studentAnnualFee-${idx}`] && <p className="text-xs text-danger">{errors[`studentAnnualFee-${idx}`]}</p>}
+                  </div>
+                ) : (
+                  <div className="space-y-1">
+                    <label className="text-xs text-ink-dim">{t("pmAnnualFee")} (USD)</label>
+                    <input type="number" value={st.annualFee} onChange={(e) => setStudent(idx, "annualFee", e.target.value)} className="w-full" placeholder="500" />
+                    <p className="text-[11px] leading-relaxed text-ink-dim">Montant pré-rempli depuis le plan choisi, modifiable si nécessaire.</p>
+                    {errors[`studentAnnualFee-${idx}`] && <p className="text-xs text-danger">{errors[`studentAnnualFee-${idx}`]}</p>}
+                  </div>
+                )}
               </div>
 
               {(() => {
@@ -1939,7 +2158,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                             <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                               <div className="min-w-0">
                                 <p className="break-words text-sm font-black leading-snug text-white">{getPaymentOptionLabel(plan.paymentOptionType)}</p>
-                                <p className="mt-1 break-words text-[11px] leading-relaxed text-ink-dim">{plan.paymentOptionType === "SPECIAL_OWNER_AGREEMENT" ? "Accord spécial parent-école: le montant et l'entente sont saisis manuellement par le financier, sans pré-remplissage automatique." : plan.name}</p>
+                                <p className="mt-1 break-words text-[11px] leading-relaxed text-ink-dim">{plan.paymentOptionType === "SPECIAL_OWNER_AGREEMENT" ? "Accord spécial parent-école: ouvrez la fiche dédiée pour définir le montant, la réduction et l'échéancier propres à cet enfant." : plan.name}</p>
                               </div>
                               <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] ${isActive ? "bg-brand-300 text-slate-950" : "bg-white/10 text-ink-dim"}`}>
                                 {isActive ? "Choisi" : "Choisir"}
@@ -1982,7 +2201,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
                               </div>
                             ) : plan.paymentOptionType === "SPECIAL_OWNER_AGREEMENT" ? (
                               <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
-                                Le montant étant manuel, l'échéancier détaillé apparaîtra après saisie du montant convenu par le financier.
+                                La fiche dédiée de l'accord spécial génère automatiquement l'échéancier détaillé après saisie du montant convenu.
                               </div>
                             ) : null}
                           </button>
@@ -2043,6 +2262,145 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
             ) : t("pmSave")}
           </button>
         </div>
+
+        {specialAgreementTarget !== null && form.students[specialAgreementTarget] && typeof document !== "undefined" && createPortal(
+          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+            <button type="button" className="absolute inset-0 cursor-default" onClick={() => setSpecialAgreementTarget(null)} aria-label="Fermer la boîte de dialogue de l'accord spécial" />
+            <div className="edupay-scrollbar relative max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-amber-300/20 bg-slate-950/95 p-5 shadow-2xl sm:p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-200">Accord spécial parent-école</p>
+                  <h3 className="mt-2 font-display text-2xl font-bold text-white">{form.students[specialAgreementTarget].fullName || `Élève ${specialAgreementTarget + 1}`}</h3>
+                  <p className="mt-2 text-sm text-ink-dim">Saisissez ici les détails spécifiques de l'accord: total convenu, nom du plan, remise éventuelle et structure de paiement.</p>
+                </div>
+                <button type="button" onClick={() => setSpecialAgreementTarget(null)} className="text-ink-dim hover:text-white transition-colors">
+                  <XIcon />
+                </button>
+              </div>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-dim">Nom du plan spécial</label>
+                  <input
+                    value={normalizeSpecialAgreementDraft(form.students[specialAgreementTarget]).title}
+                    onChange={(event) => setStudentSpecialAgreement(specialAgreementTarget, "title", event.target.value)}
+                    className="w-full"
+                    placeholder="Accord spécial parent-école"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-dim">Montant convenu (USD)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={normalizeSpecialAgreementDraft(form.students[specialAgreementTarget]).customTotal}
+                    onChange={(event) => setStudentSpecialAgreement(specialAgreementTarget, "customTotal", event.target.value)}
+                    className="w-full"
+                    placeholder="650"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-dim">Réduction spéciale (USD)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={normalizeSpecialAgreementDraft(form.students[specialAgreementTarget]).reductionAmount}
+                    onChange={(event) => setStudentSpecialAgreement(specialAgreementTarget, "reductionAmount", event.target.value)}
+                    className="w-full"
+                    placeholder="0"
+                  />
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-dim">Cadence de paiement</label>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {[
+                      { value: "ONE_TIME", label: "Versement unique", detail: "Un seul règlement avant la rentrée" },
+                      { value: "TWO_INSTALLMENTS", label: "2 tranches", detail: "Répartition début et milieu d'année" },
+                      { value: "THREE_INSTALLMENTS", label: "3 tranches", detail: "Cadence recommandée pour un accord manuel" }
+                    ].map((option) => {
+                      const selected = normalizeSpecialAgreementDraft(form.students[specialAgreementTarget]).installmentMode === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => setStudentSpecialAgreement(specialAgreementTarget, "installmentMode", option.value)}
+                          className={`rounded-2xl border px-4 py-3 text-left transition-all ${selected ? "border-amber-300 bg-amber-400/15 text-white" : "border-white/10 bg-slate-900/60 text-ink-dim hover:border-amber-300/40 hover:text-white"}`}
+                        >
+                          <span className="block text-sm font-black">{option.label}</span>
+                          <span className="mt-1 block text-[11px] leading-relaxed">{option.detail}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="space-y-1 md:col-span-2">
+                  <label className="text-xs font-semibold uppercase tracking-[0.12em] text-ink-dim">Notes internes</label>
+                  <textarea
+                    value={normalizeSpecialAgreementDraft(form.students[specialAgreementTarget]).notes}
+                    onChange={(event) => setStudentSpecialAgreement(specialAgreementTarget, "notes", event.target.value)}
+                    className="min-h-24 w-full"
+                    placeholder="Ex: accord approuvé par la direction, parent en mission, échéancier dérogatoire..."
+                  />
+                </div>
+              </div>
+
+              {(() => {
+                const student = form.students[specialAgreementTarget];
+                const draft = normalizeSpecialAgreementDraft(student);
+                const total = parseAmount(draft.customTotal);
+                const reduction = parseAmount(draft.reductionAmount);
+                const balance = roundCurrency(Math.max(total - reduction, 0));
+                const previewSchedule = buildAgreementSchedule(total, reduction, draft.installmentMode);
+
+                return (
+                  <div className="mt-5 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Montant convenu</p>
+                        <p className="mt-1 text-lg font-black text-white">{formatMoney(total)}</p>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Réduction retenue</p>
+                        <p className="mt-1 text-lg font-black text-emerald-300">{formatMoney(reduction)}</p>
+                      </div>
+                      <div className="rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2">
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Net à payer</p>
+                        <p className="mt-1 text-lg font-black text-cyan-200">{formatMoney(balance)}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 space-y-2">
+                      <p className="text-[11px] font-black uppercase tracking-[0.16em] text-cyan-100/80">Aperçu de l'échéancier</p>
+                      {previewSchedule.length > 0 ? previewSchedule.map((row, scheduleIdx) => (
+                        <div key={`special-preview-${scheduleIdx}`} className="flex flex-col gap-2 rounded-xl border border-white/10 bg-slate-950/40 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-white">{row.label}</p>
+                            <p className="text-[11px] text-cyan-100/75">{getScheduleCaption(row)}</p>
+                          </div>
+                          <p className="text-sm font-black text-cyan-200">{formatMoney(row.amount)}</p>
+                        </div>
+                      )) : (
+                        <p className="text-sm text-ink-dim">Le montant convenu doit être renseigné pour générer l'échéancier.</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {errors[`studentAnnualFee-${specialAgreementTarget}`] && <p className="mt-3 text-sm text-danger">{errors[`studentAnnualFee-${specialAgreementTarget}`]}</p>}
+
+              <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+                <button type="button" onClick={() => setSpecialAgreementTarget(null)} className="flex-1 rounded-lg border border-slate-600 px-4 py-3 text-sm font-semibold text-ink-dim hover:text-white">
+                  Fermer
+                </button>
+                <button type="button" onClick={() => moveToNextSpecialAgreementTarget(specialAgreementTarget)} className="flex-1 rounded-lg bg-gradient-to-r from-amber-500 to-orange-400 px-4 py-3 text-sm font-bold text-slate-950">
+                  Valider l'accord spécial
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
       </div>
     </div>
   );

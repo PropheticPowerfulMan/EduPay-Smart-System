@@ -8,6 +8,7 @@ import { api } from "../services/api";
 import { buildReceiptAllocationSnapshot } from "../utils/receiptAllocation";
 import { buildReceiptVerificationQrUrl, buildReceiptVerificationUrl } from "../utils/receiptVerification";
 import { exportWorkbook } from "../utils/financeExcel";
+import { printHtmlDocument } from "../utils/printDocument";
 
 /* --- Transaction number generator ---------------------------------------- */
 function generateTxNumber(): string {
@@ -172,7 +173,17 @@ function buildReceiptQrPayload(r: PaymentRecord): string {
   return buildReceiptVerificationQrUrl(r);
 }
 
+const receiptQrMarkupCache = new Map<string, string>();
+
+function getReceiptQrCacheKey(r: PaymentRecord) {
+  return `${r.id}:${r.transactionNumber}:${r.status}:${roundMoney(r.amount).toFixed(5)}`;
+}
+
 async function generateReceiptQrSvgMarkup(r: PaymentRecord): Promise<string> {
+  const cacheKey = getReceiptQrCacheKey(r);
+  const cachedMarkup = receiptQrMarkupCache.get(cacheKey);
+  if (cachedMarkup) return cachedMarkup;
+
   const payload = buildReceiptQrPayload(r);
   const svg = await QRCode.toString(payload, {
     type: "svg",
@@ -185,12 +196,15 @@ async function generateReceiptQrSvgMarkup(r: PaymentRecord): Promise<string> {
     }
   });
 
-  return svg
+  const markup = svg
     .replace(/<\?xml[^>]*\?>\s*/i, "")
     .replace(
       "<svg ",
       '<svg xmlns="http://www.w3.org/2000/svg" role="img" aria-label="QR code de transaction EduPay" preserveAspectRatio="xMidYMid meet" style="display:block;width:100%;height:100%;max-width:100%;max-height:100%;" '
     );
+
+  receiptQrMarkupCache.set(cacheKey, markup);
+  return markup;
 }
 
 function analyzeReceiptRisk(r: Pick<PaymentRecord, "parentFullName" | "paymentSubjectName" | "studentNames" | "reason" | "amount" | "status" | "method">) {
@@ -270,6 +284,18 @@ function getReceiptLayoutMode(r: PaymentRecord) {
     + Math.ceil(r.amountWords.trim().length / 55)
     + allocationRows * 2
     + bankRows;
+
+  if (r.method === "BANK_TRANSFER" && (allocationRows >= 3 || bankRows >= 4) && densityScore >= 10) {
+    return {
+      mode: "ultra-dense",
+      scale: 0.84,
+      bodyFontSize: 7.95,
+      qrSize: 20,
+      compactReason: summarizeReceiptText(r.reason, 100),
+      compactAmountWords: summarizeReceiptText(r.amountWords, 120),
+      detailNote: "Version dense pour virement bancaire: le detail complet reste consultable dans EduPay avec le QR et le numero de transaction."
+    };
+  }
 
   if (densityScore >= 12) {
     return {
@@ -351,7 +377,9 @@ function getReceiptPrintFonts(): ReceiptPrintFonts {
 async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string> {
   const fonts = getReceiptPrintFonts();
   const layout = getReceiptLayoutMode(r);
+  const compactAllocation = r.method === "BANK_TRANSFER" || layout.mode !== "standard";
   const parentCaption = getPaymentParentCaption(r);
+  const logoSrc = escapeHtml(new URL(schoolBranding.logoSrc, window.location.href).toString());
   const safe = {
     tx: escapeHtml(r.transactionNumber),
     date: escapeHtml(r.date),
@@ -366,7 +394,7 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
     shortName: escapeHtml(schoolBranding.shortName),
     appName: escapeHtml(schoolBranding.appName),
     tagline: escapeHtml(schoolBranding.tagline),
-    logoSrc: escapeHtml(schoolBranding.logoSrc),
+    logoSrc,
     detailNote: escapeHtml(layout.detailNote)
   };
   const security = buildReceiptSecurity(r);
@@ -377,29 +405,43 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
     ? `<div class="value-sub"><span class="value-sub-badge">Parent concerne</span><span>${safe.parentCaption}</span></div>`
     : "";
   const allocationSnapshot = r.tuitionAllocationSummary
-    ? buildReceiptAllocationSnapshot(r.tuitionAllocationSummary)
+    ? buildReceiptAllocationSnapshot(r.tuitionAllocationSummary, {
+        maxVisibleChildren: compactAllocation ? (layout.mode === "ultra-dense" ? 2 : 3) : 4,
+        maxVisibleMetrics: compactAllocation ? 2 : 4
+      })
     : null;
+  const allocationBodyHtml = allocationSnapshot
+    ? compactAllocation
+      ? `<div class="allocation-list">${allocationSnapshot.perChild.map((child) => `<div class="allocation-item">
+            <div class="allocation-item-head">
+              <strong>${escapeHtml(child.studentName)}</strong>
+              <span>$ ${formatMoney(child.allocated)}</span>
+            </div>
+            <div class="allocation-item-sub">Reste à couvrir : $ ${formatMoney(child.remaining)}</div>
+          </div>`).join("")}</div>`
+      : `<table>
+          <thead><tr><th>Bénéficiaire</th><th>Montant imputé</th><th>Solde restant</th></tr></thead>
+          <tbody>${allocationSnapshot.perChild.map((child) => `<tr>
+            <td>${escapeHtml(child.studentName)}</td>
+            <td>$ ${formatMoney(child.allocated)}</td>
+            <td>$ ${formatMoney(child.remaining)}</td>
+          </tr>`).join("")}</tbody>
+        </table>`
+    : "";
   const allocationSummaryHtml = allocationSnapshot
-    ? `<div class="allocation">
+    ? `<div class="allocation ${compactAllocation ? "compact" : ""}">
         <div class="allocation-head">
           <div class="allocation-title">Ventilation du paiement</div>
           <div class="allocation-pill">${escapeHtml(allocationSnapshot.modeLabel)}</div>
         </div>
         <div class="allocation-metrics">${allocationSnapshot.metrics.map((metric) => `<div class="allocation-metric"><span>${escapeHtml(metric.label)}</span><strong>$ ${formatMoney(metric.amount)}</strong></div>`).join("")}</div>
         <div class="allocation-note">${escapeHtml(allocationSnapshot.statusNote)}</div>
-        <table>
-          <thead><tr><th>Beneficiaire</th><th>Montant impute</th><th>Solde restant</th></tr></thead>
-          <tbody>${allocationSnapshot.perChild.map((child) => `<tr>
-            <td>${escapeHtml(child.studentName)}</td>
-            <td>$ ${formatMoney(child.allocated)}</td>
-            <td>$ ${formatMoney(child.remaining)}</td>
-          </tr>`).join("")}</tbody>
-        </table>
-        ${allocationSnapshot.overflowChildCount > 0 ? `<div class="allocation-overflow">+ ${allocationSnapshot.overflowChildCount} autre(s) dossier(s) figurent dans le detail complet.</div>` : ""}
+        ${allocationBodyHtml}
+        ${allocationSnapshot.overflowChildCount > 0 ? `<div class="allocation-overflow">+ ${allocationSnapshot.overflowChildCount} autre(s) dossier(s) figurent dans le detail complet EduPay.</div>` : ""}
       </div>`
     : "";
   const bankTransferHtml = r.method === "BANK_TRANSFER" && r.bankTransferDetails
-    ? `<div class="allocation">
+    ? `<div class="allocation compact allocation-bank">
         <div class="allocation-head">
           <div class="allocation-title">Détails du virement bancaire</div>
           <div class="allocation-pill">Virement</div>
@@ -415,7 +457,6 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
   <meta charset="UTF-8"/>
   <title>Reçu ${safe.tx}</title>
   <style>
-    @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,500;1,700&family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,500&family=IBM+Plex+Mono:wght@400;500;600;700&family=Manrope:wght@300;400;500;600;700;800&family=Sora:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap");
     @page { size: A5 landscape; margin: 3mm; }
     * { margin:0; padding:0; box-sizing:border-box; }
     body { font-family: ${fonts.body}; font-weight:${fonts.bodyWeight}; letter-spacing:${fonts.bodyLetterSpacing}; color:#101827; background:#fff; font-size:${layout.bodyFontSize}px; }
@@ -460,7 +501,7 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
     .stamp { align-items:center; justify-content:center; text-align:center; border-style:solid; }
     .stamp-circle { width:17mm; height:17mm; border:1px dashed #123047; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:auto; background:#fff; color:#94a3b8; font-size:5.8px; font-weight:800; text-transform:uppercase; letter-spacing:.45px; }
     .warning { margin-top:2.2mm; border-left:2.4px solid #b45309; background:#fffbeb; color:#78350f; padding:1.35mm; font-size:6.7px; }
-    .allocation { position:relative; margin-top:2.2mm; border:1px solid #cbd5e1; background:#f8fafc; padding:1.8mm; }
+    .allocation { position:relative; margin-top:1.8mm; border:1px solid #cbd5e1; background:#f8fafc; padding:1.5mm; }
     .allocation-head { display:flex; align-items:center; justify-content:space-between; gap:2mm; }
     .allocation-title { font-size:7px; font-weight:900; color:#123047; text-transform:uppercase; letter-spacing:.7px; }
     .allocation-pill { border:1px solid rgba(18,48,71,.18); border-radius:999px; padding:.45mm 1.6mm; background:#fff; color:#123047; font-size:6.2px; font-weight:900; text-transform:uppercase; letter-spacing:.45px; }
@@ -472,6 +513,23 @@ async function buildReceiptHtml(r: PaymentRecord, lang: string): Promise<string>
     .allocation th, .allocation td { border-top:1px solid #e2e8f0; padding:.8mm; text-align:left; vertical-align:top; }
     .allocation th { color:#475569; text-transform:uppercase; letter-spacing:.45px; }
     .allocation-overflow { margin-top:.8mm; font-size:6px; font-weight:700; color:#64748b; }
+    .allocation.compact { margin-top:1.5mm; padding:1.2mm; }
+    .allocation.compact .allocation-title { font-size:6.4px; }
+    .allocation.compact .allocation-pill { padding:.35mm 1.3mm; font-size:5.7px; }
+    .allocation.compact .allocation-metrics { margin-top:.7mm; gap:.7mm; }
+    .allocation.compact .allocation-metric { padding:.6mm .9mm; font-size:5.8px; }
+    .allocation.compact .allocation-metric strong { font-size:6.1px; }
+    .allocation.compact .allocation-note { margin-top:.7mm; font-size:5.8px; line-height:1.22; }
+    .allocation.compact table { margin-top:.7mm; font-size:5.8px; }
+    .allocation.compact th, .allocation.compact td { padding:.55mm .65mm; }
+    .allocation-list { display:grid; gap:.75mm; margin-top:.8mm; }
+    .allocation-item { border:1px solid #dbe4ef; background:#fff; padding:.75mm .95mm; }
+    .allocation-item-head { display:flex; align-items:center; justify-content:space-between; gap:1mm; font-size:5.95px; color:#123047; }
+    .allocation-item-head strong { min-width:0; flex:1; }
+    .allocation-item-head span { font-family:${fonts.mono}; font-weight:900; white-space:nowrap; }
+    .allocation-item-sub { margin-top:.4mm; font-size:5.55px; color:#475569; }
+    .allocation-bank table { table-layout:fixed; }
+    .allocation-bank th { width:33%; }
     .compact-note { margin-top:1.2mm; font-size:6px; font-weight:700; line-height:1.35; color:#64748b; }
     .footer { margin-top:2.4mm; display:flex; justify-content:space-between; color:#64748b; font-size:6.8px; border-top:1px solid #dbe4ef; padding-top:1.2mm; gap:2mm; }
     @media print { html, body { width:210mm; height:148mm; overflow:hidden; } body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } .sheet, .receipt { margin:0; page-break-inside:avoid; break-inside:avoid; } }
@@ -673,12 +731,14 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string, scope
     CANCELLED: "Annulé"
   };
 
+  const generatedAt = new Date();
+  const documentReference = plainPrintText(`KCS-PAY-${generatedAt.toISOString().slice(0, 10)}-${String(filtered.length).padStart(4, "0")}`);
   const brand = {
     schoolName: plainPrintText(schoolBranding.schoolName),
     shortName: plainPrintText(schoolBranding.shortName),
     appName: plainPrintText(schoolBranding.appName),
     tagline: plainPrintText(schoolBranding.tagline),
-    logoSrc: escapeHtml(schoolBranding.logoSrc)
+    logoSrc: escapeHtml(new URL(schoolBranding.logoSrc, window.location.href).toString())
   };
 
   const byMethod = activePayments.reduce<Record<string, number>>((acc, p) => {
@@ -808,6 +868,57 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string, scope
       padding:4px;
       margin-right:14px;
     }
+    .topbar {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      padding-bottom:10px;
+      color:#64748b;
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:0.16em;
+    }
+    .topbar strong { color:#1e3a5f; }
+    .compliance {
+      margin-top:18px;
+      border:1px solid rgba(15,118,110,0.2);
+      border-left:5px solid #0f766e;
+      border-radius:14px;
+      background:rgba(240,253,250,0.96);
+      padding:12px 14px;
+      color:#134e4a;
+      font-size:11px;
+      line-height:1.5;
+    }
+    .signatures {
+      margin-top:16px;
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:16px;
+    }
+    .signature-box {
+      min-height:82px;
+      border:1px dashed rgba(30,58,95,0.24);
+      border-radius:14px;
+      background:rgba(255,255,255,0.88);
+      padding:12px;
+    }
+    .signature-title {
+      font-size:10px;
+      text-transform:uppercase;
+      letter-spacing:0.14em;
+      font-weight:800;
+      color:#64748b;
+    }
+    .signature-line {
+      margin-top:38px;
+      border-top:1px solid rgba(30,58,95,0.24);
+      padding-top:6px;
+      font-size:11px;
+      color:#1e3a5f;
+      font-weight:700;
+    }
     @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
   </style>
 </head>
@@ -817,6 +928,10 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string, scope
     <img class="watermark-logo" src="${brand.logoSrc}" alt=""/>
   </div>
   <div class="page-shell">
+    <div class="topbar">
+      <span><strong>${brand.shortName}</strong> · état officiel des paiements</span>
+      <span>Référence ${documentReference}</span>
+    </div>
     <div style="display:flex; justify-content:space-between; align-items:flex-start; border-bottom:3px double #1e3a5f; padding-bottom:14px; margin-bottom:20px;">
       <div style="display:flex; align-items:center;">
         <img class="header-logo" src="${brand.logoSrc}" alt="Logo ${brand.schoolName}"/>
@@ -828,8 +943,8 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string, scope
       </div>
       <div style="text-align:right;">
         <div style="font-size:11px; color:#64748b">Imprime le</div>
-        <div style="font-weight:bold; font-size:13px">${new Date().toLocaleDateString("fr-FR")}</div>
-        <div style="font-size:11px; color:#64748b">${new Date().toLocaleTimeString("fr-FR")}</div>
+        <div style="font-weight:bold; font-size:13px">${generatedAt.toLocaleDateString("fr-FR")}</div>
+        <div style="font-size:11px; color:#64748b">${generatedAt.toLocaleTimeString("fr-FR")}</div>
       </div>
     </div>
 
@@ -877,9 +992,22 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string, scope
       <span style="font-size:14px; font-weight:bold; text-transform:uppercase; letter-spacing:1px;">TOTAL GENERAL (USD)</span>
       <span style="font-size:22px; font-weight:bold; font-family:monospace; color:#1e3a5f;">$ ${formatMoney(grandTotal)}</span>
     </div>
+    <div class="compliance">
+      Ce document reprend l'état filtré des paiements visible dans EduPay. Il est émis selon la charte ${brand.shortName}, avec identité de l'établissement, logo en en-tête et filigrane pour archivage administratif.
+    </div>
+    <div class="signatures">
+      <div class="signature-box">
+        <div class="signature-title">Validation comptable</div>
+        <div class="signature-line">Service financier</div>
+      </div>
+      <div class="signature-box">
+        <div class="signature-title">Visa de direction</div>
+        <div class="signature-line">Direction de l'établissement</div>
+      </div>
+    </div>
     <div style="margin-top:28px; text-align:center; font-size:10px; color:#94a3b8; border-top:1px solid #e2e8f0; padding-top:14px;">
       Document généré officiellement par <strong>${brand.appName}</strong> pour <strong>${brand.schoolName}</strong> -
-      ${new Date().toLocaleString("fr-FR")}
+      ${generatedAt.toLocaleString("fr-FR")}
     </div>
   </div>
 </body>
@@ -888,33 +1016,12 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string, scope
 
 /* --- Ouverture popup + impression ---------------------------------------- */
 function printHtml(html: string) {
-  const popup = window.open("", "_blank", "width=900,height=1200");
-  if (!popup) return;
-  popup.document.write(html);
-  popup.document.close();
-
-  const triggerPrint = () => {
-    popup.focus();
-    popup.print();
-  };
-
-  popup.addEventListener("load", () => {
-    const fontsReady = popup.document.fonts?.ready;
-    if (fontsReady) {
-      fontsReady
-        .catch(() => undefined)
-        .finally(() => {
-          window.setTimeout(triggerPrint, 150);
-        });
-      return;
-    }
-
-    window.setTimeout(triggerPrint, 300);
-  }, { once: true });
+  printHtmlDocument(html);
 }
 
 async function printReceiptDocument(payment: PaymentRecord, lang: string) {
-  printHtml(await buildReceiptHtml(payment, lang));
+  const html = await buildReceiptHtml(payment, lang);
+  printHtml(html);
   await api(`/api/payments/${payment.id}/receipt/printed`, { method: "POST" }).catch((error) => {
     console.warn("Receipt print notification failed", error);
   });
@@ -1156,8 +1263,8 @@ type TuitionEngineResponse = {
 function getDueBucketLabel(bucket: string): string {
   const labels: Record<string, string> = {
     OVERDUE: "Retard",
-    CURRENT: "Echeance actuelle",
-    FUTURE: "Echeance future"
+    CURRENT: "Échéance actuelle",
+    FUTURE: "Échéance future"
   };
   return labels[bucket] ?? bucket;
 }
@@ -1195,7 +1302,7 @@ function buildAllocationNarrative(preview: TuitionAllocationPreview, mode: Alloc
   if (mode === "MANUAL") {
     return [
       `Le financier a choisi la répartition manuelle pour ${fmtUsd(preview.totalReceived)}.`,
-      `Le système contrôle que le total réparti est égal au paiement reçu : ${fmtUsd(preview.allocatedTotal)} appliqué.`,
+      `Le système contrôle que le total réparti est égal au paiement reçu : ${fmtUsd(preview.allocatedTotal)} imputé.`,
       preview.missingAmount > 0
         ? `Il reste ${fmtUsd(preview.missingAmount)} non couvert sur les échéances sélectionnées.`
         : "Toutes les lignes couvertes par cette répartition sont soldées."
@@ -1552,7 +1659,7 @@ function ReceiptA5Preview({ receipt, compact = false }: { receipt: PaymentRecord
                     <div key={child.studentName} className="rounded-md border border-slate-200 bg-white p-2 text-[11px]">
                       <div className="flex justify-between gap-3 font-bold text-slate-900">
                         <span>{child.studentName}</span>
-                        <span>Impute $ {formatMoney(child.allocated)} - Solde $ {formatMoney(child.remaining)}</span>
+                        <span>Imputé $ {formatMoney(child.allocated)} - Solde $ {formatMoney(child.remaining)}</span>
                       </div>
                     </div>
                   ))}
@@ -1651,6 +1758,10 @@ export function PaymentsPage() {
   const [filterMethod, setFilterMethod]     = useState("ALL");
   const [historyDateFrom, setHistoryDateFrom] = useState("");
   const [historyDateTo, setHistoryDateTo] = useState("");
+  const [historyNotificationPanelOpen, setHistoryNotificationPanelOpen] = useState(false);
+  const [receiptPrintingId, setReceiptPrintingId] = useState<string | null>(null);
+  const [historyPrintBusy, setHistoryPrintBusy] = useState(false);
+  const [historyExcelBusy, setHistoryExcelBusy] = useState(false);
   // État
   const [reportSearch, setReportSearch]     = useState("");
 
@@ -1726,6 +1837,34 @@ export function PaymentsPage() {
     cancelled: payments.filter((p) => p.status === "CANCELLED").reduce((s, p) => s + p.amount, 0),
     count:     payments.length,
   }), [payments]);
+
+  const triggerReceiptPrint = (payment: PaymentRecord) => {
+    setReceiptPrintingId(payment.id);
+    void printReceiptDocument(payment, lang)
+      .finally(() => {
+        window.setTimeout(() => {
+          setReceiptPrintingId((current) => current === payment.id ? null : current);
+        }, 900);
+      });
+  };
+
+  const triggerHistoryPrint = () => {
+    setHistoryPrintBusy(true);
+    try {
+      printHtml(buildReportHtml(filteredPayments, undefined, historyExportScope));
+    } finally {
+      window.setTimeout(() => setHistoryPrintBusy(false), 900);
+    }
+  };
+
+  const triggerHistoryExcel = () => {
+    setHistoryExcelBusy(true);
+    try {
+      exportPaymentsExcel(buildPaymentExportFilename("historique-paiements", historyExportScope), filteredPayments, undefined, historyExportScope);
+    } finally {
+      window.setTimeout(() => setHistoryExcelBusy(false), 700);
+    }
+  };
 
   const validate = () => {
     const errs: Partial<Record<keyof FormState, string>> = {};
@@ -2292,24 +2431,24 @@ export function PaymentsPage() {
   );
 
   /* -- Bandeau de statistiques ------------------------------------------- */
-  const StatsBanner = () => (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+  const StatsBanner = ({ compact = false }: { compact?: boolean }) => (
+    <div className={`grid grid-cols-2 md:grid-cols-4 ${compact ? "gap-3" : "gap-4"} mb-6`}>
       {[
         { label: "Total encaissé",   value: fmtUsd(stats.total),     color: "text-brand-300"   },
         { label: "Réglés",           value: fmtUsd(stats.completed), color: "text-emerald-300" },
         { label: "En attente",       value: fmtUsd(stats.pending),   color: "text-amber-300"   },
         { label: "Annules",          value: fmtUsd(stats.cancelled), color: "text-slate-300"   },
       ].map((s) => (
-        <div key={s.label} className="card py-4 px-5">
+        <div key={s.label} className={`card ${compact ? "py-3 px-4" : "py-4 px-5"}`}>
           <p className="text-xs text-ink-dim uppercase tracking-wide mb-1">{s.label}</p>
-          <p className={`font-mono text-lg font-bold ${s.color}`}>{s.value}</p>
+          <p className={`font-mono ${compact ? "text-base" : "text-lg"} font-bold ${s.color}`}>{s.value}</p>
           <p className="text-xs text-ink-dim mt-0.5">USD</p>
         </div>
       ))}
     </div>
   );
 
-  const NotificationSettingsPanel = () => (
+  const NotificationSettingsPanel = ({ compact = false }: { compact?: boolean }) => (
     <div className={`card relative overflow-hidden border ${
       paymentNotificationsEnabled
         ? "border-emerald-500/30 bg-emerald-500/10"
@@ -2329,10 +2468,24 @@ export function PaymentsPage() {
             }`}>
               {paymentNotificationsEnabled ? t("paymentNotificationsOnBadge") : t("paymentNotificationsOffBadge")}
             </span>
+            {compact && (
+              <button
+                type="button"
+                onClick={() => setHistoryNotificationPanelOpen((current) => !current)}
+                className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-white transition hover:border-brand-300/30 hover:bg-brand-500/10"
+              >
+                {historyNotificationPanelOpen ? "Réduire" : "Gérer les parents"}
+              </button>
+            )}
           </div>
           <h2 className="mt-2 font-display text-xl font-bold text-white">{t("paymentNotificationsTitle")}</h2>
           <p className="mt-1 max-w-3xl text-sm text-ink-dim">{t("paymentNotificationsAdminSubtitle")}</p>
           <p className="mt-2 text-xs font-semibold text-cyan-200">{t("paymentNotificationsChannels")}</p>
+          {compact && (
+            <p className="mt-2 text-xs text-ink-dim">
+              {parents.length} parent(s) configurables. Les réglages détaillés sont repliés pour alléger l'historique.
+            </p>
+          )}
           {selectedParent && (
             <p className={`mt-2 rounded-lg border px-3 py-2 text-xs font-semibold ${
               selectedParentNotificationsEnabled
@@ -2345,7 +2498,7 @@ export function PaymentsPage() {
             </p>
           )}
           {notificationStatus && <p className="mt-2 text-xs font-semibold text-white/85">{notificationStatus}</p>}
-          {parents.length > 0 && (
+          {parents.length > 0 && (!compact || historyNotificationPanelOpen) && (
             <div className="edupay-scrollbar mt-4 grid max-h-64 gap-2 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
               {parents.map((parent) => {
                 const active = parentNotificationPreferences[parent.id] !== false;
@@ -2414,13 +2567,20 @@ export function PaymentsPage() {
 
         <ReceiptA5Preview receipt={r} />
 
+        {receiptPrintingId === r.id && (
+          <div className="rounded-xl border border-brand-500/25 bg-brand-500/10 px-4 py-3 text-sm font-semibold text-brand-100">
+            Préparation du reçu officiel pour impression...
+          </div>
+        )}
+
         {/* Actions */}
         <div className="flex flex-wrap gap-3">
           <button
-            onClick={() => void printReceiptDocument(r, lang)}
+            onClick={() => triggerReceiptPrint(r)}
+            disabled={receiptPrintingId === r.id}
             className="flex items-center gap-2 px-6 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold transition-all active:scale-95 shadow-lg shadow-brand-500/20"
           >
-            <PrintIcon className="w-5 h-5" /> {t("printPdf")}
+            <PrintIcon className="w-5 h-5" /> {receiptPrintingId === r.id ? "Préparation..." : t("printPdf")}
           </button>
           <button
             onClick={() => exportReceiptExcel(r)}
@@ -2456,8 +2616,43 @@ export function PaymentsPage() {
           <p className="text-ink-dim mt-2 text-sm">Tous les paiements enregistrés - Montants en dollars américains (USD)</p>
         </div>
         <NavBar />
-        <StatsBanner />
-        <NotificationSettingsPanel />
+        <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+          <StatsBanner compact />
+          <div className="card flex flex-col justify-between gap-4 border border-brand-500/20 bg-brand-500/10">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.18em] text-brand-200">Actions rapides</p>
+              <h2 className="mt-2 font-display text-xl font-bold text-white">Exporter ou imprimer sans descendre en bas</h2>
+              <p className="mt-2 text-sm text-ink-dim">La liste filtrée courante reste disponible ici avec le total réellement réglé.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="rounded-xl border border-white/10 bg-slate-950/35 px-4 py-3 text-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-dim">Liste filtrée</p>
+                <p className="mt-1 font-mono text-lg font-bold text-white">{filteredPayments.length}</p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-slate-950/35 px-4 py-3 text-sm">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-dim">Montant réglé</p>
+                <p className="mt-1 font-mono text-lg font-bold text-brand-200">{fmtUsd(filteredPayments.filter((p) => p.status === "COMPLETED").reduce((sum, p) => sum + p.amount, 0))}</p>
+              </div>
+              <button
+                onClick={triggerHistoryPrint}
+                disabled={historyPrintBusy}
+                title="Ouvre la boîte d'impression pour enregistrer la liste filtrée en PDF"
+                className="flex items-center gap-2 rounded-xl bg-brand-600 px-5 py-3 text-sm font-bold text-white transition-all hover:bg-brand-700 active:scale-95"
+              >
+                <PrintIcon /> {historyPrintBusy ? "Préparation..." : "PDF / Imprimer"}
+              </button>
+              <button
+                onClick={triggerHistoryExcel}
+                disabled={historyExcelBusy}
+                title="Exporte exactement la liste filtrée courante au format Excel"
+                className="flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-5 py-3 text-sm font-bold text-emerald-200 transition-all hover:bg-emerald-500/20 active:scale-95"
+              >
+                <ExcelIcon /> {historyExcelBusy ? "Export..." : "Exporter Excel"}
+              </button>
+            </div>
+          </div>
+        </div>
+        <NotificationSettingsPanel compact />
 
         {/* Filtres */}
         <div className="card">
@@ -2555,24 +2750,24 @@ export function PaymentsPage() {
               <tbody className="divide-y divide-slate-800">
                 {filteredPayments.map((p) => (
                   <tr key={p.id} className="hover:bg-slate-800/40 transition-colors group">
-                    <td className="py-3 px-3 first:pl-0 font-mono text-xs text-brand-300">{p.transactionNumber}</td>
-                    <td className="py-3 px-3 text-xs text-ink-dim whitespace-nowrap">
+                    <td className="px-3 py-2.5 first:pl-0 font-mono text-xs text-brand-300">{p.transactionNumber}</td>
+                    <td className="px-3 py-2.5 text-xs text-ink-dim whitespace-nowrap">
                       {p.date.split(",").slice(0, 2).join(",")}
                     </td>
-                    <td className="py-3 px-3">
-                      <div className="min-w-[220px]">
+                    <td className="px-3 py-2.5">
+                      <div className="min-w-[190px] max-w-[250px]">
                         <p className="font-semibold text-white">{getPaymentSubjectName(p)}</p>
                         {getPaymentParentCaption(p) ? <p className="mt-0.5 text-xs text-ink-dim">Parent: {getPaymentParentCaption(p)}</p> : null}
                         {p.tuitionAllocationSummary && (() => {
-                          const allocationSnapshot = buildReceiptAllocationSnapshot(p.tuitionAllocationSummary);
+                          const allocationSnapshot = buildReceiptAllocationSnapshot(p.tuitionAllocationSummary, {
+                            maxVisibleChildren: 1,
+                            maxVisibleMetrics: 1
+                          });
+                          const leadChild = allocationSnapshot.perChild[0];
                           return (
-                            <div className="mt-2 rounded-lg border border-emerald-400/20 bg-emerald-400/10 p-2 text-xs text-emerald-50">
+                            <div className="mt-2 rounded-lg border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1.5 text-[11px] text-emerald-50">
                               <p className="font-black uppercase tracking-[0.12em]">{allocationSnapshot.modeLabel}</p>
-                              {allocationSnapshot.perChild.map((child) => (
-                                <p key={child.studentName} className="mt-1">
-                                  {child.studentName}: impute {fmtUsd(child.allocated)} - solde {fmtUsd(child.remaining)}
-                                </p>
-                              ))}
+                              {leadChild ? <p className="mt-1">{leadChild.studentName}: imputé {fmtUsd(leadChild.allocated)} · solde {fmtUsd(leadChild.remaining)}</p> : null}
                               {allocationSnapshot.overflowChildCount > 0 && (
                                 <p className="mt-1 text-emerald-100/80">+ {allocationSnapshot.overflowChildCount} autre(s) dossier(s)</p>
                               )}
@@ -2581,21 +2776,21 @@ export function PaymentsPage() {
                         })()}
                       </div>
                     </td>
-                    <td className="py-3 px-3 text-ink-dim max-w-[140px] truncate" title={p.reason}>{p.reason}</td>
-                    <td className="py-3 px-3 text-xs text-ink-dim">{p.method.replace(/_/g, " ")}</td>
-                    <td className="py-3 px-3 font-mono font-bold text-emerald-300 whitespace-nowrap">
+                    <td className="px-3 py-2.5 max-w-[150px] truncate text-ink-dim" title={p.reason}>{p.reason}</td>
+                    <td className="px-3 py-2.5 text-xs text-ink-dim">{p.method.replace(/_/g, " ")}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap font-mono font-bold text-emerald-300">
                       $ {formatMoney(p.amount)}
                     </td>
-                    <td className="py-3 px-3"><StatusBadge status={p.status} /></td>
-                    <td className="py-3 px-3 last:pr-0">
-                      <div className="flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <td className="px-3 py-2.5"><StatusBadge status={p.status} /></td>
+                    <td className="px-3 py-2.5 last:pr-0">
+                      <div className="flex flex-wrap gap-1.5">
                         <button
                           title="Imprimer le reçu"
                           onClick={() => {
-                            setCurrentReceipt(p);
-                            setView("receipt");
+                            triggerReceiptPrint(p);
                           }}
-                          className="p-1.5 rounded bg-brand-600/20 text-brand-300 hover:bg-brand-600/40 transition-colors"
+                          disabled={receiptPrintingId === p.id}
+                          className={`p-1.5 rounded transition-colors ${receiptPrintingId === p.id ? "bg-brand-600/35 text-white" : "bg-brand-600/20 text-brand-300 hover:bg-brand-600/40"}`}
                         >
                           <PrintIcon className="w-3.5 h-3.5" />
                         </button>
@@ -2647,25 +2842,6 @@ export function PaymentsPage() {
             </table>
           )}
         </div>
-
-        {filteredPayments.length > 0 && (
-          <div className="flex gap-3">
-            <button
-              onClick={() => printHtml(buildReportHtml(filteredPayments, undefined, historyExportScope))}
-              title="Ouvre la boîte d'impression pour enregistrer la liste filtrée en PDF"
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-brand-500/40 text-brand-300 hover:bg-brand-600/20 transition-all text-sm font-semibold"
-            >
-              <PrintIcon /> PDF / Imprimer la liste filtrée
-            </button>
-            <button
-              onClick={() => exportPaymentsExcel(buildPaymentExportFilename("historique-paiements", historyExportScope), filteredPayments, undefined, historyExportScope)}
-              title="Exporte exactement la liste filtrée courante au format Excel"
-              className="flex items-center gap-2 px-5 py-2.5 rounded-xl border border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10 transition-all text-sm font-semibold"
-            >
-              <ExcelIcon /> Exporter la liste filtrée
-            </button>
-          </div>
-        )}
       </div>
     );
   }

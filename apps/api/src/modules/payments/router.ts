@@ -295,6 +295,71 @@ function normalizeMessageLanguage(language?: string | null): "fr" | "en" {
   return String(language ?? "fr").toLowerCase().startsWith("en") ? "en" : "fr";
 }
 
+type ParsedTuitionAllocationSummary = NonNullable<ReturnType<typeof parseTuitionAllocationSummary>>;
+
+function getAllocationModeLabel(mode: ParsedTuitionAllocationSummary["mode"], language: "fr" | "en") {
+  if (language === "en") {
+    return mode === "MANUAL" ? "Manual allocation" : "Automatic allocation";
+  }
+  return mode === "MANUAL" ? "Imputation manuelle" : "Imputation automatique";
+}
+
+function formatAllocationDetails(summary: ParsedTuitionAllocationSummary, language: "fr" | "en") {
+  const modeLabel = getAllocationModeLabel(summary.mode, language);
+  const childLines = summary.perChild.length
+    ? summary.perChild.map((child) => {
+      const installmentLines = child.lines.length
+        ? child.lines.map((line) => language === "en"
+          ? `   - ${line.label} (${line.dueBucket}): allocated $ ${line.allocated.toFixed(5)} USD, remaining $ ${line.outstandingAfter.toFixed(5)} USD`
+          : `   - ${line.label} (${line.dueBucket}) : imputé $ ${line.allocated.toFixed(5)} USD, reste $ ${line.outstandingAfter.toFixed(5)} USD`
+        ).join("\n")
+        : language === "en"
+          ? "   - No installment details available"
+          : "   - Aucun détail d'échéance disponible";
+
+      return language === "en"
+        ? `- ${child.studentName}: allocated $ ${child.allocated.toFixed(5)} USD, remaining $ ${child.remaining.toFixed(5)} USD\n${installmentLines}`
+        : `- ${child.studentName} : imputé $ ${child.allocated.toFixed(5)} USD, reste $ ${child.remaining.toFixed(5)} USD\n${installmentLines}`;
+    }).join("\n")
+    : language === "en"
+      ? "- No child allocation available"
+      : "- Aucune répartition par enfant disponible";
+
+  const metrics = language === "en"
+    ? [
+      `Allocation mode: ${modeLabel}`,
+      `Amount received: $ ${summary.totalReceived.toFixed(5)} USD`,
+      `Amount allocated: $ ${summary.allocatedTotal.toFixed(5)} USD`,
+      `Unallocated balance: $ ${summary.missingAmount.toFixed(5)} USD`,
+      `Advance kept: $ ${summary.advanceBalance.toFixed(5)} USD`,
+      `Finance note: ${summary.message || "No additional finance note."}`,
+    ]
+    : [
+      `Mode d'imputation : ${modeLabel}`,
+      `Montant reçu : $ ${summary.totalReceived.toFixed(5)} USD`,
+      `Montant imputé : $ ${summary.allocatedTotal.toFixed(5)} USD`,
+      `Solde non imputé : $ ${summary.missingAmount.toFixed(5)} USD`,
+      `Avance conservée : $ ${summary.advanceBalance.toFixed(5)} USD`,
+      `Note financière : ${summary.message || "Aucune note financière complémentaire."}`,
+    ];
+
+  const smsAllocation = summary.perChild.length
+    ? summary.perChild.map((child) => language === "en"
+      ? `${child.studentName}: $ ${child.allocated.toFixed(2)} allocated / $ ${child.remaining.toFixed(2)} left`
+      : `${child.studentName}: $ ${child.allocated.toFixed(2)} imputés / $ ${child.remaining.toFixed(2)} restants`
+    ).join(" ; ")
+    : language === "en"
+      ? "No child allocation available"
+      : "Aucune répartition par enfant";
+
+  return {
+    modeLabel,
+    metrics,
+    childLines,
+    smsAllocation,
+  };
+}
+
 function buildPaymentNotificationMessages(input: {
   parent: { id: string; fullName: string; phone: string; email: string; preferredLanguage?: string | null };
   transactionNumber: string;
@@ -305,6 +370,7 @@ function buildPaymentNotificationMessages(input: {
   status: string;
   createdAt: Date;
   students: Array<{ fullName: string }>;
+  tuitionAllocationSummary?: ParsedTuitionAllocationSummary | null;
   event?: "PAYMENT_RECORDED" | "RECEIPT_PRINTED";
 }) {
   const language = normalizeMessageLanguage(input.parent.preferredLanguage);
@@ -314,6 +380,9 @@ function buildPaymentNotificationMessages(input: {
     : language === "en" ? "- No specific student" : "- Aucun élève précisé";
   const amount = `$ ${input.amount.toFixed(5)} USD`;
   const date = input.createdAt.toLocaleString(language === "en" ? "en-US" : "fr-FR");
+  const allocationDetails = input.tuitionAllocationSummary
+    ? formatAllocationDetails(input.tuitionAllocationSummary, language)
+    : null;
 
   if (language === "en") {
     const subject = isReceiptPrint
@@ -331,6 +400,8 @@ function buildPaymentNotificationMessages(input: {
       `Amount: ${amount}`,
       `Payment method: ${getMethodLabel(input.method, language)}`,
       `Status: ${getLocalizedStatusLabel(input.status, language)}`,
+      allocationDetails ? "" : "",
+      ...(allocationDetails ? [...allocationDetails.metrics, "", "Allocation by child:", allocationDetails.childLines] : []),
       "",
       "Linked students:",
       studentLines,
@@ -340,8 +411,8 @@ function buildPaymentNotificationMessages(input: {
         : "Please keep this message as confirmation for your records."
     ].filter(Boolean).join("\n");
     const smsBody = isReceiptPrint
-      ? `EduPay: receipt ${input.receiptNumber ?? input.transactionNumber} printed/opened. Amount: ${amount}. Status: ${getLocalizedStatusLabel(input.status, language)}.`
-      : `EduPay: payment ${input.transactionNumber}. Reason: ${input.reason}. Amount: ${amount}. Status: ${getLocalizedStatusLabel(input.status, language)}.`;
+      ? `EduPay: receipt ${input.receiptNumber ?? input.transactionNumber} printed/opened. Amount: ${amount}. Status: ${getLocalizedStatusLabel(input.status, language)}.${allocationDetails ? ` ${allocationDetails.modeLabel}. ${allocationDetails.smsAllocation}.` : ""}`
+      : `EduPay: payment ${input.transactionNumber}. Reason: ${input.reason}. Amount: ${amount}. Status: ${getLocalizedStatusLabel(input.status, language)}.${allocationDetails ? ` ${allocationDetails.modeLabel}. ${allocationDetails.smsAllocation}.` : ""}`;
     return { subject, emailBody, smsBody, dashboardBody: emailBody };
   }
 
@@ -360,6 +431,7 @@ function buildPaymentNotificationMessages(input: {
     `Montant : ${amount}`,
     `Mode de paiement : ${getMethodLabel(input.method, language)}`,
     `Statut : ${getLocalizedStatusLabel(input.status, language)}`,
+    ...(allocationDetails ? ["", ...allocationDetails.metrics, "", "Répartition par enfant :", allocationDetails.childLines] : []),
     "",
     "Élèves concernés :",
     studentLines,
@@ -369,8 +441,8 @@ function buildPaymentNotificationMessages(input: {
       : "Merci de conserver ce message comme confirmation de suivi."
   ].filter(Boolean).join("\n");
   const smsBody = isReceiptPrint
-    ? `EduPay : reçu ${input.receiptNumber ?? input.transactionNumber} imprimé/ouvert. Montant : ${amount}. Statut : ${getLocalizedStatusLabel(input.status, language)}.`
-    : `EduPay : paiement ${input.transactionNumber}. Motif : ${input.reason}. Montant : ${amount}. Statut : ${getLocalizedStatusLabel(input.status, language)}.`;
+    ? `EduPay : reçu ${input.receiptNumber ?? input.transactionNumber} imprimé/ouvert. Montant : ${amount}. Statut : ${getLocalizedStatusLabel(input.status, language)}.${allocationDetails ? ` ${allocationDetails.modeLabel}. ${allocationDetails.smsAllocation}.` : ""}`
+    : `EduPay : paiement ${input.transactionNumber}. Motif : ${input.reason}. Montant : ${amount}. Statut : ${getLocalizedStatusLabel(input.status, language)}.${allocationDetails ? ` ${allocationDetails.modeLabel}. ${allocationDetails.smsAllocation}.` : ""}`;
   return { subject, emailBody, smsBody, dashboardBody: emailBody };
 }
 async function sendPaymentNotifications(input: {
@@ -383,6 +455,7 @@ async function sendPaymentNotifications(input: {
   status: string;
   createdAt: Date;
   students: Array<{ fullName: string }>;
+  tuitionAllocationSummary?: ParsedTuitionAllocationSummary | null;
   receiptNumber?: string | null;
   event?: "PAYMENT_RECORDED" | "RECEIPT_PRINTED";
 }) {
@@ -625,18 +698,25 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
     }
 
     const paymentWithRelations = payment as typeof payment & { parent?: { fullName: string } | null };
+    const paymentReceipt = await prisma.receipt.findFirst({
+      where: { paymentId: payment.id },
+      select: { receiptNumber: true, pdfBase64: true }
+    }).catch(() => null);
+    const tuitionAllocationSummary = parseTuitionAllocationSummary(paymentReceipt, payment.amount);
     const shouldNotify = payload.notifyParent ?? paymentNotificationsEnabled;
     const notificationStatus = shouldNotify && payment.parent
       ? await sendPaymentNotifications({
         schoolId: req.user!.schoolId,
         parent: payment.parent,
         transactionNumber: payment.transactionNumber,
+        receiptNumber: paymentReceipt?.receiptNumber ?? null,
         reason: payment.reason,
         amount: payment.amount,
         method: payment.method,
         status: payment.status,
         createdAt: payment.createdAt,
-        students: payment.students
+        students: payment.students,
+        tuitionAllocationSummary
       })
       : { email: shouldNotify ? "SKIPPED" : "DISABLED", sms: shouldNotify ? "SKIPPED" : "DISABLED" };
 
@@ -738,6 +818,7 @@ paymentRouter.post("/:id/receipt/printed", authorize("ADMIN", "ACCOUNTANT", "PAR
       status: payment.status,
       createdAt: new Date(),
       students: payment.students,
+      tuitionAllocationSummary: parseTuitionAllocationSummary(payment.receipt, payment.amount),
       event: "RECEIPT_PRINTED"
     });
 

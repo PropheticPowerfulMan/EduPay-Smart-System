@@ -38,6 +38,7 @@ import { schoolBranding } from "../config/branding";
 import { api } from "../services/api";
 import { useI18n } from "../i18n";
 import { exportWorkbook } from "../utils/financeExcel";
+import { printHtmlDocument } from "../utils/printDocument";
 
 type RevenueOverviewResponse = {
   academicYear: { id: string; name: string; startDate: string; endDate: string };
@@ -179,6 +180,43 @@ type ExpenseOverviewResponse = {
     periodName: string | null;
     processedAt: string | null;
   }>;
+};
+
+const EMPTY_EXPENSE_OVERVIEW: ExpenseOverviewResponse = {
+  revenue: {
+    totalRevenue: 0,
+    totalCompletedPayments: 0,
+  },
+  expenses: {
+    totalExpenses: 0,
+    approvedExpenses: 0,
+    pendingExpenses: 0,
+    rejectedExpenses: 0,
+    pendingApprovalSteps: 0,
+  },
+  payroll: {
+    activeProfiles: 0,
+    runCount: 0,
+    totalPayroll: 0,
+    salaryLiability: 0,
+  },
+  cashflow: {
+    availableCash: 0,
+    operationalBalance: 0,
+    profitLoss: 0,
+  },
+  liabilities: {
+    supplierDebt: 0,
+    payrollLiability: 0,
+    institutionalObligations: 0,
+  },
+  budgets: [],
+  budgetAlerts: [],
+  categorySpending: [],
+  departmentSpending: [],
+  monthlyPerformance: [],
+  recentExpenses: [],
+  recentPayrollRuns: [],
 };
 
 type FinanceErpModule = "health" | "forecast" | "revenue" | "scholarships" | "expenses" | "budgets" | "payroll";
@@ -333,14 +371,14 @@ function reductionOrigin(scope?: string | null, title?: string | null) {
   if (normalizedScope === "STUDENT") return "Individuelle";
   if (normalizedScope === "PAYMENT_OPTION") return "Option de paiement";
   if (normalizedScope === "GRADE_GROUP") return "Niveau / classe";
-  if (normalizedScope === "AGREEMENT") return "Accord special";
+  if (normalizedScope === "AGREEMENT") return "Accord spécial";
   if (normalizedScope === "MANUAL" || normalizedTitle.includes("bourse") || normalizedTitle.includes("scholarship")) return "Bourse manuelle";
-  if (normalizedScope === "ACADEMIC_YEAR") return "Annee academique";
-  return "Autre reduction";
+  if (normalizedScope === "ACADEMIC_YEAR") return "Année académique";
+  return "Autre réduction";
 }
 
 function formatCodeLabel(value?: string | null) {
-  return String(value ?? "Non defini").replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (letter: string) => letter.toUpperCase());
+  return String(value ?? "Non défini").replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (letter: string) => letter.toUpperCase());
 }
 
 function slugifyScholarshipFilename(value: string) {
@@ -374,18 +412,25 @@ function buildScholarshipReportHtml(input: {
     maximumFractionDigits: 2
   });
   const total = input.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const logoSrc = plainPrintText(new URL(schoolBranding.logoSrc, window.location.href).toString());
+  const generatedAt = new Date();
+  const documentReference = plainPrintText(`KCS-BRS-${generatedAt.toISOString().slice(0, 10)}-${String(input.rows.length).padStart(3, "0")}`);
   const branding = {
     schoolName: plainPrintText(schoolBranding.schoolName),
     shortName: plainPrintText(schoolBranding.shortName),
     appName: plainPrintText(schoolBranding.appName),
     tagline: plainPrintText(schoolBranding.tagline),
-    logoSrc: plainPrintText(schoolBranding.logoSrc)
+    logoSrc,
+    primary: plainPrintText(schoolBranding.colors.primary),
+    secondary: plainPrintText(schoolBranding.colors.secondary),
+    accent: plainPrintText(schoolBranding.colors.accent),
+    surface: plainPrintText(schoolBranding.colors.surface)
   };
 
   const rowsHtml = input.rows.map((row) => `
     <tr>
       <td>${plainPrintText(row.title)}</td>
-      <td>${plainPrintText(row.parentName || "Parent non precise")}</td>
+      <td>${plainPrintText(row.parentName || "Parent non précisé")}</td>
       <td>${plainPrintText(row.studentName || "Compte parent")}</td>
       <td>${plainPrintText(reductionOrigin(row.scope, row.title))}</td>
       <td>${plainPrintText(formatCodeLabel(row.scope))}</td>
@@ -403,7 +448,16 @@ function buildScholarshipReportHtml(input: {
     <style>
       @page { size: A4 portrait; margin: 12mm; }
       * { box-sizing: border-box; }
-      body { position: relative; font-family: Arial, Helvetica, sans-serif; color: #0f172a; margin: 0; background: #fff; }
+      :root {
+        --brand-primary: ${branding.primary};
+        --brand-secondary: ${branding.secondary};
+        --brand-accent: ${branding.accent};
+        --brand-surface: ${branding.surface};
+        --ink: #0f172a;
+        --ink-soft: #475569;
+        --line: #cbd5e1;
+      }
+      body { position: relative; font-family: Arial, Helvetica, sans-serif; color: var(--ink); margin: 0; background: #fff; }
       .watermark-text {
         position: fixed;
         inset: 0;
@@ -414,7 +468,7 @@ function buildScholarshipReportHtml(input: {
         font-size: 108px;
         font-weight: 900;
         letter-spacing: 14px;
-        color: rgba(8, 47, 73, 0.055);
+        color: rgba(11, 46, 89, 0.055);
         transform: rotate(-26deg);
         pointer-events: none;
         user-select: none;
@@ -430,8 +484,8 @@ function buildScholarshipReportHtml(input: {
         align-items: center;
         justify-content: center;
         border-radius: 999px;
-        border: 2px solid rgba(8, 47, 73, 0.05);
-        background: radial-gradient(circle, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 58%, rgba(8,47,73,0.03) 100%);
+        border: 2px solid rgba(11, 46, 89, 0.05);
+        background: radial-gradient(circle, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 58%, rgba(11,46,89,0.03) 100%);
         transform: translate(-50%, -50%);
         pointer-events: none;
         user-select: none;
@@ -447,13 +501,26 @@ function buildScholarshipReportHtml(input: {
         user-select: none;
       }
       .shell { position: relative; z-index: 2; padding: 12px; }
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 0 2px 10px;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        color: var(--ink-soft);
+      }
+      .topbar strong { color: var(--brand-primary); }
       .hero {
         position: relative;
         overflow: hidden;
-        border: 2px solid #082f49;
-        background: linear-gradient(145deg, rgba(8,47,73,.05), rgba(31,79,143,.07) 45%, rgba(143,183,232,.12));
+        border: 2px solid var(--brand-primary);
+        background: linear-gradient(145deg, rgba(11,46,89,.05), rgba(31,79,143,.08) 45%, rgba(143,183,232,.16));
         padding: 18px 20px;
         border-radius: 20px;
+        box-shadow: 0 24px 50px rgba(15, 23, 42, 0.08);
       }
       .hero:after {
         content: "";
@@ -475,32 +542,97 @@ function buildScholarshipReportHtml(input: {
         padding: 5px;
       }
       .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #0f766e; font-weight: 700; }
-      .school { margin-top: 4px; font-size: 22px; font-weight: 800; color: #082f49; letter-spacing: .5px; }
+      .school { margin-top: 4px; font-size: 22px; font-weight: 800; color: var(--brand-primary); letter-spacing: .5px; }
       .tagline { margin-top: 4px; font-size: 12px; font-weight: 700; color: #334155; }
       .meta { text-align: right; }
       .badge {
         display: inline-flex;
         align-items: center;
-        border: 1px solid #082f49;
+        border: 1px solid var(--brand-primary);
         padding: 6px 12px;
         border-radius: 999px;
         font-size: 10px;
         font-weight: 800;
         letter-spacing: 1.6px;
         text-transform: uppercase;
-        color: #082f49;
+        color: var(--brand-primary);
         background: rgba(255,255,255,0.45);
       }
-      h1 { margin: 14px 0 6px; font-size: 26px; color: #082f49; }
+      h1 { margin: 14px 0 6px; font-size: 26px; color: var(--brand-primary); }
       .scope { font-size: 12px; color: #475569; }
+      .hero-meta-grid {
+        margin-top: 16px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .hero-meta-card {
+        position: relative;
+        z-index: 1;
+        border: 1px solid rgba(11, 46, 89, 0.14);
+        border-radius: 14px;
+        padding: 10px 12px;
+        background: rgba(255,255,255,0.62);
+      }
+      .hero-meta-label {
+        font-size: 9px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--ink-soft);
+      }
+      .hero-meta-value {
+        margin-top: 6px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--brand-primary);
+      }
       .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 16px 0; }
-      .metric { border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px; background: #f8fafc; }
+      .metric { border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px; background: linear-gradient(180deg, #ffffff 0%, var(--brand-surface) 100%); }
       .metric-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; }
-      .metric-value { margin-top: 6px; font-size: 18px; font-weight: 700; color: #0f172a; }
+      .metric-value { margin-top: 6px; font-size: 18px; font-weight: 700; color: var(--brand-primary); }
       table { width: 100%; border-collapse: collapse; margin-top: 14px; background: rgba(255,255,255,0.94); }
       th, td { border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; vertical-align: top; }
-      th { background: linear-gradient(180deg, #d8e7fa, #e9f1fb); text-transform: uppercase; letter-spacing: .6px; text-align: left; color: #334155; }
+      th { background: linear-gradient(180deg, #d8e7fa, #e9f1fb); text-transform: uppercase; letter-spacing: .6px; text-align: left; color: var(--brand-primary); }
       tr:nth-child(even) td { background: #f8fafc; }
+      .compliance {
+        margin-top: 14px;
+        border: 1px solid rgba(15, 118, 110, 0.2);
+        border-left: 5px solid #0f766e;
+        border-radius: 14px;
+        background: rgba(240, 253, 250, 0.96);
+        padding: 12px 14px;
+        font-size: 11px;
+        color: #134e4a;
+      }
+      .signatures {
+        margin-top: 18px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+      .signature-box {
+        min-height: 86px;
+        border: 1px dashed rgba(11, 46, 89, 0.26);
+        border-radius: 16px;
+        background: rgba(255,255,255,0.82);
+        padding: 14px;
+      }
+      .signature-title {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-weight: 800;
+        color: var(--ink-soft);
+      }
+      .signature-line {
+        margin-top: 40px;
+        border-top: 1px solid rgba(11, 46, 89, 0.28);
+        padding-top: 6px;
+        font-size: 11px;
+        color: var(--brand-primary);
+        font-weight: 700;
+      }
       .footer {
         margin-top: 18px;
         display: flex;
@@ -512,7 +644,7 @@ function buildScholarshipReportHtml(input: {
         font-size: 10px;
         color: #475569;
       }
-      .footer strong { color: #082f49; }
+      .footer strong { color: var(--brand-primary); }
       @media print {
         body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       }
@@ -524,6 +656,10 @@ function buildScholarshipReportHtml(input: {
       <img class="watermark-logo" src="${branding.logoSrc}" alt="${branding.shortName}" />
     </div>
     <div class="shell">
+      <div class="topbar">
+        <span><strong>${branding.shortName}</strong> · État institutionnel des bourses</span>
+        <span>Référence ${documentReference}</span>
+      </div>
       <div class="hero">
         <div class="hero-header">
           <div class="brand">
@@ -541,11 +677,25 @@ function buildScholarshipReportHtml(input: {
         </div>
         <h1>${plainPrintText(input.title)}</h1>
         <div class="scope">${plainPrintText(input.scopeLabel)}</div>
+        <div class="hero-meta-grid">
+          <div class="hero-meta-card">
+            <div class="hero-meta-label">Document de référence</div>
+            <div class="hero-meta-value">${documentReference}</div>
+          </div>
+          <div class="hero-meta-card">
+            <div class="hero-meta-label">École émettrice</div>
+            <div class="hero-meta-value">${branding.schoolName}</div>
+          </div>
+          <div class="hero-meta-card">
+            <div class="hero-meta-label">Date d'édition</div>
+            <div class="hero-meta-value">${plainPrintText(generatedAt.toLocaleString(input.locale))}</div>
+          </div>
+        </div>
       </div>
       <div class="metrics">
         <div class="metric"><div class="metric-label">Lignes visibles</div><div class="metric-value">${input.rows.length}</div></div>
         <div class="metric"><div class="metric-label">Montant visible</div><div class="metric-value">${plainPrintText(money.format(total))}</div></div>
-        <div class="metric"><div class="metric-label">Date d'édition</div><div class="metric-value">${plainPrintText(new Date().toLocaleString(input.locale))}</div></div>
+        <div class="metric"><div class="metric-label">Portée du filtre</div><div class="metric-value">${plainPrintText(input.scopeLabel)}</div></div>
       </div>
       <table>
         <thead>
@@ -563,9 +713,22 @@ function buildScholarshipReportHtml(input: {
         </thead>
         <tbody>${rowsHtml || `<tr><td colspan="9">Aucune ligne visible pour ce filtre.</td></tr>`}</tbody>
       </table>
+      <div class="compliance">
+        Ce document reprend l'état filtré des bourses et réductions visibles dans le tableau financier EduPay. Il est édité selon la charte visuelle ${branding.shortName}, avec identité de l'établissement en en-tête et en filigrane pour archivage administratif.
+      </div>
+      <div class="signatures">
+        <div class="signature-box">
+          <div class="signature-title">Validation financière</div>
+          <div class="signature-line">Service comptable / financier</div>
+        </div>
+        <div class="signature-box">
+          <div class="signature-title">Visa de direction</div>
+          <div class="signature-line">Direction de l'établissement</div>
+        </div>
+      </div>
       <div class="footer">
         <span><strong>${branding.schoolName}</strong> · ${branding.appName}</span>
-        <span>Édité le ${plainPrintText(new Date().toLocaleString(input.locale))}</span>
+        <span>Édité le ${plainPrintText(generatedAt.toLocaleString(input.locale))}</span>
       </div>
     </div>
   </body>
@@ -573,35 +736,7 @@ function buildScholarshipReportHtml(input: {
 }
 
 function printScholarshipReport(html: string) {
-  const popup = window.open("", "_blank", "noopener,noreferrer,width=1200,height=900");
-  if (!popup) return;
-  popup.document.open();
-  popup.document.write(html);
-  popup.document.close();
-
-  const triggerPrint = () => {
-    popup.focus();
-    popup.print();
-  };
-
-  const waitForImages = Promise.all(
-    Array.from(popup.document.images).map((image) => {
-      if (image.complete) return Promise.resolve();
-      return new Promise<void>((resolve) => {
-        image.addEventListener("load", () => resolve(), { once: true });
-        image.addEventListener("error", () => resolve(), { once: true });
-      });
-    })
-  );
-
-  if (popup.document.fonts?.ready) {
-    void Promise.all([popup.document.fonts.ready.catch(() => undefined), waitForImages]).then(triggerPrint).catch(triggerPrint);
-    return;
-  }
-
-  void waitForImages.finally(() => {
-    window.setTimeout(triggerPrint, 250);
-  });
+  printHtmlDocument(html);
 }
 
 function exportScholarshipRowsExcel(filename: string, rows: ScholarshipRow[], scopeLabel: string, locale: string) {
@@ -646,9 +781,11 @@ export function FinanceDashboardPage() {
   const { lang } = useI18n();
   const locale = lang === "fr" ? "fr-FR" : "en-US";
   const [revenueOverview, setRevenueOverview] = useState<RevenueOverviewResponse | null>(null);
-  const [expenseOverview, setExpenseOverview] = useState<ExpenseOverviewResponse | null>(null);
+  const [expenseOverview, setExpenseOverview] = useState<ExpenseOverviewResponse>(EMPTY_EXPENSE_OVERVIEW);
+  const [expenseOverviewReady, setExpenseOverviewReady] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expenseOverviewError, setExpenseOverviewError] = useState<string | null>(null);
   const [activeModule, setActiveModule] = useState<FinanceErpModule | null>(null);
   const [scholarshipSearch, setScholarshipSearch] = useState("");
   const [scholarshipScopeFilter, setScholarshipScopeFilter] = useState("ALL");
@@ -658,14 +795,10 @@ export function FinanceDashboardPage() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([
-      api<RevenueOverviewResponse>("/api/finance/overview"),
-      api<ExpenseOverviewResponse>("/api/expenses/overview")
-    ])
-      .then(([revenueResult, expenseResult]) => {
+    api<RevenueOverviewResponse>("/api/finance/overview")
+      .then((revenueResult) => {
         if (!active) return;
         setRevenueOverview(revenueResult);
-        setExpenseOverview(expenseResult);
         setError(null);
       })
       .catch((loadError) => {
@@ -675,6 +808,19 @@ export function FinanceDashboardPage() {
       .finally(() => {
         if (active) setLoading(false);
       });
+
+    api<ExpenseOverviewResponse>("/api/expenses/overview")
+      .then((expenseResult) => {
+        if (!active) return;
+        setExpenseOverview(expenseResult);
+        setExpenseOverviewReady(true);
+        setExpenseOverviewError(null);
+      })
+      .catch((loadError) => {
+        if (!active) return;
+        setExpenseOverviewError(loadError instanceof Error ? loadError.message : "Les modules budgets, dépenses et paie prennent plus de temps que prévu.");
+      });
+
     return () => {
       active = false;
     };
@@ -692,7 +838,6 @@ export function FinanceDashboardPage() {
   const L = (fr: string, en: string) => lang === "fr" ? fr : en;
 
   const performanceChart = useMemo(() => {
-    if (!expenseOverview) return [];
     return expenseOverview.monthlyPerformance.map((entry) => ({
       ...entry,
       label: formatPeriod(entry.period, locale)
@@ -785,7 +930,7 @@ export function FinanceDashboardPage() {
     );
   }
 
-  if (!revenueOverview || !expenseOverview) {
+  if (!revenueOverview) {
     return (
       <div className="flex min-h-[65vh] items-center justify-center px-4">
         <div className="glass max-w-lg rounded-2xl border border-red-500/20 p-8 text-center shadow-xl">
@@ -825,6 +970,11 @@ export function FinanceDashboardPage() {
   const healthTone = healthScore >= 78 ? "text-emerald-300" : healthScore >= 58 ? "text-amber-300" : "text-red-300";
   const healthLabel = healthScore >= 78 ? L("Stable", "Stable") : healthScore >= 58 ? L("Sous surveillance", "Under watch") : L("Critique", "Critical");
   const riskIndex = clampScore(100 - healthScore);
+  const expenseOverviewNotice = expenseOverviewError
+    ? L(`Modules secondaires partiellement indisponibles : ${expenseOverviewError}`, `Secondary modules are partially unavailable: ${expenseOverviewError}`)
+    : !expenseOverviewReady
+      ? L("Budgets, dépenses et paie sont encore en cours de chargement. Les indicateurs principaux sont déjà visibles.", "Budgets, expenses and payroll are still loading. The main indicators are already visible.")
+      : null;
   const scholarshipTotal = revenueOverview.reductionStatistics.scholarshipTotal ?? revenueOverview.reductionStatistics.totalReductions;
   const scholarshipCount = revenueOverview.reductionStatistics.scholarshipCount ?? revenueOverview.reductionStatistics.reductionCount;
   const manualScholarshipTotal = revenueOverview.reductionStatistics.manualScholarshipTotal ?? manualScholarshipRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
@@ -953,6 +1103,11 @@ export function FinanceDashboardPage() {
 
   return (
     <div className="edupay-finance-erp space-y-6 pb-10 animate-fadeInUp">
+      {expenseOverviewNotice && (
+        <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-50">
+          {expenseOverviewNotice}
+        </div>
+      )}
       <section className="relative overflow-hidden rounded-[2rem] border border-brand-300/15 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_30%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.18),transparent_35%),linear-gradient(160deg,rgba(15,23,42,0.98),rgba(2,6,23,0.96))] px-6 py-6 shadow-2xl">
         <div className="absolute inset-y-0 right-0 w-1/3 bg-[linear-gradient(90deg,transparent,rgba(125,232,255,0.07))]" />
         <div className="relative flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
