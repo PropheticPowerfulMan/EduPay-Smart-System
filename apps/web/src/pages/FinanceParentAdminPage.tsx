@@ -957,10 +957,53 @@ export function FinanceParentAdminPage() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[65vh] items-center justify-center">
-        <div className="space-y-4 text-center">
-          <div className="mx-auto h-12 w-12 animate-pulse rounded-2xl bg-brand-500/30" />
-          <p className="text-sm font-semibold text-ink-dim">{copy.loading}</p>
+      <div className="edupay-parent-admin min-w-0 space-y-6 overflow-hidden pb-10 animate-fadeInUp">
+        <div className="min-w-0">
+          <p className="text-xs font-bold uppercase tracking-[0.22em] text-brand-300">{copy.pageEyebrow}</p>
+          <h1 className="mt-2 font-display text-3xl font-bold text-white">{copy.pageTitle}</h1>
+          <p className="mt-2 max-w-3xl text-sm text-ink-dim">{copy.pageSubtitle}</p>
+        </div>
+
+        <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-50">
+          {copy.loading}
+        </div>
+
+        <div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(250px,320px)_minmax(0,1fr)]">
+          <aside className="card glass min-w-0 border border-brand-500/10 shadow-lg">
+            <div className="h-11 animate-pulse rounded-xl bg-white/5" />
+            <div className="mt-4 space-y-2">
+              {Array.from({ length: 5 }, (_, index) => (
+                <div key={index} className="rounded-2xl border border-slate-700/60 bg-slate-900/25 p-3">
+                  <div className="h-4 w-32 animate-pulse rounded bg-white/10" />
+                  <div className="mt-3 h-3 w-24 animate-pulse rounded bg-white/10" />
+                </div>
+              ))}
+            </div>
+          </aside>
+
+          <section className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {Array.from({ length: 3 }, (_, index) => (
+                <div key={index} className="glass rounded-2xl border border-white/10 p-4">
+                  <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
+                  <div className="mt-4 h-8 w-28 animate-pulse rounded bg-white/10" />
+                  <div className="mt-3 h-3 w-32 animate-pulse rounded bg-white/10" />
+                </div>
+              ))}
+            </div>
+            <div className="glass rounded-3xl border border-white/10 p-5">
+              <div className="h-5 w-48 animate-pulse rounded bg-white/10" />
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {Array.from({ length: 6 }, (_, index) => (
+                  <div key={index} className="rounded-2xl border border-white/10 bg-slate-950/35 p-4">
+                    <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
+                    <div className="mt-3 h-6 w-20 animate-pulse rounded bg-white/10" />
+                    <div className="mt-3 h-3 w-full animate-pulse rounded bg-white/10" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
         </div>
       </div>
     );

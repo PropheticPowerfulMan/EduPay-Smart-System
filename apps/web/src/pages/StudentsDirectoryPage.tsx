@@ -961,7 +961,7 @@ function StudentEditModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-2xl rounded-2xl border border-white/10 glass p-5 shadow-2xl">
+      <div className="edupay-dialog-panel-md relative w-full rounded-2xl border border-white/10 glass p-6 shadow-2xl sm:p-7">
         <button type="button" onClick={onClose} className="absolute right-4 top-4 rounded-lg p-2 text-ink-dim hover:bg-white/10 hover:text-white">
           <X className="h-4 w-4" />
         </button>
@@ -1000,7 +1000,7 @@ function StudentDeleteModal({ student, deleting, onConfirm, onClose }: { student
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-md rounded-2xl border border-danger/30 glass p-5 shadow-2xl">
+      <div className="edupay-dialog-panel-sm relative w-full rounded-2xl border border-danger/30 glass p-6 shadow-2xl sm:p-7">
         <h2 className="font-display text-xl font-bold text-white">Supprimer l'eleve</h2>
         <p className="mt-3 text-sm text-ink-dim">Cette action supprimera {student.fullName} de la liste des eleves.</p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">

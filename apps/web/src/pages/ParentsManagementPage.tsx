@@ -1036,7 +1036,7 @@ function CredentialsModal({ credentials, onClose }: { credentials: ParentCredent
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div className="relative w-full max-w-md glass rounded-2xl p-8 space-y-5 animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
+      <div className="edupay-dialog-panel-sm relative w-full glass rounded-2xl p-8 space-y-5 animate-fadeInUp sm:p-9" onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} className="absolute right-4 top-4 text-ink-dim hover:text-white transition-colors">
           <XIcon />
         </button>
@@ -1113,7 +1113,7 @@ function AccessNotificationModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div className="relative w-full max-w-md glass rounded-2xl p-6 space-y-5 animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
+      <div className="edupay-dialog-panel-sm relative w-full glass rounded-2xl p-7 space-y-5 animate-fadeInUp sm:p-8" onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} className="absolute right-4 top-4 text-ink-dim hover:text-white">
           <XIcon />
         </button>
@@ -1207,7 +1207,7 @@ function DetailModal({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-3 py-4 sm:px-5 sm:py-6" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div className="edupay-parent-modal relative flex max-h-[calc(100dvh-2rem)] w-full max-w-6xl flex-col overflow-hidden glass rounded-2xl animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
+      <div className="edupay-parent-modal relative flex max-h-[calc(100dvh-2rem)] w-full max-w-7xl flex-col overflow-hidden glass rounded-2xl animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-slate-950/90 px-4 py-4 backdrop-blur-xl sm:px-6">
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.15em] text-brand-300">{t("pmParentId")}: {parent.displayId || parent.id}</p>
@@ -1508,7 +1508,7 @@ function DeleteModal({ parent, onConfirm, onClose, t }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div className="relative w-full max-w-sm glass rounded-2xl p-8 space-y-6 animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
+      <div className="edupay-dialog-panel-sm relative w-full glass rounded-2xl p-8 space-y-6 animate-fadeInUp sm:p-9" onClick={(e) => e.stopPropagation()}>
         <div className="mx-auto w-14 h-14 rounded-full bg-danger/20 flex items-center justify-center">
           <TrashIcon />
         </div>
@@ -1533,7 +1533,7 @@ function DuplicateParentDialog({ message, onClose }: { message: string; onClose:
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="absolute inset-0 bg-slate-950/75 backdrop-blur-md" />
-      <section className="relative w-full max-w-lg rounded-2xl border border-amber-400/30 bg-slate-950 p-6 shadow-2xl animate-fadeInUp" onClick={(event) => event.stopPropagation()}>
+      <section className="edupay-dialog-panel-sm relative w-full rounded-2xl border border-amber-400/30 bg-slate-950 p-7 shadow-2xl animate-fadeInUp sm:p-8" onClick={(event) => event.stopPropagation()}>
         <button onClick={onClose} className="absolute right-4 top-4 text-ink-dim hover:text-white transition-colors" aria-label="Fermer">
           <XIcon />
         </button>
@@ -1846,7 +1846,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
   return (
     <div className="edupay-scrollbar fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="edupay-scrollbar relative my-4 max-h-[92vh] w-full max-w-4xl overflow-y-auto glass rounded-2xl p-4 space-y-5 animate-fadeInUp sm:p-6 sm:space-y-6">
+      <div className="edupay-scrollbar relative my-4 max-h-[92vh] w-full max-w-5xl overflow-y-auto glass rounded-2xl p-5 space-y-6 animate-fadeInUp sm:p-7">
         <button onClick={onClose} className="absolute top-4 right-4 text-ink-dim hover:text-white transition-colors">
           <XIcon />
         </button>
@@ -2266,7 +2266,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
         {specialAgreementTarget !== null && form.students[specialAgreementTarget] && typeof document !== "undefined" && createPortal(
           <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
             <button type="button" className="absolute inset-0 cursor-default" onClick={() => setSpecialAgreementTarget(null)} aria-label="Fermer la boîte de dialogue de l'accord spécial" />
-            <div className="edupay-scrollbar relative max-h-[88vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-amber-300/20 bg-slate-950/95 p-5 shadow-2xl sm:p-6">
+            <div className="edupay-scrollbar relative max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-2xl border border-amber-300/20 bg-slate-950/95 p-6 shadow-2xl sm:p-7">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-200">Accord spécial parent-école</p>

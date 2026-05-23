@@ -269,7 +269,28 @@ export function ReportsPage() {
   }
 
   if (loading) {
-    return <div className="card glass border border-white/10 p-10 text-sm text-ink-dim">Chargement des rapports exécutifs...</div>;
+    return (
+      <div className="space-y-6 animate-fadeInUp">
+        <section className="card glass overflow-hidden border border-white/10 shadow-xl">
+          <div className="rounded-3xl border border-white/10 bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.24),_transparent_30%),linear-gradient(135deg,rgba(8,47,73,0.94),rgba(2,6,23,0.98))] p-6 sm:p-8">
+            <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-200">Rapports exécutifs</p>
+            <h1 className="mt-3 font-display text-3xl font-bold text-white sm:text-4xl">Préparation du centre de rapports</h1>
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-200">
+              Les données principales se préchargent en arrière-plan pour éviter un écran vide trop long à l'ouverture.
+            </p>
+            <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {Array.from({ length: 4 }, (_, index) => (
+                <div key={index} className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 backdrop-blur">
+                  <div className="h-3 w-24 animate-pulse rounded bg-white/10" />
+                  <div className="mt-4 h-8 w-28 animate-pulse rounded bg-white/10" />
+                  <div className="mt-3 h-3 w-32 animate-pulse rounded bg-white/10" />
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      </div>
+    );
   }
 
   if (error || !financeOverview || !expenseOverview) {

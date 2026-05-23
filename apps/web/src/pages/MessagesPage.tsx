@@ -499,7 +499,7 @@ export function MessagesPage() {
         const parsed = parseManualMessageContent(selectedLog.content);
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6 backdrop-blur-sm">
-            <div className="glass w-full max-w-3xl rounded-3xl border border-white/10 p-6">
+            <div className="edupay-dialog-panel-md glass w-full rounded-3xl border border-white/10 p-7 sm:p-8">
               <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand-300">Message détaillé</p>

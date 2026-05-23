@@ -6,10 +6,13 @@ import { LoginPage } from "./pages/LoginPage";
 import { ReceiptVerificationPage } from "./pages/ReceiptVerificationPage";
 import { STAFF_ROLES, useAuthStore } from "./store/auth";
 import type { Role } from "./store/auth";
+import { warmStaffRoute } from "./utils/staffRouteWarmup";
 
 const loadAIAssistantPage = () => import("./pages/AIAssistantPage");
 const loadFinanceDashboardPage = () => import("./pages/FinanceDashboardPage");
 const loadFinancialOperationsPage = () => import("./pages/FinancialOperationsPage");
+const loadReportsPage = () => import("./pages/ReportsPage");
+const loadFinanceParentAdminPage = () => import("./pages/FinanceParentAdminPage");
 
 const AIAssistantPage = lazy(() => loadAIAssistantPage().then((module) => ({ default: module.AIAssistantPage })));
 const FinanceDashboardPage = lazy(() => loadFinanceDashboardPage().then((module) => ({ default: module.FinanceDashboardPage })));
@@ -51,12 +54,26 @@ function ProtectedLayout() {
 
     void loadFinanceDashboardPage();
     void loadFinancialOperationsPage();
+    void loadReportsPage();
+    void loadFinanceParentAdminPage();
+    void warmStaffRoute("/");
+
+    const warmupTimer = window.setTimeout(() => {
+      void Promise.allSettled([
+        warmStaffRoute("/reports"),
+        warmStaffRoute("/parent-payments")
+      ]);
+    }, 120);
+
+    return () => {
+      window.clearTimeout(warmupTimer);
+    };
   }, [role]);
 
   return (
     <div className="edupay-app-shell min-h-screen bg-slate-950 text-ink">
       <Navbar />
-      <main className="mx-auto flex w-full max-w-[1440px] gap-6 px-3 pb-32 pt-4 sm:px-6 sm:py-6 md:pb-6 lg:px-8">
+      <main className="flex w-full gap-6 px-3 pb-32 pt-4 sm:px-5 sm:py-6 md:pb-6 lg:px-6 xl:px-8">
         <Sidebar />
         <section className="min-w-0 flex-1">
           <Outlet />
