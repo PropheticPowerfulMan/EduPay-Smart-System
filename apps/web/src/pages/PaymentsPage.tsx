@@ -3055,7 +3055,7 @@ export function PaymentsPage() {
       <StatsBanner />
       <NotificationSettingsPanel />
 
-      <div className="card flex flex-col gap-4 border-brand-500/20 bg-brand-500/5 animate-fadeInUp sm:flex-row sm:items-center sm:justify-between">
+      <div className="card flex flex-col gap-4 border-brand-500/20 bg-brand-500/5 animate-fadeInUp sm:flex-row sm:items-center sm:justify-between max-w-7xl max-h-[98vh] w-full">
         <div>
           <p className="text-xs font-black uppercase tracking-[0.2em] text-brand-200">{t("paymentDetails")}</p>
           <h2 className="mt-2 font-display text-xl font-bold text-white">{t("newPaymentBtn")}</h2>
@@ -3071,8 +3071,8 @@ export function PaymentsPage() {
       </div>
 
       {paymentDetailsDialogOpen ? createPortal((
-        <div className="edupay-payment-modal-backdrop edupay-scrollbar fixed inset-0 z-[999] grid place-items-center overflow-y-auto px-4 py-8">
-          <div className="edupay-payment-modal-panel edupay-scrollbar w-full max-w-5xl overflow-y-auto p-5 sm:p-6">
+        <div className="edupay-payment-modal-backdrop edupay-scrollbar fixed inset-0 z-[999] grid place-items-center overflow-y-auto px-2 py-4">
+          <div className="edupay-payment-modal-panel edupay-scrollbar w-full max-w-[98vw] max-h-[95vh] min-h-[600px] min-w-[900px] overflow-y-auto p-8 sm:p-10">
             <div className="mb-5 flex flex-wrap items-center justify-between gap-3 border-b border-white/10 pb-4">
               <div>
                 <p className="text-xs font-black uppercase tracking-[0.2em] text-brand-200">{t("paymentDetails")}</p>

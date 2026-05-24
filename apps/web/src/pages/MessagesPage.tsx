@@ -499,12 +499,12 @@ export function MessagesPage() {
         const parsed = parseManualMessageContent(selectedLog.content);
         return (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6 backdrop-blur-sm"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-2 py-4 backdrop-blur-sm"
             onClick={() => setSelectedLog(null)}
             style={{ cursor: 'pointer' }}
           >
             <div
-              className="edupay-dialog-panel-md glass w-full max-h-[90vh] overflow-y-auto rounded-3xl border border-white/10 p-7 sm:p-8 relative"
+              className="edupay-dialog-panel-md glass w-full max-w-[98vw] max-h-[95vh] min-h-[500px] min-w-[700px] overflow-y-auto rounded-3xl border border-white/10 p-10 sm:p-12 relative"
               onClick={e => e.stopPropagation()}
               style={{ cursor: 'default' }}
             >

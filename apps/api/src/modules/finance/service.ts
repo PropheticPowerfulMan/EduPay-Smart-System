@@ -377,13 +377,17 @@ function buildOverdueAlertSeries(input: {
 }
 
 function parseAcademicYearStart(name: string) {
+  // Toujours prendre la première année comme début (ex: 2025-2026 => 2025)
   const match = name.match(/(\d{4})/);
-  return match ? Number(match[1]) : 2026;
+  return match ? Number(match[1]) : new Date().getMonth() >= 8 ? new Date().getFullYear() : new Date().getFullYear() - 1;
 }
 
 function buildDueDate(academicYearName: string, schedule: ScheduleTemplate) {
+  // Si le mois est de septembre (8) à juin (6), l’année scolaire commence en septembre N et finit en juin N+1
   const startYear = parseAcademicYearStart(academicYearName);
-  const year = schedule.dueMonth >= 8 ? startYear : startYear + 1;
+  let year = startYear;
+  if (schedule.dueMonth >= 9) year = startYear; // septembre à décembre de l’année N
+  else year = startYear + 1; // janvier à juin de l’année N+1
   return new Date(Date.UTC(year, schedule.dueMonth - 1, schedule.dueDay, 23, 59, 59, 999));
 }
 

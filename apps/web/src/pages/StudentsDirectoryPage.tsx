@@ -698,7 +698,7 @@ function StudentDetailModal({ student, parent, onClose }: { student: SharedDirec
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="edupay-scrollbar relative w-full max-w-6xl rounded-2xl border border-white/10 glass p-5 shadow-2xl">
+      <div className="edupay-scrollbar relative w-full max-w-8xl max-h-[98vh] rounded-2xl border border-white/10 glass p-5 shadow-2xl">
         <button type="button" onClick={onClose} className="absolute right-4 top-4 rounded-lg p-2 text-ink-dim hover:bg-white/10 hover:text-white">
           <X className="h-4 w-4" />
         </button>
