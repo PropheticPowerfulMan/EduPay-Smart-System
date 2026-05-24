@@ -357,6 +357,7 @@ app.post("/api/parents", authGuard, requireRole("ADMIN", "ACCOUNTANT"), async (r
   const { nom, postnom, prenom, fullName, phone, email, photoUrl, students: reqStudents } = req.body;
   const id = generateParentId();
   const temporaryPassword = generateTemporaryPassword();
+  const accessCode = `ACC-${id.slice(-6)}`;
   const userId = `user-parent-${Date.now()}`;
   const parentFullName = fullName || [nom, postnom, prenom].filter(Boolean).join(" ");
   const parent = {
@@ -371,7 +372,8 @@ app.post("/api/parents", authGuard, requireRole("ADMIN", "ACCOUNTANT"), async (r
     schoolId: "school-1",
     userId,
     preferredLanguage: "fr",
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    accessCode
   };
   mockUsers.push({
     id: userId,
@@ -379,7 +381,8 @@ app.post("/api/parents", authGuard, requireRole("ADMIN", "ACCOUNTANT"), async (r
     password: temporaryPassword,
     role: "PARENT",
     fullName: parentFullName,
-    schoolId: "school-1"
+    schoolId: "school-1",
+    accessCode
   });
   mockParents.push(parent);
   // Add students if provided
@@ -400,6 +403,7 @@ app.post("/api/parents", authGuard, requireRole("ADMIN", "ACCOUNTANT"), async (r
   return res.status(201).json({
     ...parentWithStudents(parent),
     temporaryPassword,
+    accessCode,
     notificationStatus
   });
 });
