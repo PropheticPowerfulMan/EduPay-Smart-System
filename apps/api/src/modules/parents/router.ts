@@ -704,28 +704,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
   const normalizedEmail = payload.email.trim().toLowerCase();
   const normalizedPhone = payload.phone.replace(/\s+/g, "");
 
-  const existingParent = await prisma.parent.findFirst({
-    where: {
-      schoolId: req.user!.schoolId,
-      OR: [
-        { email: { equals: normalizedEmail, mode: "insensitive" } },
-        { phone: normalizedPhone }
-      ]
-    },
-    select: { id: true, fullName: true, email: true, phone: true }
-  }).catch(() => null);
-
-  if (existingParent) {
-    const reasons = [
-      existingParent.email?.toLowerCase() === normalizedEmail ? `e-mail déjà utilisé (${existingParent.email})` : "",
-      existingParent.phone?.replace(/\s+/g, "") === normalizedPhone ? `téléphone déjà utilisé (${existingParent.phone})` : ""
-    ].filter(Boolean);
-    return res.status(409).json({
-      code: "PARENT_ALREADY_EXISTS",
-      message: `Cette famille existe déjà dans EduPay. Raison : ${reasons.join(", ") || "coordonnées parent déjà utilisées"}. Ouvrez le dossier existant au lieu d'en créer un nouveau.`,
-      existingParent
-    });
-  }
+  // Suppression de la vérification d’unicité email/téléphone pour respecter la règle de l’écosystème
 
   if (orbitRegistryIsEnabled()) {
     try {
@@ -1055,43 +1034,7 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
       select: { id: true, userId: true }
     });
     if (!parentExists) return res.status(404).json({ message: "Parent non trouve" });
-
-    const duplicateParent = await prisma.parent.findFirst({
-      where: {
-        schoolId: req.user!.schoolId,
-        NOT: { id },
-        OR: [
-          { email: { equals: normalizedEmail, mode: "insensitive" } },
-          { phone: normalizedPhone }
-        ]
-      },
-      select: { id: true, fullName: true, email: true, phone: true }
-    });
-    if (duplicateParent) {
-      const reasons = [
-        duplicateParent.email?.toLowerCase() === normalizedEmail ? `l'e-mail ${duplicateParent.email}` : "",
-        duplicateParent.phone?.replace(/\s+/g, "") === normalizedPhone ? `le téléphone ${duplicateParent.phone}` : ""
-      ].filter(Boolean);
-      return res.status(409).json({
-        code: "PARENT_ALREADY_EXISTS",
-        message: `Un autre dossier parent utilise déjà ${reasons.join(" ou ") || "cet e-mail ou ce téléphone"}.`,
-        existingParent: duplicateParent
-      });
-    }
-    const duplicateUser = await prisma.user.findFirst({
-      where: {
-        schoolId: req.user!.schoolId,
-        email: normalizedEmail,
-        ...(parentExists.userId ? { NOT: { id: parentExists.userId } } : {})
-      },
-      select: { id: true, fullName: true, role: true }
-    });
-    if (duplicateUser) {
-      return res.status(409).json({
-        code: "USER_EMAIL_ALREADY_EXISTS",
-        message: `Cet e-mail est déjà utilisé par ${duplicateUser.fullName} (${duplicateUser.role}).`
-      });
-    }
+    // Suppression de la vérification d’unicité email/téléphone pour respecter la règle de l’écosystème
 
     if (orbitRegistryIsEnabled()) {
       const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);

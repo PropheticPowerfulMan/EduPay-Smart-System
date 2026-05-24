@@ -328,7 +328,7 @@ function FinanceErpDialog({
 }) {
   return (
     <div className="edupay-finance-erp-dialog fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/82 px-3 py-4 backdrop-blur-md sm:px-6 sm:py-8">
-      <div className="edupay-finance-erp-modal w-full max-w-6xl rounded-2xl border border-brand-300/15 bg-slate-950/96 p-4 shadow-2xl sm:p-6">
+      <div className="edupay-finance-erp-modal w-full max-w-8xl rounded-2xl border border-brand-300/15 bg-slate-950/96 p-6 shadow-2xl sm:p-8">
         <div className="flex flex-col gap-4 border-b border-white/10 pb-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-200">Tableau financier EduPay</p>

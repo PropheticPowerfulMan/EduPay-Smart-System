@@ -164,19 +164,19 @@ body {
 }
 
 .edupay-dialog-panel-sm {
-  width: min(92vw, 42rem);
+  width: min(96vw, 56rem);
 }
 
 .edupay-dialog-panel-md {
-  width: min(94vw, 56rem);
+  width: min(97vw, 72rem);
 }
 
 .edupay-dialog-panel-lg {
-  width: min(96vw, 72rem);
+  width: min(98vw, 88rem);
 }
 
 .edupay-dialog-panel-xl {
-  width: min(97vw, 88rem);
+  width: min(99vw, 104rem);
 }
 
 .font-display {

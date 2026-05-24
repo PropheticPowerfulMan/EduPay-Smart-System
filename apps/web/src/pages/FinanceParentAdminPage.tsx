@@ -646,7 +646,7 @@ function AdminParentDialog({
   return (
     <div className="edupay-parent-tracking-dialog fixed inset-0 z-50 flex items-end justify-center px-3 py-4 sm:items-center sm:px-5">
       <button aria-label={copy.close} className="absolute inset-0 bg-slate-950/78 backdrop-blur-md" onClick={onClose} />
-      <section className="edupay-parent-tracking-modal relative flex max-h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-slate-950/95 shadow-2xl">
+      <section className="edupay-parent-tracking-modal relative flex max-h-[98vh] w-full max-w-8xl flex-col overflow-hidden rounded-2xl border border-cyan-300/20 bg-slate-950/95 shadow-2xl">
         <header className="flex flex-col gap-4 border-b border-white/10 bg-white/[0.04] px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-6">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-200">{copy.dialogEyebrow}</p>
@@ -908,11 +908,16 @@ export function FinanceParentAdminPage() {
     setActiveAction("agreement");
   };
 
+  // Nouvelle validation stricte et feedback utilisateur amélioré
   const submitAgreement = async () => {
-    if (!selectedParent) return;
+    if (!selectedParent) {
+      setError(copy.selectParentPrompt);
+      return;
+    }
     const targetStudentId = isManualScholarshipPlan ? assignmentForm.studentId : agreementForm.studentId;
     const agreementTitle = agreementForm.title.trim() || copy.scholarshipAgreementTitle;
     const referenceTotal = Number(agreementForm.customTotal || 0) || suggestedOfficialReference;
+    const reductionAmount = Number(agreementForm.reductionAmount || 0);
     const installments = agreementForm.installments
       .filter((row) => row.label.trim() && row.dueDate.trim() && Number(row.amountDue) > 0)
       .map((row) => ({
@@ -922,8 +927,25 @@ export function FinanceParentAdminPage() {
         notes: row.notes.trim() || undefined
       }));
 
-    if (!agreementTitle || referenceTotal <= 0 || installments.length === 0) {
-      setError(copy.agreementValidationError);
+    // Validation stricte des champs
+    if (!agreementTitle) {
+      setError("Le titre de l'accord est obligatoire.");
+      return;
+    }
+    if (!targetStudentId) {
+      setError("Veuillez sélectionner un élève.");
+      return;
+    }
+    if (referenceTotal <= 0) {
+      setError("Le montant total doit être supérieur à zéro.");
+      return;
+    }
+    if (installments.length === 0) {
+      setError("Veuillez ajouter au moins une échéance valide.");
+      return;
+    }
+    if (installments.some(row => !row.label || !row.dueDate || !row.amountDue)) {
+      setError("Toutes les échéances doivent être complètes.");
       return;
     }
 
@@ -935,10 +957,10 @@ export function FinanceParentAdminPage() {
         method: "POST",
         body: JSON.stringify({
           parentId: selectedParent.id,
-          studentId: targetStudentId || undefined,
+          studentId: targetStudentId,
           title: agreementTitle,
           customTotal: referenceTotal,
-          reductionAmount: Number(agreementForm.reductionAmount || 0),
+          reductionAmount,
           gradeGroup: agreementForm.gradeGroup,
           status: isManualScholarshipPlan ? "APPROVED" : agreementForm.status,
           notes: agreementForm.notes.trim() || copy.scholarshipAgreementHelp,
@@ -946,8 +968,9 @@ export function FinanceParentAdminPage() {
           installments
         })
       });
-      setSuccess(copy.agreementSuccess);
+      setSuccess("Accord enregistré avec succès.");
       await loadSnapshot(selectedParent.id);
+      setActiveAction(null);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : copy.agreementError);
     } finally {
@@ -1695,7 +1718,7 @@ export function FinanceParentAdminPage() {
                       <button
                         type="button"
                         onClick={() => void submitAgreement()}
-                        disabled={agreementSubmitting}
+                        disabled={agreementSubmitting || !agreementForm.studentId || !agreementForm.title.trim() || !agreementForm.customTotal || agreementForm.installments.length === 0}
                         className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-60"
                       >
                         <Save className="h-4 w-4" />

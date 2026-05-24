@@ -498,17 +498,31 @@ export function MessagesPage() {
       {selectedLog ? (() => {
         const parsed = parseManualMessageContent(selectedLog.content);
         return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6 backdrop-blur-sm">
-            <div className="edupay-dialog-panel-md glass w-full rounded-3xl border border-white/10 p-7 sm:p-8">
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-6 backdrop-blur-sm"
+            onClick={() => setSelectedLog(null)}
+            style={{ cursor: 'pointer' }}
+          >
+            <div
+              className="edupay-dialog-panel-md glass w-full max-h-[90vh] overflow-y-auto rounded-3xl border border-white/10 p-7 sm:p-8 relative"
+              onClick={e => e.stopPropagation()}
+              style={{ cursor: 'default' }}
+            >
+              <button
+                type="button"
+                onClick={() => setSelectedLog(null)}
+                className="absolute top-5 right-5 z-10 rounded-xl border border-white/10 bg-white/[0.04] p-2 text-ink-dim hover:text-white"
+                style={{ background: 'rgba(0,0,0,0.15)' }}
+                aria-label="Fermer"
+              >
+                <X className="h-5 w-5" />
+              </button>
               <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-brand-300">Message détaillé</p>
                   <h2 className="mt-2 font-display text-2xl font-bold text-white">{selectedLog.parentName}</h2>
                   <p className="mt-2 text-sm text-ink-dim">{new Date(selectedLog.createdAt).toLocaleString("fr-FR")}</p>
                 </div>
-                <button type="button" onClick={() => setSelectedLog(null)} className="rounded-xl border border-white/10 bg-white/[0.04] p-2 text-ink-dim hover:text-white">
-                  <X className="h-5 w-5" />
-                </button>
               </div>
 
               <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -535,7 +549,7 @@ export function MessagesPage() {
 
               <div className="mt-5 rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                 <p className="text-xs font-bold uppercase tracking-[0.16em] text-ink-dim">Contenu</p>
-                <pre className="mt-3 whitespace-pre-wrap text-sm leading-6 text-ink">{parsed.body || selectedLog.content}</pre>
+                <pre className="mt-3 whitespace-pre-wrap text-sm leading-6 text-ink break-words">{parsed.body || selectedLog.content}</pre>
               </div>
             </div>
           </div>
