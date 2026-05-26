@@ -106,84 +106,105 @@ notificationRouter.delete("/messages/:id", authorize("ADMIN", "ACCOUNTANT"), asy
 });
 
 notificationRouter.post("/messages", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
-  const payload = manualMessageSchema.parse(req.body);
-  const parents = await prisma.parent.findMany({
-    where: {
-      schoolId: req.user!.schoolId,
-      id: { in: payload.parentIds },
-    },
-    orderBy: { fullName: "asc" },
-  });
-
-  if (parents.length === 0) {
-    return res.status(404).json({ message: "Aucun parent valide n'a été sélectionné." });
-  }
-
-  const results = [] as Array<{
-    parentId: string;
-    parentName: string;
-    email: string;
-    sms: string;
-    dashboard: string;
-    logId: string;
-  }>;
-
-  const dashboardContent = buildDashboardMessageBody(payload.subject, payload.body);
-  const emailSubject = payload.subject?.trim() || "Message du service financier EduPay";
-
-  for (const parent of parents) {
-    const status = {
-      dashboard: "OPEN",
-      email: payload.channels.includes("EMAIL")
-        ? (parent.email ? "PENDING" : "SKIPPED")
-        : "DISABLED",
-      sms: payload.channels.includes("SMS")
-        ? (parent.phone ? "PENDING" : "SKIPPED")
-        : "DISABLED",
-    };
-
-    if (payload.channels.includes("EMAIL") && parent.email) {
-      status.email = await sendEmail({
-        to: parent.email,
-        subject: emailSubject,
-        text: dashboardContent,
-      });
-    }
-
-    if (payload.channels.includes("SMS") && parent.phone) {
-      status.sms = await sendSms({
-        to: parent.phone,
-        text: payload.body,
-      });
-    }
-
-    const log = await prisma.notificationLog.create({
-      data: {
+  try {
+    const payload = manualMessageSchema.parse(req.body);
+    const parents = await prisma.parent.findMany({
+      where: {
         schoolId: req.user!.schoolId,
-        parentId: parent.id,
-        type: "MANUAL_MESSAGE",
-        language: payload.language,
-        channel: "DASHBOARD",
-        content: dashboardContent,
-        status: buildDeliverySummary(status),
+        id: { in: payload.parentIds },
       },
+      orderBy: { fullName: "asc" },
     });
 
-    results.push({
-      parentId: parent.id,
-      parentName: parent.fullName,
-      email: status.email,
-      sms: status.sms,
-      dashboard: status.dashboard,
-      logId: log.id,
+    if (parents.length === 0) {
+      return res.status(404).json({ message: "Aucun parent valide n'a été sélectionné." });
+    }
+
+    const results = [] as Array<{
+      parentId: string;
+      parentName: string;
+      email: string;
+      sms: string;
+      dashboard: string;
+      logId: string;
+    }>;
+
+    const dashboardContent = buildDashboardMessageBody(payload.subject, payload.body);
+    const emailSubject = payload.subject?.trim() || "Message du service financier EduPay";
+
+    for (const parent of parents) {
+      const status = {
+        dashboard: "OPEN",
+        email: payload.channels.includes("EMAIL")
+          ? (parent.email ? "PENDING" : "SKIPPED")
+          : "DISABLED",
+        sms: payload.channels.includes("SMS")
+          ? (parent.phone ? "PENDING" : "SKIPPED")
+          : "DISABLED",
+      };
+
+      if (payload.channels.includes("EMAIL") && parent.email) {
+        try {
+          status.email = await sendEmail({
+            to: parent.email,
+            subject: emailSubject,
+            text: dashboardContent,
+          });
+        } catch (err) {
+          console.error("Erreur d'envoi email manuel:", err);
+          status.email = "ERROR";
+        }
+      }
+
+      if (payload.channels.includes("SMS") && parent.phone) {
+        try {
+          status.sms = await sendSms({
+            to: parent.phone,
+            text: payload.body,
+          });
+        } catch (err) {
+          console.error("Erreur d'envoi SMS manuel:", err);
+          status.sms = "ERROR";
+        }
+      }
+
+      let log;
+      try {
+        log = await prisma.notificationLog.create({
+          data: {
+            schoolId: req.user!.schoolId,
+            parentId: parent.id,
+            type: "MANUAL_MESSAGE",
+            language: payload.language,
+            channel: "DASHBOARD",
+            content: dashboardContent,
+            status: buildDeliverySummary(status),
+          },
+        });
+      } catch (err) {
+        console.error("Erreur création log notificationLog:", err);
+        continue;
+      }
+
+      results.push({
+        parentId: parent.id,
+        parentName: parent.fullName,
+        email: status.email,
+        sms: status.sms,
+        dashboard: status.dashboard,
+        logId: log.id,
+      });
+    }
+
+    return res.status(201).json({
+      sentCount: results.length,
+      parentIdsMissing: payload.parentIds.filter((parentId) => !parents.some((parent) => parent.id === parentId)),
+      messages: results,
     });
+  } catch (error) {
+    console.error("Erreur POST /messages:", error);
+    return res.status(500).json({ message: "Erreur lors de l'envoi des messages." });
   }
-
-  return res.status(201).json({
-    sentCount: results.length,
-    parentIdsMissing: payload.parentIds.filter((parentId) => !parents.some((parent) => parent.id === parentId)),
-    messages: results,
-  });
 });
 
 notificationRouter.post("/send", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {

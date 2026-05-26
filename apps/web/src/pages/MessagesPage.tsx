@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { Eye, Mail, MessageSquare, Search, Send, Trash2, Users, X } from "lucide-react";
+import { Eye, Mail, MessageSquare, Send, Trash2, Users, X } from "lucide-react";
+import { SearchField } from "../components/SearchField";
 import { api } from "../services/api";
 
 type ParentOption = {
@@ -280,15 +281,12 @@ export function MessagesPage() {
               </div>
             </div>
 
-            <div className="relative mt-4">
-              <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-dim" />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Filtrer un parent, un téléphone ou un élève..."
-                className="w-full pl-11"
-              />
-            </div>
+           <SearchField
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Filtrer un parent, un téléphone ou un élève..."
+              wrapperClassName="mt-4"
+            />
 
             <div className="mt-4 max-h-[26rem] space-y-2 overflow-y-auto pr-1">
               {filteredParents.map((parent) => {
@@ -386,15 +384,11 @@ export function MessagesPage() {
 
           <div className="mt-5 grid gap-3 rounded-3xl border border-white/10 bg-white/[0.03] p-4 md:grid-cols-2 xl:grid-cols-3">
             <div className="xl:col-span-3">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-dim" />
-                <input
-                  value={historySearch}
-                  onChange={(event) => setHistorySearch(event.target.value)}
-                  placeholder="Recherche précise: parent, objet, contenu, statut, téléphone, email..."
-                  className="w-full pl-11"
-                />
-              </div>
+           <SearchField
+              value={historySearch}
+              onChange={(event) => setHistorySearch(event.target.value)}
+              placeholder="Recherche précise: parent, objet, contenu, statut, téléphone, email..."
+            />
             </div>
             <label className="space-y-1 text-xs font-semibold uppercase tracking-[0.12em] text-ink-dim">
               Parent

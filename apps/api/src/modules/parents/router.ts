@@ -596,6 +596,24 @@ async function assignOnboardingFinance(options: {
   }
 }
 
+        async function safeSendParentWelcomeNotifications(
+          parent: any,
+          temporaryPassword: string,
+          schoolId: string,
+          preferences: { notifyEmail?: boolean; notifySms?: boolean }
+        ) {
+          try {
+            return await sendParentWelcomeNotifications(parent, temporaryPassword, schoolId, preferences);
+          } catch (error) {
+            console.error("[PARENT_CREATE_CREDENTIALS] Notification failed", error);
+            return {
+              email: preferences.notifyEmail ? "ERROR" : "SKIPPED",
+              sms: preferences.notifySms ? "ERROR" : "SKIPPED"
+            };
+          }
+        }
+
+
 export const parentRouter = Router();
 parentRouter.use(authGuard);
 
@@ -813,10 +831,16 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
           orbitResult,
         });
       }
-      const notificationStatus = await sendParentWelcomeNotifications(createdParent, temporaryPassword, req.user!.schoolId, {
-        notifyEmail: payload.notifyEmail,
-        notifySms: payload.notifySms
-      });
+     
+        const notificationStatus = await safeSendParentWelcomeNotifications(
+          createdParent,
+          temporaryPassword,
+          req.user!.schoolId,
+          {
+            notifyEmail: payload.notifyEmail,
+            notifySms: payload.notifySms
+          }
+        );
 
       return res.status(201).json({
         ...enrichParent(createdParent),
@@ -898,7 +922,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
           specialAgreement: st.specialAgreement
         });
       }
-      return { parentId: p.id, createdStudents };
+      return { parentId: p.id, createdStudents, accessCode: user.accessCode };
     });
     await assignOnboardingFinance({
       schoolId: req.user!.schoolId,
@@ -909,14 +933,28 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       where: { id: parent.parentId },
       include: parentInclude
     });
-    const notificationStatus = await sendParentWelcomeNotifications(createdParent, temporaryPassword, req.user!.schoolId, {
-      notifyEmail: payload.notifyEmail,
-      notifySms: payload.notifySms
-    });
+    
+      if (!createdParent) {
+  return res.status(500).json({
+    message: "Parent créé mais introuvable après création."
+  });
+}
+
+    const notificationStatus = await safeSendParentWelcomeNotifications(
+      createdParent,
+      temporaryPassword,
+      req.user!.schoolId,
+      {
+        notifyEmail: payload.notifyEmail,
+        notifySms: payload.notifySms
+      }
+    );
+
+
     return res.status(201).json({
       ...enrichParent(createdParent),
       temporaryPassword,
-      accessCode: createdParent?.user?.accessCode || "",
+      accessCode: parent.accessCode || createdParent?.user?.accessCode || "",
       notificationStatus
     });
   } catch (error) {
@@ -928,6 +966,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       return res.status(503).json({ message: "Création parent temporairement indisponible. Vérifiez la base de données." });
     }
     const parentId = buildReadableEntityId("PAR", payload.fullName);
+    const accessCode = `ACC-PAR-DEMO${String(demoParents.length + 1).padStart(2, "0")}`;
     const newParent = {
       id: parentId,
       nom: payload.nom,
@@ -937,7 +976,7 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       phone: payload.phone,
       email: payload.email,
       physicalAddress: payload.physicalAddress,
-      accessCode: `ACC-PAR-DEMO${String(demoParents.length + 1).padStart(2, "0")}`,
+      accessCode,
       photoUrl: payload.photoUrl,
       temporaryPassword,
       students: payload.students.map((s, i) => ({
@@ -958,7 +997,8 @@ parentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenticat
       notifyEmail: payload.notifyEmail,
       notifySms: payload.notifySms
     });
-    return res.status(201).json({ ...newParent, notificationStatus });
+    // Toujours retourner temporaryPassword et accessCode même en fallback/demo
+    return res.status(201).json({ ...newParent, temporaryPassword, accessCode, notificationStatus });
   }
 });
 
@@ -1036,23 +1076,33 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
     if (!parentExists) return res.status(404).json({ message: "Parent non trouve" });
     // Suppression de la vérification d’unicité email/téléphone pour respecter la règle de l’écosystème
 
+   
     if (orbitRegistryIsEnabled()) {
-      const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);
-      const mirroredParent = mirrored.parents.find((entry) => matchesSharedParentIdentifier(entry, id));
-      if (!mirroredParent?.orbitId) {
-        return res.status(409).json({ message: "Impossible de modifier ce parent car son identifiant Orbit est introuvable." });
+      try {
+        const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);
+        const mirroredParent = mirrored.parents.find((entry) => matchesSharedParentIdentifier(entry, id));
+
+        if (mirroredParent?.orbitId) {
+          const { firstName, lastName } = splitPersonName(payload.fullName);
+
+          await updateOrbitParent(mirroredParent.orbitId, {
+            fullName: payload.fullName,
+            firstName: payload.prenom || firstName,
+            lastName: [payload.nom, payload.postnom].filter(Boolean).join(" ") || lastName,
+            email: normalizedEmail,
+            phone: normalizedPhone,
+            physicalAddress: payload.physicalAddress || null
+          });
+
+          await syncOrbitRegistryMirror(req.user!.schoolId);
+        } else {
+          console.error("[PARENT_UPDATE_ORBIT] Orbit ID introuvable pour parent", id);
+        }
+      } catch (error) {
+        console.error("[PARENT_UPDATE_ORBIT] Orbit sync failed but local update will continue", error);
       }
-      const { firstName, lastName } = splitPersonName(payload.fullName);
-      await updateOrbitParent(mirroredParent.orbitId, {
-        fullName: payload.fullName,
-        firstName: payload.prenom || firstName,
-        lastName: [payload.nom, payload.postnom].filter(Boolean).join(" ") || lastName,
-        email: normalizedEmail,
-        phone: normalizedPhone,
-        physicalAddress: payload.physicalAddress || null
-      });
-      await syncOrbitRegistryMirror(req.user!.schoolId);
     }
+
 
     const classIdResolution = await resolveStudentClassIds(req.user!.schoolId, payload.students);
     const currentStudents = await prisma.student.findMany({
@@ -1245,9 +1295,50 @@ parentRouter.delete("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authen
       });
     }
 
-    await deleteOrbitFamily(parent.orbitId);
-    await syncOrbitRegistryMirror(req.user!.schoolId);
-    return res.status(204).end();
+      await deleteOrbitFamily(parent.orbitId);
+
+        const localParent = await prisma.parent.findFirst({
+        where: {
+          id: parent.id,
+          schoolId: req.user!.schoolId
+        },
+        select: {
+          id: true,
+          userId: true
+        }
+      });
+
+      if (localParent) {
+        await prisma.$transaction(async (tx) => {
+          await tx.student.deleteMany({
+            where: {
+              parentId: localParent.id,
+              schoolId: req.user!.schoolId
+            }
+          });
+
+          await tx.parent.deleteMany({
+            where: {
+              id: localParent.id,
+              schoolId: req.user!.schoolId
+            }
+          });
+
+          if (localParent.userId) {
+            await tx.user.deleteMany({
+              where: {
+                id: localParent.userId,
+                role: "PARENT"
+              }
+            });
+          }
+        });
+      }
+
+      await syncOrbitRegistryMirror(req.user!.schoolId);
+      return res.status(204).end();
+
+
   }
 
   try {

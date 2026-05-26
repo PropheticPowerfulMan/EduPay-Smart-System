@@ -696,13 +696,25 @@ function StudentDetailModal({ student, parent, onClose }: { student: SharedDirec
   const exportDisabled = financeLoading || Boolean(financeError) || !financeStudent || pdfExporting;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="edupay-scrollbar relative w-full max-w-8xl max-h-[98vh] rounded-2xl border border-white/10 glass p-5 shadow-2xl">
-        <button type="button" onClick={onClose} className="absolute right-4 top-4 rounded-lg p-2 text-ink-dim hover:bg-white/10 hover:text-white">
-          <X className="h-4 w-4" />
-        </button>
-        <div className="flex flex-col gap-4 border-b border-white/10 pb-5 pr-10 sm:flex-row sm:items-start sm:justify-between">
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-3 py-4 sm:px-5 sm:py-6"
+      onClick={onClose}
+    >
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+
+      <div
+        className="edupay-dialog-panel-xl relative flex max-h-[calc(100dvh-2rem)] w-full flex-col overflow-hidden rounded-2xl border border-white/10 glass shadow-2xl animate-fadeInUp"
+        onClick={(event) => event.stopPropagation()}
+      >
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute right-3 top-5 z-30 flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-slate-950/80 text-ink-dim shadow-lg backdrop-blur-xl transition-colors hover:bg-white/10 hover:text-white"
+        aria-label="Fermer"
+      >
+        <X className="h-5 w-5" />
+      </button>
+        <div className="sticky top-0 z-10 flex flex-col gap-4 border-b border-white/10 bg-slate-950/90 px-6 py-5 pr-14 backdrop-blur-xl sm:flex-row sm:items-start sm:justify-between">
           <div>
             <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-200">Fiche eleve</p>
             <h2 className="mt-2 font-display text-2xl font-bold text-white">{student.fullName}</h2>
@@ -738,7 +750,8 @@ function StudentDetailModal({ student, parent, onClose }: { student: SharedDirec
             </button>
           </div>
         </div>
-        <div className="mt-5 grid gap-3 lg:grid-cols-4">
+        <div className="edupay-scrollbar min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          <div className="grid gap-3 lg:grid-cols-4">
           <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
             <p className="text-xs text-ink-dim">ID eleve</p>
             <p className="mt-1 break-words font-mono text-sm font-bold text-cyan-200">{student.displayId || student.studentNumber || student.id}</p>
@@ -927,6 +940,7 @@ function StudentDetailModal({ student, parent, onClose }: { student: SharedDirec
               </div>
             </>
           )}
+        </div>
         </div>
       </div>
     </div>

@@ -2534,17 +2534,29 @@ export function ParentsManagementPage() {
       if (id) {
         await api(`/api/parents/${id}`, { method: "PUT", body: JSON.stringify(body) });
       } else {
-        const created = await api<Parent & { temporaryPassword?: string; accessCode?: string; notificationStatus?: ParentCredentials["notificationStatus"] }>("/api/parents", { method: "POST", body: JSON.stringify(body) });
-        if (created.temporaryPassword) {
-          setCredentials({
-            parentId: created.id,
-            parentName: created.fullName,
-            email: created.email,
-            accessCode: created.accessCode,
-            temporaryPassword: created.temporaryPassword,
-            notificationStatus: created.notificationStatus
-          });
-        }
+            const created = await api<
+              Parent & {
+                temporaryPassword?: string;
+                accessCode?: string;
+                notificationStatus?: ParentCredentials["notificationStatus"];
+              }
+            >("/api/parents", {
+              method: "POST",
+              body: JSON.stringify(body)
+            });
+
+            if (created.temporaryPassword) {
+              setCredentials({
+                parentId: created.id,
+                parentName: created.fullName || fullName,
+                email: created.email || body.email,
+                accessCode: created.accessCode || "NON_RETOURNE_PAR_API",
+                temporaryPassword: created.temporaryPassword,
+                notificationStatus: created.notificationStatus
+              });
+            } else {
+              setApiError("Parent créé, mais l'API n'a pas retourné le mot de passe temporaire.");
+            }
       }
       setShowForm(false);
       setEditTarget(null);
