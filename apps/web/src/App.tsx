@@ -6,7 +6,6 @@ import { LoginPage } from "./pages/LoginPage";
 import { ReceiptVerificationPage } from "./pages/ReceiptVerificationPage";
 import { STAFF_ROLES, useAuthStore } from "./store/auth";
 import type { Role } from "./store/auth";
-import { warmStaffRoute } from "./utils/staffRouteWarmup";
 
 const loadAIAssistantPage = () => import("./pages/AIAssistantPage");
 const loadFinanceDashboardPage = () => import("./pages/FinanceDashboardPage");
@@ -52,18 +51,10 @@ function ProtectedLayout() {
   useEffect(() => {
     if (!role || role === "PARENT") return;
 
-    void loadFinanceDashboardPage();
-    void loadFinancialOperationsPage();
-    void loadReportsPage();
-    void loadFinanceParentAdminPage();
-    void warmStaffRoute("/");
-
     const warmupTimer = window.setTimeout(() => {
-      void Promise.allSettled([
-        warmStaffRoute("/reports"),
-        warmStaffRoute("/parent-payments")
-      ]);
-    }, 120);
+      void loadFinancialOperationsPage();
+      void loadAIAssistantPage();
+    }, 2500);
 
     return () => {
       window.clearTimeout(warmupTimer);

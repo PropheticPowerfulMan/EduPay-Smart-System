@@ -17,6 +17,7 @@ import {
   createPayrollRun,
   createSalaryProfile,
   createVendor,
+  deleteVendor,
   getExpenseOverview,
   listAccountingEntries,
   listBudgets,
@@ -26,7 +27,8 @@ import {
   listPayrollRuns,
   listSalaryProfiles,
   listVendors,
-  processExpenseApproval
+  processExpenseApproval,
+  updateVendor
 } from "./service";
 
 const readRoles: Role[] = ["SUPER_ADMIN", "OWNER", "ADMIN", "FINANCIAL_MANAGER", "ACCOUNTANT", "CASHIER", "HR_MANAGER", "AUDITOR"];
@@ -48,6 +50,7 @@ const vendorSchema = z.object({
   address: z.string().optional(),
   notes: z.string().optional()
 });
+const vendorUpdateSchema = vendorSchema.partial().refine((payload) => Object.keys(payload).length > 0, "No vendor update provided.");
 
 const budgetSchema = z.object({
   periodId: z.string().optional(),
@@ -162,6 +165,30 @@ expenseRouter.post("/vendors", authorize(...writeRoles), async (req: Authenticat
   } catch (error) {
     console.error("Vendor create error", error);
     return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to create vendor." });
+  }
+});
+
+expenseRouter.put("/vendors/:vendorId", authorize(...writeRoles), async (req: AuthenticatedRequest, res) => {
+  try {
+    const payload = vendorUpdateSchema.parse(req.body);
+    return res.json(await updateVendor({
+      schoolId: req.user!.schoolId,
+      vendorId: req.params.vendorId,
+      ...payload,
+      email: payload.email || undefined
+    }));
+  } catch (error) {
+    console.error("Vendor update error", error);
+    return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to update vendor." });
+  }
+});
+
+expenseRouter.delete("/vendors/:vendorId", authorize(...writeRoles), async (req: AuthenticatedRequest, res) => {
+  try {
+    return res.json(await deleteVendor({ schoolId: req.user!.schoolId, vendorId: req.params.vendorId }));
+  } catch (error) {
+    console.error("Vendor delete error", error);
+    return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to delete vendor." });
   }
 });
 

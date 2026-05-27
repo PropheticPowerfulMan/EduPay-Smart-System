@@ -395,6 +395,21 @@ export async function updateOrbitTeacher(identifier: string, payload: {
   });
 }
 
+export async function updateOrbitStudent(identifier: string, payload: {
+  fullName?: string;
+  firstName?: string | null;
+  middleName?: string | null;
+  lastName?: string | null;
+  className?: string | null;
+  studentNumber?: string | null;
+  mustChangePassword?: boolean;
+}) {
+  return orbitRegistryRequest<{ orbitId: string; updated: boolean }>(`/api/integration/registry/student/${encodeURIComponent(identifier)}?identifierType=orbitId`, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
 export async function deleteOrbitParent(identifier: string) {
   return orbitRegistryRequest<{ orbitId: string; deleted: boolean }>(`/api/integration/registry/parent/${encodeURIComponent(identifier)}?identifierType=orbitId`, {
     method: "DELETE",

@@ -1249,11 +1249,15 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
     });
 
     if (updatedStudentAssignments.length > 0) {
-      await assignOnboardingFinance({
-        schoolId: req.user!.schoolId,
-        parentId: id,
-        students: updatedStudentAssignments
-      });
+      try {
+        await assignOnboardingFinance({
+          schoolId: req.user!.schoolId,
+          parentId: id,
+          students: updatedStudentAssignments
+        });
+      } catch (financeError) {
+        console.error("[PARENT_UPDATE_FINANCE_SYNC] Parent updated, finance reassignment deferred", financeError);
+      }
     }
 
     const parent = await prisma.parent.findUnique({

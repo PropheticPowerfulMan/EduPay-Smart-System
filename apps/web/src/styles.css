@@ -269,6 +269,20 @@ body::-webkit-scrollbar-thumb:hover,
   background-clip: padding-box;
 }
 
+input[type="date"] {
+  color-scheme: dark;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 1;
+  filter: invert(83%) sepia(32%) saturate(905%) hue-rotate(145deg) brightness(103%) contrast(96%);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  filter: invert(93%) sepia(22%) saturate(955%) hue-rotate(161deg) brightness(106%) contrast(102%);
+}
+
 /* Brand surface avec gradient moderne */
 .brand-surface {
   background: linear-gradient(135deg, #031018 0%, #0786ad 45%, #14b8de 74%, #f8fbff 115%);

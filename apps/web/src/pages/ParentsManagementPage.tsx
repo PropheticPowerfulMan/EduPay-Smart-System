@@ -478,6 +478,19 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
       </div>
     </section>` : "";
 
+  const financeDetailsSection = financeSnapshot ? `
+    <section class="panel">
+      <h2>Analyse financière détaillée</h2>
+      <div class="summary-grid">
+        <div><span>Revenu net attendu</span><strong>$ ${financeSnapshot.profile.expectedNetRevenue.toFixed(2)}</strong></div>
+        <div><span>Paiements en attente</span><strong>$ ${financeSnapshot.profile.pendingPaymentsTotal.toFixed(2)}</strong></div>
+        <div><span>Paiements échoués</span><strong>$ ${financeSnapshot.profile.failedPaymentsTotal.toFixed(2)}</strong></div>
+        <div><span>Échéances en retard</span><strong>${financeSnapshot.profile.overdueInstallments}</strong></div>
+        <div><span>Score comportement</span><strong>${financeSnapshot.profile.paymentBehaviorScore.toFixed(1)}%</strong></div>
+        <div><span>Dernier paiement</span><strong>${escapeHtml(formatDateLabel(financeSnapshot.profile.lastPaymentAt))}</strong></div>
+      </div>
+    </section>` : "";
+
   return `<!DOCTYPE html>
   <html lang="fr">
     <head>
@@ -721,6 +734,18 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
             <strong>${escapeHtml(parent.email || "-")}</strong>
           </div>
           <div>
+            <p class="muted">Nom complet administratif</p>
+            <strong>${escapeHtml([parent.nom, parent.postnom, parent.prenom].filter(Boolean).join(" ") || parent.fullName)}</strong>
+          </div>
+          <div>
+            <p class="muted">Adresse physique</p>
+            <strong>${escapeHtml(parent.physicalAddress || "-")}</strong>
+          </div>
+          <div>
+            <p class="muted">Langue préférée</p>
+            <strong>${escapeHtml((parent.preferredLanguage || "fr").toUpperCase())}</strong>
+          </div>
+          <div>
             <p class="muted">Inscription</p>
             <strong>${escapeHtml(formatDateTimeLabel(parent.createdAt))}</strong>
           </div>
@@ -731,6 +756,7 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
         </div>
       </section>
       ${summarySection}
+      ${financeDetailsSection}
       <section class="panel">
         <h2>Enfants rattachés</h2>
         <table>
@@ -1207,7 +1233,7 @@ function DetailModal({
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto px-3 py-4 sm:px-5 sm:py-6" onClick={onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <div className="edupay-parent-modal relative flex max-h-[calc(100dvh-2rem)] w-full max-w-7xl flex-col overflow-hidden glass rounded-2xl animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
+      <div className="edupay-parent-modal relative flex max-h-[calc(100dvh-1rem)] min-h-[82vh] w-full max-w-[min(98vw,104rem)] flex-col overflow-hidden glass rounded-2xl animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-white/10 bg-slate-950/90 px-4 py-4 backdrop-blur-xl sm:px-6">
           <div className="min-w-0">
             <p className="text-xs font-bold uppercase tracking-[0.15em] text-brand-300">{t("pmParentId")}: {parent.displayId || parent.id}</p>
@@ -1846,7 +1872,7 @@ function FormModal({ initial, classes, catalog, onSave, onClose, t }: {
   return (
     <div className="edupay-scrollbar fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
-      <div className="edupay-scrollbar relative my-4 max-h-[98vh] w-full max-w-7xl overflow-y-auto glass rounded-2xl p-5 space-y-6 animate-fadeInUp sm:p-7">
+      <div className="edupay-scrollbar relative my-4 max-h-[calc(100dvh-1rem)] min-h-[82vh] w-full max-w-[min(98vw,104rem)] overflow-y-auto glass rounded-2xl p-5 space-y-6 animate-fadeInUp sm:p-7">
         <button onClick={onClose} className="absolute top-4 right-4 text-ink-dim hover:text-white transition-colors">
           <XIcon />
         </button>

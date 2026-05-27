@@ -10,6 +10,8 @@ const envSchema = z.object({
   JWT_EXPIRES_IN: z.string().default("1d"),
   API_PORT: z.string().default("4000"),
   AI_SERVICE_URL: z.string().url().default("http://localhost:8000"),
+  OPENAI_API_KEY: z.string().default(""),
+  OPENAI_MODEL: z.string().default("gpt-4o-mini"),
   FRONTEND_URL: z.string().url().optional(),
   SMTP_HOST: z.string().default("smtp.example.com"),
   SMTP_PORT: z.string().default("587"),

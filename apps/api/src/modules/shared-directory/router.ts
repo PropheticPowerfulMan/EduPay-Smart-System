@@ -272,8 +272,14 @@ sharedDirectoryRouter.put("/teachers/:id", authorize(...employeeWriteRoles), asy
   }
 
   const payload = updateEmployeeSchema.parse(req.body);
-  const result = await updateOrbitTeacher(req.params.id, payload);
-  return res.json(result);
+  try {
+    const result = await updateOrbitTeacher(req.params.id, payload);
+    await syncOrbitRegistryMirror(req.user!.schoolId);
+    return res.json(result);
+  } catch (error) {
+    console.error("[TEACHER_UPDATE_ORBIT] Unable to update teacher in shared registry", error);
+    return res.status(502).json({ message: error instanceof Error ? error.message : "Modification employe indisponible dans le registre partage." });
+  }
 });
 
 sharedDirectoryRouter.delete("/teachers/:id", authorize(...employeeWriteRoles), async (req: AuthenticatedRequest, res) => {

@@ -29,6 +29,28 @@ export function printHtmlDocument(html: string) {
   frameDocument.write(html);
   frameDocument.close();
 
+  const inlinePrintableImages = Promise.all(
+    Array.from(frameDocument.images).map(async (image) => {
+      try {
+        const imageUrl = new URL(image.currentSrc || image.src, window.location.href);
+        if (imageUrl.origin !== window.location.origin || imageUrl.protocol.startsWith("data")) return;
+
+        const response = await fetch(imageUrl.toString(), { cache: "force-cache" });
+        if (!response.ok) return;
+        const blob = await response.blob();
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Image non lisible."));
+          reader.onerror = () => reject(reader.error ?? new Error("Image non lisible."));
+          reader.readAsDataURL(blob);
+        });
+        image.src = dataUrl;
+      } catch {
+        // Keep the original source; printing should continue even if an asset cannot be inlined.
+      }
+    })
+  );
+
   const settleWithin = <T>(promise: Promise<T>, timeoutMs: number) => new Promise<void>((resolve) => {
     let settled = false;
     const finalize = () => {
@@ -62,6 +84,7 @@ export function printHtmlDocument(html: string) {
   if (fontsReady) {
     void Promise.all([
       settleWithin(fontsReady.catch(() => undefined), 450),
+      settleWithin(inlinePrintableImages, 650),
       settleWithin(waitForImages, 650)
     ]).finally(() => {
       window.setTimeout(triggerPrint, 60);
@@ -69,7 +92,10 @@ export function printHtmlDocument(html: string) {
     return;
   }
 
-  void settleWithin(waitForImages, 650).finally(() => {
+  void Promise.all([
+    settleWithin(inlinePrintableImages, 650),
+    settleWithin(waitForImages, 650)
+  ]).finally(() => {
     window.setTimeout(triggerPrint, 80);
   });
 }

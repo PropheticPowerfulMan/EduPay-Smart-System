@@ -1718,7 +1718,7 @@ export function FinanceParentAdminPage() {
                       <button
                         type="button"
                         onClick={() => void submitAgreement()}
-                        disabled={agreementSubmitting || !agreementForm.studentId || !agreementForm.title.trim() || !agreementForm.customTotal || agreementForm.installments.length === 0}
+                        disabled={agreementSubmitting || !agreementForm.studentId || agreementInstallmentsTotal <= 0 || agreementForm.installments.length === 0}
                         className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-60"
                       >
                         <Save className="h-4 w-4" />

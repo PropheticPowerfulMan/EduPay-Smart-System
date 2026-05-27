@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { orbitRegistryIsEnabled, syncOrbitRegistryMirror } from "../../integrations/orbitRegistry";
+import { orbitRegistryIsEnabled, syncOrbitRegistryMirror, updateOrbitStudent } from "../../integrations/orbitRegistry";
 import { prisma } from "../../prisma";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
 
@@ -24,7 +24,9 @@ const updateStudentSchema = z.object({
   parentId: z.string().min(1),
   classId: z.string().min(1),
   fullName: z.string().min(3),
-  annualFee: z.number().nonnegative()
+  annualFee: z.number().nonnegative(),
+  studentNumber: z.string().trim().min(1).nullable().optional(),
+  mustChangePassword: z.boolean().optional()
 });
 
 export const studentRouter = Router();
@@ -81,6 +83,24 @@ studentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenti
     select: { id: true }
   });
   if (!existing) return res.status(404).json({ message: "Eleve introuvable." });
+
+  if (orbitRegistryIsEnabled()) {
+    try {
+      const className = await prisma.class.findUnique({ where: { id: payload.classId }, select: { name: true } });
+      const [firstName, ...lastNameParts] = payload.fullName.trim().split(/\s+/);
+      await updateOrbitStudent(req.params.id, {
+        fullName: payload.fullName,
+        firstName: firstName || null,
+        lastName: lastNameParts.join(" ") || null,
+        className: className?.name ?? payload.classId,
+        studentNumber: payload.studentNumber ?? undefined,
+        mustChangePassword: payload.mustChangePassword
+      });
+      await syncOrbitRegistryMirror(req.user!.schoolId);
+    } catch (error) {
+      console.error("[STUDENT_UPDATE_ORBIT] Orbit sync failed but local update will continue", error);
+    }
+  }
 
   const student = await prisma.student.update({
     where: { id: req.params.id },

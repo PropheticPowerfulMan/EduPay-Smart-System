@@ -126,7 +126,12 @@ function parseDate(payment: Payment) {
   return Number.isNaN(date.getTime()) ? new Date() : date;
 }
 
-async function loadAssistantContext(): Promise<AssistantContext> {
+function shouldLoadDetailedProfiles(query: string) {
+  const q = normalize(query);
+  return hasAny(q, ["impay", "retard", "solde", "dette", "unpaid", "late", "debt", "balance", "eleve", "student"]);
+}
+
+async function loadAssistantContext(query = ""): Promise<AssistantContext> {
   const [overview, financeOverview, parents, payments] = await Promise.all([
     api<Overview>("/api/analytics/overview").catch(() => null),
     api<FinanceOverview>("/api/finance/overview").catch(() => null),
@@ -134,14 +139,15 @@ async function loadAssistantContext(): Promise<AssistantContext> {
     api<Payment[]>("/api/payments").catch(() => [])
   ]);
 
+  const profileParents = shouldLoadDetailedProfiles(query) ? parents.slice(0, 40) : [];
   const parentProfiles = (await Promise.all(
-    parents.map((parent) => api<AssistantContext["parentProfiles"][number]>(`/api/finance/parents/${parent.id}/profile`).catch(() => null))
+    profileParents.map((parent) => api<AssistantContext["parentProfiles"][number]>(`/api/finance/parents/${parent.id}/profile`).catch(() => null))
   )).filter((profile): profile is AssistantContext["parentProfiles"][number] => Boolean(profile));
 
   return {
     overview,
     financeOverview,
-    parents,
+    parents: parents.slice(0, 250),
     parentProfiles,
     payments: payments.map((payment) => ({
       ...payment,
@@ -750,7 +756,7 @@ export function AIAssistantPage() {
     setError(null);
     setMessages((current) => [...current, { id: `user-${Date.now()}`, role: "user", text: askedQuestion }]);
 
-    const context = await loadAssistantContext();
+    const context = await loadAssistantContext(askedQuestion);
     const localResult = localAssistantReply(askedQuestion, lang, context);
 
     try {
@@ -758,7 +764,10 @@ export function AIAssistantPage() {
         method: "POST",
         body: JSON.stringify({ query: askedQuestion, context })
       });
-      const finalResult = isGenericAssistantResponse(data) || isPrecisionFinanceQuestion(askedQuestion) ? localResult : data;
+      const finalResult = isGenericAssistantResponse(data) ? localResult : {
+        ...data,
+        tableRows: data.tableRows ?? (isPrecisionFinanceQuestion(askedQuestion) ? localResult.tableRows : undefined)
+      };
       setResult(finalResult);
       setMessages((current) => [...current, {
         id: `assistant-${Date.now()}`,

@@ -1542,7 +1542,7 @@ export async function getSchoolFinanceOverview(input: { schoolId: string; academ
   const totalDebt = roundCurrency(parentSnapshots.reduce((sum, snapshot) => sum + snapshot.profile.totalDebt, 0));
   const expectedRevenue = roundCurrency(parentSnapshots.reduce((sum, snapshot) => sum + snapshot.profile.expectedNetRevenue, 0));
   const totalReduction = roundCurrency(parentSnapshots.reduce((sum, snapshot) => sum + snapshot.profile.totalReduction, 0));
-  const paymentCompletionRate = expectedRevenue > 0 ? roundCurrency((totalRevenue / expectedRevenue) * 100) : 0;
+  const paymentCompletionRate = expectedRevenue > 0 ? roundCurrency(Math.min(100, (totalRevenue / expectedRevenue) * 100)) : 0;
   const parentDebtAnalytics = parentSnapshots
     .map((snapshot) => ({
       parentId: snapshot.parent.id,
@@ -1584,11 +1584,12 @@ export async function getSchoolFinanceOverview(input: { schoolId: string; academ
   });
 
   const alerts = parentSnapshots.flatMap((snapshot) => snapshot.alerts);
+  const parentsWithAlerts = parentSnapshots.filter((snapshot) => snapshot.alerts.length > 0).length;
   const financialHealthIndicators = {
     collectionEfficiency: paymentCompletionRate,
     debtExposure: expectedRevenue > 0 ? roundCurrency((totalDebt / expectedRevenue) * 100) : 0,
     reductionLoad: expectedRevenue > 0 ? roundCurrency((totalReduction / expectedRevenue) * 100) : 0,
-    alertPressure: alerts.length,
+    alertPressure: parentSnapshots.length > 0 ? roundCurrency((parentsWithAlerts / parentSnapshots.length) * 100) : 0,
     averageBehaviorScore: parentSnapshots.length > 0
       ? roundCurrency(parentSnapshots.reduce((sum, snapshot) => sum + snapshot.profile.paymentBehaviorScore, 0) / parentSnapshots.length)
       : 0

@@ -129,7 +129,7 @@ function slugify(value: string) {
 function getRoleStepsForUser(role: Role): ApprovalStepRole[] {
   if (role === Role.SUPER_ADMIN) return [ApprovalStepRole.FINANCIAL_OFFICER, ApprovalStepRole.ADMINISTRATION, ApprovalStepRole.OWNER];
   if (role === Role.OWNER) return [ApprovalStepRole.OWNER];
-  if (role === Role.ADMIN) return [ApprovalStepRole.ADMINISTRATION];
+  if (role === Role.ADMIN) return [ApprovalStepRole.FINANCIAL_OFFICER, ApprovalStepRole.ADMINISTRATION];
   if (role === Role.FINANCIAL_MANAGER || role === Role.ACCOUNTANT || role === Role.CASHIER) return [ApprovalStepRole.FINANCIAL_OFFICER];
   return [];
 }
@@ -429,6 +429,50 @@ export async function createVendor(input: {
   return prisma.vendor.create({ data: input });
 }
 
+export async function updateVendor(input: {
+  schoolId: string;
+  vendorId: string;
+  name?: string;
+  contactName?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address?: string | null;
+  notes?: string | null;
+}) {
+  const vendor = await prisma.vendor.findFirst({ where: { id: input.vendorId, schoolId: input.schoolId } });
+  if (!vendor) {
+    throw new Error("Vendor not found.");
+  }
+
+  return prisma.vendor.update({
+    where: { id: input.vendorId },
+    data: {
+      name: input.name,
+      contactName: input.contactName,
+      phone: input.phone,
+      email: input.email,
+      address: input.address,
+      notes: input.notes
+    }
+  });
+}
+
+export async function deleteVendor(input: { schoolId: string; vendorId: string }) {
+  const vendor = await prisma.vendor.findFirst({ where: { id: input.vendorId, schoolId: input.schoolId } });
+  if (!vendor) {
+    throw new Error("Vendor not found.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    await tx.expense.updateMany({
+      where: { schoolId: input.schoolId, vendorId: input.vendorId },
+      data: { vendorId: null }
+    });
+    await tx.vendor.delete({ where: { id: input.vendorId } });
+    return { id: input.vendorId, deleted: true };
+  });
+}
+
 export async function listBudgets(input: { schoolId: string }) {
   await ensureDefaultExpenseCatalog(input.schoolId, prisma);
   const budgets = await prisma.budget.findMany({
@@ -665,7 +709,7 @@ export async function processExpenseApproval(input: {
       return tx.expense.update({
         where: { id: expense.id },
         data: { status: ExpenseStatus.REJECTED },
-        include: { approvalSteps: { orderBy: { stage: "asc" } }, category: true, budget: true, period: true }
+        include: { approvalSteps: { orderBy: { stage: "asc" } }, category: true, budget: true, period: true, vendor: true, attachments: true }
       });
     }
 
@@ -673,7 +717,7 @@ export async function processExpenseApproval(input: {
     if (remainingStep) {
       return tx.expense.findUniqueOrThrow({
         where: { id: expense.id },
-        include: { approvalSteps: { orderBy: { stage: "asc" } }, category: true, budget: true, period: true }
+        include: { approvalSteps: { orderBy: { stage: "asc" } }, category: true, budget: true, period: true, vendor: true, attachments: true }
       });
     }
 
@@ -733,7 +777,7 @@ export async function processExpenseApproval(input: {
 
     return tx.expense.findUniqueOrThrow({
       where: { id: expense.id },
-      include: { approvalSteps: { orderBy: { stage: "asc" } }, category: true, budget: true, period: true }
+      include: { approvalSteps: { orderBy: { stage: "asc" } }, category: true, budget: true, period: true, vendor: true, attachments: true }
     });
   });
 }

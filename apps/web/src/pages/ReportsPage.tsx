@@ -11,9 +11,11 @@ import {
   XAxis,
   YAxis
 } from "recharts";
-import { Download, FileSpreadsheet, Landmark, ReceiptText, TrendingUp, WalletCards } from "lucide-react";
+import { Download, FileSpreadsheet, Landmark, Printer, ReceiptText, TrendingUp, WalletCards } from "lucide-react";
+import { schoolBranding } from "../config/branding";
 import { api } from "../services/api";
 import { exportWorkbook } from "../utils/financeExcel";
+import { printHtmlDocument } from "../utils/printDocument";
 
 type FinanceOverviewResponse = {
   academicYear: { id: string; name: string; startDate: string; endDate: string };
@@ -117,6 +119,10 @@ type PayrollRun = {
   items: Array<{ id: string; salarySlipNumber: string; netSalary: number; salaryProfile: { fullName: string; employeeCode: string } }>;
 };
 
+function plainPrintText(value: string) {
+  return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char] ?? char));
+}
+
 function SectionCard({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
     <section className="card glass border border-white/10 shadow-lg">
@@ -142,6 +148,7 @@ export function ReportsPage() {
   const [error, setError] = useState<string | null>(null);
   const [detailsLoading, setDetailsLoading] = useState(true);
   const [detailsError, setDetailsError] = useState<string | null>(null);
+  const [reportSearch, setReportSearch] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -193,6 +200,60 @@ export function ReportsPage() {
     };
   }, []);
 
+  const reportNeedle = reportSearch.trim().toLowerCase();
+  const matchesReportSearch = (values: Array<string | number | null | undefined>) => !reportNeedle
+    || values.some((value) => String(value ?? "").toLowerCase().includes(reportNeedle));
+  const filteredBudgets = expenseOverview?.budgets.filter((budget) => matchesReportSearch([
+    budget.name, budget.department, budget.categoryName, budget.periodName, budget.status, budget.utilization
+  ])) ?? [];
+  const filteredBudgetAlerts = expenseOverview?.budgetAlerts.filter((budget) => matchesReportSearch([
+    budget.name, budget.department, budget.categoryName, budget.periodName, budget.status, budget.utilization
+  ])) ?? [];
+  const filteredDepartmentSpending = expenseOverview?.departmentSpending.filter((row) => matchesReportSearch([row.department, row.total])) ?? [];
+  const filteredAccountingEntries = accountingEntries.filter((entry) => matchesReportSearch([
+    entry.title, entry.entryType, entry.direction, entry.department, entry.currency, entry.amount,
+    entry.expense?.title, entry.payrollRun?.title, entry.payrollItem?.salarySlipNumber
+  ]));
+  const filteredCashflowEntries = cashflowEntries.filter((entry) => matchesReportSearch([
+    entry.sourceType, entry.direction, entry.method, entry.currency, entry.amount, entry.notes,
+    entry.expense?.title, entry.payrollRun?.title, entry.payrollItem?.salarySlipNumber
+  ]));
+  const filteredPayrollRuns = payrollRuns.filter((run) => matchesReportSearch([
+    run.title, run.department, run.frequency, run.status, run.period?.name, run.totalNet
+  ]));
+
+  function buildExecutiveReportHtml() {
+    if (!financeOverview || !expenseOverview) return "";
+    const generatedAt = new Date();
+    const logoSrc = plainPrintText(new URL(schoolBranding.logoSrc, window.location.href).toString());
+    const rows = [
+      ["Exercice", financeOverview.academicYear.name, "Période académique de référence."],
+      ["Revenu attendu", currency.format(financeOverview.expectedRevenue), "Montant brut attendu."],
+      ["Revenu encaissé", currency.format(financeOverview.collectedRevenue), "Cash réellement capturé."],
+      ["Dette globale", currency.format(financeOverview.totalDebt), "Reste à recouvrer."],
+      ["Dépenses", currency.format(expenseOverview.expenses.totalExpenses), "Sorties opérationnelles."],
+      ["Profit / perte", currency.format(expenseOverview.cashflow.profitLoss), "Résultat financier courant."],
+      ["Trésorerie", currency.format(expenseOverview.cashflow.availableCash), "Cash disponible."],
+      ["Masse salariale", currency.format(expenseOverview.payroll.totalPayroll), "Paie nette traitée."]
+    ];
+    const budgetRows = filteredBudgets.slice(0, 30).map((budget) => `<tr><td>${plainPrintText(budget.name)}</td><td>${plainPrintText(budget.department)}</td><td>${plainPrintText(budget.categoryName || "Global")}</td><td>${plainPrintText(currency.format(budget.plannedAmount))}</td><td>${plainPrintText(currency.format(budget.consumedAmount))}</td><td>${budget.utilization.toFixed(1)}%</td><td>${plainPrintText(budget.status)}</td></tr>`).join("");
+    const cashRows = filteredCashflowEntries.slice(0, 30).map((entry) => `<tr><td>${plainPrintText(new Date(entry.referenceDate).toLocaleDateString("fr-FR"))}</td><td>${plainPrintText(entry.sourceType)}</td><td>${plainPrintText(entry.direction)}</td><td>${plainPrintText(entry.method || "")}</td><td>${plainPrintText(currency.format(entry.amount))}</td><td>${plainPrintText(entry.notes || "")}</td></tr>`).join("");
+    return `<!doctype html><html><head><meta charset="utf-8" /><title>Rapport exécutif EduPay</title><style>
+      @page{size:A4;margin:14mm}body{font-family:Inter,Arial,sans-serif;color:#0f172a}header{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid ${schoolBranding.colors.primary};padding-bottom:14px;margin-bottom:18px}.brand{display:flex;gap:12px;align-items:center}.logo{width:60px;height:60px;object-fit:contain}.kicker{font-size:11px;text-transform:uppercase;letter-spacing:.14em;color:#64748b}h1{font-size:22px;margin:2px 0}.meta{text-align:right;font-size:12px;color:#475569}.scope{border:1px solid #cbd5e1;background:#f8fafc;padding:10px 12px;margin:12px 0 18px;font-size:12px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}.metric{border:1px solid #cbd5e1;padding:10px}.metric b{display:block;font-size:16px;margin-top:3px}table{width:100%;border-collapse:collapse;font-size:10.5px;margin:10px 0 18px}th{background:#0f172a;color:white;text-align:left;padding:7px;border:1px solid #0f172a}td{border:1px solid #cbd5e1;padding:6px;vertical-align:top}h2{font-size:15px;margin-top:18px}footer{border-top:1px solid #cbd5e1;margin-top:18px;padding-top:8px;font-size:10px;color:#64748b}</style></head><body>
+      <header><div class="brand"><img class="logo" src="${logoSrc}" alt="Logo ${plainPrintText(schoolBranding.schoolName)}" /><div><div class="kicker">${plainPrintText(schoolBranding.appName)}</div><h1>Rapport exécutif financier</h1><div>${plainPrintText(schoolBranding.schoolName)}</div></div></div><div class="meta">Document administratif<br/>${plainPrintText(generatedAt.toLocaleString("fr-FR"))}<br/>${plainPrintText(schoolBranding.shortName)}</div></header>
+      <div class="scope">Filtre analytique: ${plainPrintText(reportSearch || "Toutes les données")} · Budgets visibles: ${filteredBudgets.length} · Écritures: ${filteredAccountingEntries.length} · Cashflow: ${filteredCashflowEntries.length} · Paie: ${filteredPayrollRuns.length}</div>
+      <div class="grid">${rows.map(([label, value, note]) => `<div class="metric"><span>${plainPrintText(label)}</span><b>${plainPrintText(value)}</b><small>${plainPrintText(note)}</small></div>`).join("")}</div>
+      <h2>Synthèse budgétaire filtrée</h2><table><thead><tr><th>Budget</th><th>Département</th><th>Catégorie</th><th>Planifié</th><th>Consommé</th><th>Utilisation</th><th>Statut</th></tr></thead><tbody>${budgetRows || "<tr><td colspan='7'>Aucune ligne budgétaire.</td></tr>"}</tbody></table>
+      <h2>Trésorerie filtrée</h2><table><thead><tr><th>Date</th><th>Source</th><th>Direction</th><th>Méthode</th><th>Montant</th><th>Notes</th></tr></thead><tbody>${cashRows || "<tr><td colspan='6'>Aucune ligne de trésorerie.</td></tr>"}</tbody></table>
+      <footer>Rapport généré depuis EduPay selon la charte administrative ${plainPrintText(schoolBranding.shortName)}.</footer>
+    </body></html>`;
+  }
+
+  function printExecutiveReport() {
+    const html = buildExecutiveReportHtml();
+    if (html) printHtmlDocument(html);
+  }
+
   function exportExecutiveWorkbook() {
     if (!financeOverview || !expenseOverview) return;
     exportWorkbook(`rapport-executif-${new Date().toISOString().slice(0, 10)}`, [
@@ -213,7 +274,7 @@ export function ReportsPage() {
       },
       {
         name: "Budgets",
-        rows: expenseOverview.budgets.map((budget) => ({
+        rows: filteredBudgets.map((budget) => ({
           "Budget": budget.name,
           "Département": budget.department,
           "Catégorie": budget.categoryName || "Global",
@@ -227,7 +288,7 @@ export function ReportsPage() {
       },
       {
         name: "Comptabilité",
-        rows: accountingEntries.map((entry) => ({
+        rows: filteredAccountingEntries.map((entry) => ({
           "Date": new Date(entry.entryDate).toLocaleDateString("fr-FR"),
           "Type": entry.entryType,
           "Direction": entry.direction,
@@ -240,7 +301,7 @@ export function ReportsPage() {
       },
       {
         name: "Trésorerie",
-        rows: cashflowEntries.map((entry) => ({
+        rows: filteredCashflowEntries.map((entry) => ({
           "Date": new Date(entry.referenceDate).toLocaleDateString("fr-FR"),
           "Source": entry.sourceType,
           "Direction": entry.direction,
@@ -253,7 +314,7 @@ export function ReportsPage() {
       },
       {
         name: "Paie",
-        rows: payrollRuns.map((run) => ({
+        rows: filteredPayrollRuns.map((run) => ({
           "Run": run.title,
           "Département": run.department || "Tous",
           "Fréquence": run.frequency,
@@ -314,8 +375,17 @@ export function ReportsPage() {
               <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-200">
                 Cette vue consolide revenu, budgets, comptabilité, trésorerie et masse salariale. Elle sert de preuve visible dans l'interface et de point d'export Excel.
               </p>
+              <input
+                value={reportSearch}
+                onChange={(event) => setReportSearch(event.target.value)}
+                placeholder="Recherche rapport: departement, budget, statut, cashflow, paie, montant..."
+                className="mt-5 w-full rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-3 text-sm text-white outline-none transition placeholder:text-slate-400 focus:border-cyan-300/40"
+              />
             </div>
             <div className="flex flex-wrap gap-3">
+              <button onClick={printExecutiveReport} className="inline-flex items-center gap-2 rounded-2xl border border-emerald-300/25 bg-emerald-400/10 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-400/20">
+                <Printer className="h-4 w-4" /> PDF / Imprimer
+              </button>
               <button onClick={exportExecutiveWorkbook} className="inline-flex items-center gap-2 rounded-2xl border border-cyan-300/25 bg-cyan-400/10 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-400/20">
                 <FileSpreadsheet className="h-4 w-4" /> Exporter pack Excel
               </button>
@@ -375,7 +445,7 @@ export function ReportsPage() {
 
         <SectionCard title="Position budgétaire" subtitle="Alertes et taux de consommation à surveiller maintenant.">
           <div className="space-y-3">
-            {expenseOverview.budgetAlerts.map((budget) => (
+            {filteredBudgetAlerts.map((budget) => (
               <article key={budget.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -391,7 +461,7 @@ export function ReportsPage() {
                 </div>
               </article>
             ))}
-            {!expenseOverview.budgetAlerts.length && <p className="text-sm text-ink-dim">Aucune alerte budgétaire sur la période.</p>}
+            {!filteredBudgetAlerts.length && <p className="text-sm text-ink-dim">Aucune alerte budgétaire sur la période.</p>}
           </div>
         </SectionCard>
       </div>
@@ -400,7 +470,7 @@ export function ReportsPage() {
         <SectionCard title="Dépenses par département" subtitle="Lecture immédiate des postes qui consomment le plus.">
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={expenseOverview.departmentSpending} layout="vertical" margin={{ left: 24 }}>
+              <BarChart data={filteredDepartmentSpending} layout="vertical" margin={{ left: 24 }}>
                 <CartesianGrid stroke="rgba(148,163,184,0.16)" horizontal={false} />
                 <XAxis type="number" stroke="#94a3b8" />
                 <YAxis type="category" dataKey="department" stroke="#94a3b8" width={120} />

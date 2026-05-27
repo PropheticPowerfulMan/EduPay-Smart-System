@@ -104,8 +104,92 @@ export function buildLocalAssistantFallback(query: string, context: any) {
   };
 }
 
+function compactAssistantContext(context: any) {
+  const parents = Array.isArray(context?.parents) ? context.parents : [];
+  const payments = Array.isArray(context?.payments) ? context.payments : [];
+  const profiles = Array.isArray(context?.parentProfiles) ? context.parentProfiles : [];
+
+  return {
+    overview: context?.overview ?? null,
+    financeOverview: context?.financeOverview ?? null,
+    counts: {
+      parents: parents.length,
+      payments: payments.length,
+      detailedProfiles: profiles.length
+    },
+    parents: parents.slice(0, 80).map((parent: any) => ({
+      id: parent?.id,
+      fullName: parent?.fullName,
+      phone: parent?.phone,
+      email: parent?.email,
+      students: Array.isArray(parent?.students)
+        ? parent.students.map((student: any) => ({
+            fullName: student?.fullName,
+            className: student?.className,
+            annualFee: student?.annualFee
+          }))
+        : []
+    })),
+    payments: payments.slice(0, 120).map((payment: any) => ({
+      parentId: payment?.parentId,
+      parentFullName: payment?.parentFullName,
+      studentNames: payment?.studentNames,
+      amount: payment?.amount,
+      status: payment?.status,
+      createdAt: payment?.createdAt ?? payment?.date,
+      reason: payment?.reason
+    })),
+    parentProfiles: profiles.slice(0, 40).map((profile: any) => ({
+      parent: profile?.parent,
+      profile: profile?.profile,
+      students: profile?.students,
+      alerts: profile?.alerts
+    }))
+  };
+}
+
+async function queryOpenAiAssistant(query: string, context: any) {
+  if (!env.OPENAI_API_KEY) return null;
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: env.OPENAI_MODEL,
+      temperature: 0.2,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: "Tu es l'assistant financier EduPay. Reponds en francais clair sauf demande contraire. Donne une reponse JSON avec answer, suggestions, facts, actions et confidence. Utilise uniquement les donnees fournies; si une information manque, dis-le."
+        },
+        {
+          role: "user",
+          content: JSON.stringify({ query, context: compactAssistantContext(context) })
+        }
+      ]
+    })
+  });
+
+  if (!response.ok) throw new Error(`OpenAI responded with ${response.status}`);
+  const data = await response.json() as any;
+  const content = data?.choices?.[0]?.message?.content;
+  if (!content) throw new Error("OpenAI returned an empty assistant message.");
+  return JSON.parse(content);
+}
+
 aiRouter.post("/assistant", authorize("ADMIN", "ACCOUNTANT"), async (req, res) => {
   const payload = querySchema.parse(req.body);
+
+  try {
+    const openAiResponse = await queryOpenAiAssistant(payload.query, payload.context);
+    if (openAiResponse) return res.json(openAiResponse);
+  } catch (error) {
+    console.error("OpenAI assistant unavailable, trying configured AI service", error);
+  }
 
   try {
     const response = await fetch(`${env.AI_SERVICE_URL}/assistant/query`, {

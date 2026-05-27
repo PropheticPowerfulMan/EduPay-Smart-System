@@ -618,6 +618,7 @@ type PaymentExportScope = {
   search?: string;
   status?: string;
   method?: string;
+  className?: string;
   dateFrom?: string;
   dateTo?: string;
 };
@@ -677,6 +678,7 @@ function buildPaymentScopeLabel(scope?: PaymentExportScope) {
   if (!scope) return "";
   return [
     scope.search?.trim() ? `Recherche : ${scope.search.trim()}` : "Recherche : toutes categories",
+    scope.className && scope.className !== "ALL" ? `Classe : ${scope.className}` : "Classe : toutes",
     scope.status && scope.status !== "ALL" ? `Statut : ${getStatusLabel(scope.status)}` : "Statut : tous",
     scope.method && scope.method !== "ALL" ? `Mode : ${getMethodLabel(scope.method as PaymentRecord["method"])}` : "Mode : tous",
     scope.dateFrom ? `Du : ${new Date(`${scope.dateFrom}T00:00:00`).toLocaleDateString("fr-FR")}` : "",
@@ -686,10 +688,11 @@ function buildPaymentScopeLabel(scope?: PaymentExportScope) {
 
 function buildPaymentExportFilename(prefix: string, scope: PaymentExportScope) {
   const category = normalizeSearchText(scope.search || "toutes-categories").replace(/\s+/g, "-") || "toutes-categories";
+  const className = scope.className && scope.className !== "ALL" ? normalizeSearchText(scope.className).replace(/\s+/g, "-") : "toutes-classes";
   const status = scope.status && scope.status !== "ALL" ? scope.status.toLowerCase() : "tous-statuts";
   const method = scope.method && scope.method !== "ALL" ? scope.method.toLowerCase().replace(/_/g, "-") : "tous-modes";
   const period = `${scope.dateFrom || "debut"}-${scope.dateTo || "fin"}`;
-  return `${prefix}-${category}-${status}-${method}-${period}-${new Date().toISOString().slice(0, 10)}`;
+  return `${prefix}-${category}-${className}-${status}-${method}-${period}-${new Date().toISOString().slice(0, 10)}`;
 }
 
 /* --- État financier HTML (général ou par parent) -------------------------- */
@@ -799,7 +802,7 @@ function buildReportHtml(payments: PaymentRecord[], filterParent?: string, scope
 
   const title = scope?.title
     ? plainPrintText(scope.title)
-    : filterParent ? `Etat financier - ${plainPrintText(filterParent)}` : "Etat general des paiements";
+    : filterParent ? `État financier - ${plainPrintText(filterParent)}` : "État général des paiements";
   const scopeLabel = plainPrintText(buildPaymentScopeLabel(scope));
 
   return `<!DOCTYPE html>
@@ -1074,13 +1077,13 @@ function exportPaymentsExcel(filename: string, records: PaymentRecord[], parentF
     {
       name: "Synthese",
       rows: [{
-        "Portee": parentFilter || "Globale",
-        "Filtres appliques": buildPaymentScopeLabel(scope) || "Aucun filtre specifique",
-        "Periode du": scope?.dateFrom || "-",
-        "Periode au": scope?.dateTo || "-",
+        "Portée": parentFilter || "Globale",
+        "Filtres appliqués": buildPaymentScopeLabel(scope) || "Aucun filtre spécifique",
+        "Période du": scope?.dateFrom || "-",
+        "Période au": scope?.dateTo || "-",
         "Paiements": filtered.length,
         "Total USD": total,
-        "Regles USD": completed.reduce((sum, payment) => sum + payment.amount, 0),
+        "Réglés USD": completed.reduce((sum, payment) => sum + payment.amount, 0),
         "En attente USD": pending.reduce((sum, payment) => sum + payment.amount, 0),
         "Echoues USD": failed.reduce((sum, payment) => sum + payment.amount, 0),
         "Annules USD": cancelled.reduce((sum, payment) => sum + payment.amount, 0)
@@ -1440,6 +1443,13 @@ const HISTORY_PRODUCT_FILTERS = [
   "examen"
 ];
 
+const KCS_CLASS_ORDER = [
+  "K3",
+  "K4",
+  "K5",
+  ...Array.from({ length: 12 }, (_, index) => `Grade ${index + 1}`)
+];
+
 const SCHOOL_PRODUCT_ALIASES: Record<string, string[]> = {
   "frais scolaires": ["frais scolaires", "frais scolaire", "scolarite", "scolarité", "trimestre", "tuition"],
   inscription: ["inscription", "admission", "nouvelle inscription"],
@@ -1462,6 +1472,15 @@ function normalizeSearchText(value: string) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, " ")
     .trim();
+}
+
+function normalizeClassName(value: string) {
+  const normalized = normalizeSearchText(value).replace(/[\s_-]+/g, "");
+  const kindergarten = normalized.match(/^k(?:inder)?([345])$/);
+  if (kindergarten) return `K${kindergarten[1]}`;
+  const grade = normalized.match(/^(?:grade|g)(\d{1,2})$/);
+  if (grade) return `Grade ${Number(grade[1])}`;
+  return value.trim();
 }
 
 function getProductSearchTags(reason: string) {
@@ -1756,6 +1775,7 @@ export function PaymentsPage() {
   const [searchQuery, setSearchQuery]       = useState("");
   const [filterStatus, setFilterStatus]     = useState("ALL");
   const [filterMethod, setFilterMethod]     = useState("ALL");
+  const [filterClass, setFilterClass]       = useState("ALL");
   const [historyDateFrom, setHistoryDateFrom] = useState("");
   const [historyDateTo, setHistoryDateTo] = useState("");
   const [historyNotificationPanelOpen, setHistoryNotificationPanelOpen] = useState(false);
@@ -1811,24 +1831,35 @@ export function PaymentsPage() {
     setManualAllocations({});
   }, [form.parentId, form.amount, tuitionPlan, allocationMode]);
 
+  const historyClassOptions = useMemo(() => {
+    const existing = new Set(payments.flatMap((payment) => payment.studentClassNames ?? []).filter(Boolean).map(normalizeClassName));
+    const extras = Array.from(existing)
+      .filter((className) => !KCS_CLASS_ORDER.includes(className))
+      .sort((left, right) => left.localeCompare(right));
+    return [...KCS_CLASS_ORDER, ...extras];
+  }, [payments]);
+
   const filteredPayments = useMemo(() => payments.filter((p) => {
     const query = normalizeSearchText(searchQuery);
     const searchableText = buildPaymentSearchText(p);
     const matchQ = !query || query.split(/\s+/).every((token) => searchableText.includes(token));
+    const matchClass = filterClass === "ALL" || (p.studentClassNames ?? []).some((className) => normalizeClassName(className) === filterClass);
     return matchQ
+      && matchClass
       && (filterStatus === "ALL" || p.status === filterStatus)
       && (filterMethod === "ALL" || p.method === filterMethod)
       && paymentMatchesDateRange(p, historyDateFrom, historyDateTo);
-  }), [payments, searchQuery, filterStatus, filterMethod, historyDateFrom, historyDateTo]);
+  }), [payments, searchQuery, filterClass, filterStatus, filterMethod, historyDateFrom, historyDateTo]);
 
   const historyExportScope = useMemo<PaymentExportScope>(() => ({
     title: "Historique des paiements filtre",
     search: searchQuery,
     status: filterStatus,
     method: filterMethod,
+    className: filterClass,
     dateFrom: historyDateFrom,
     dateTo: historyDateTo
-  }), [filterMethod, filterStatus, historyDateFrom, historyDateTo, searchQuery]);
+  }), [filterClass, filterMethod, filterStatus, historyDateFrom, historyDateTo, searchQuery]);
 
   const stats = useMemo(() => ({
     total:     payments.filter((p) => p.status === "COMPLETED").reduce((s, p) => s + p.amount, 0),
@@ -2375,7 +2406,7 @@ export function PaymentsPage() {
           : item
       )));
       setApiError("");
-      setNotificationStatus(`Paiement ${payment.transactionNumber} annule. Les compteurs parent, eleve et finance ont ete recalcules.`);
+      setNotificationStatus(`Paiement ${payment.transactionNumber} annulé. Les compteurs parent, élève et finance ont été recalculés.`);
       if (currentReceipt?.id === payment.id) {
         setCurrentReceipt((current) => current ? { ...current, ...result.payment, status: "CANCELLED" } : current);
       }
@@ -2656,7 +2687,7 @@ export function PaymentsPage() {
 
         {/* Filtres */}
         <div className="card">
-          <div className="grid gap-4 md:grid-cols-5">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(260px,1.4fr)_repeat(5,minmax(118px,1fr))] xl:items-start">
             <div>
               <label className="text-xs font-bold uppercase tracking-wide text-ink-dim block mb-2">Recherche</label>
               <SearchField
@@ -2682,7 +2713,7 @@ export function PaymentsPage() {
                 ))}
               </div>
               <p className="mt-2 text-xs text-ink-dim">
-                Recherche intelligente par eleve, parent, classe, statut paye/non paye, numero, motif ou produit scolaire.
+                Recherche intelligente par élève, parent, classe, statut payé/non payé, numéro, motif ou produit scolaire.
               </p>
             </div>
             <div>
@@ -2690,6 +2721,13 @@ export function PaymentsPage() {
               <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="w-full">
                 <option value="ALL">Tous les statuts</option>
                 {STATUS_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-bold uppercase tracking-wide text-ink-dim block mb-2">Classe</label>
+              <select value={filterClass} onChange={(e) => setFilterClass(e.target.value)} className="w-full">
+                <option value="ALL">Toutes les classes</option>
+                {historyClassOptions.map((className) => <option key={className} value={className}>{className}</option>)}
               </select>
             </div>
             <div>

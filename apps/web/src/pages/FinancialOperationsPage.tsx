@@ -6,10 +6,13 @@ import {
   CheckCircle2,
   CircleDollarSign,
   Download,
+  Eye,
   FilePlus2,
   Landmark,
+  Pencil,
   Printer,
   ReceiptText,
+  Trash2,
   UserPlus,
   Users,
   WalletCards,
@@ -203,6 +206,10 @@ type ExpenseFormState = {
   paymentMethod: string;
   expenseDate: string;
   supplierName: string;
+  beneficiaryName: string;
+  beneficiaryContact: string;
+  beneficiaryAccount: string;
+  beneficiaryReference: string;
   comments: string;
   attachmentName: string;
   attachmentUrl: string;
@@ -273,8 +280,17 @@ const EMPTY_EXPENSE_OVERVIEW: ExpenseOverview = {
 
 const PAYMENT_METHODS = ["CASH", "BANK_TRANSFER", "MPESA", "AIRTEL_MONEY", "ORANGE_MONEY", "CHEQUE", "INTERNAL_TRANSFER"];
 const PAYROLL_FREQUENCIES = ["MONTHLY", "BI_MONTHLY", "QUARTERLY", "ANNUAL"];
+const PERIOD_FILTERS = [
+  { value: "ALL", label: "Toute periode" },
+  { value: "TODAY", label: "Aujourd'hui" },
+  { value: "WEEK", label: "Cette semaine" },
+  { value: "MONTH", label: "Ce mois" },
+  { value: "QUARTER", label: "Ce trimestre" },
+  { value: "YEAR", label: "Cette annee" },
+  { value: "CUSTOM", label: "Intervalle precis" }
+];
 type OperationTab = "expenses" | "budgets" | "payroll" | "accounting" | "cashflow" | "documents";
-type OperationSubDialog = "expense-create" | "vendor-create" | "budget-create" | "salary-profile-create" | "payroll-run-create";
+type OperationSubDialog = "expense-create" | "vendor-create" | "vendor-registry" | "budget-create" | "salary-profile-create" | "payroll-run-create";
 
 const EMPTY_EXPENSE_FORM: ExpenseFormState = {
   title: "",
@@ -286,6 +302,10 @@ const EMPTY_EXPENSE_FORM: ExpenseFormState = {
   paymentMethod: "",
   expenseDate: "",
   supplierName: "",
+  beneficiaryName: "",
+  beneficiaryContact: "",
+  beneficiaryAccount: "",
+  beneficiaryReference: "",
   comments: "",
   attachmentName: "",
   attachmentUrl: ""
@@ -376,6 +396,15 @@ function ActionNodeCard({
         </span>
       </span>
     </button>
+  );
+}
+
+function InfoPill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-dim">{label}</p>
+      <p className="mt-1 break-words text-sm font-semibold text-white">{value}</p>
+    </div>
   );
 }
 
@@ -494,6 +523,67 @@ function ratioPercent(part: number, total: number) {
   return (part / total) * 100;
 }
 
+function getPeriodRange(period: string, from: string, to: string) {
+  if (period === "CUSTOM") {
+    return {
+      start: from ? new Date(`${from}T00:00:00`) : null,
+      end: to ? new Date(`${to}T23:59:59`) : null
+    };
+  }
+  if (period === "ALL") return { start: null, end: null };
+
+  const now = new Date();
+  const start = new Date(now);
+  const end = new Date(now);
+  end.setHours(23, 59, 59, 999);
+
+  if (period === "TODAY") {
+    start.setHours(0, 0, 0, 0);
+  } else if (period === "WEEK") {
+    const day = start.getDay() || 7;
+    start.setDate(start.getDate() - day + 1);
+    start.setHours(0, 0, 0, 0);
+  } else if (period === "MONTH") {
+    start.setDate(1);
+    start.setHours(0, 0, 0, 0);
+  } else if (period === "QUARTER") {
+    start.setMonth(Math.floor(start.getMonth() / 3) * 3, 1);
+    start.setHours(0, 0, 0, 0);
+  } else if (period === "YEAR") {
+    start.setMonth(0, 1);
+    start.setHours(0, 0, 0, 0);
+  }
+
+  return { start, end };
+}
+
+function isWithinPeriod(value: string, period: string, from: string, to: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return false;
+  const { start, end } = getPeriodRange(period, from, to);
+  return (!start || date >= start) && (!end || date <= end);
+}
+
+function periodLabel(period: string, from: string, to: string) {
+  if (period === "CUSTOM") {
+    const start = from ? new Date(from).toLocaleDateString("fr-FR") : "debut libre";
+    const end = to ? new Date(to).toLocaleDateString("fr-FR") : "fin libre";
+    return `${start} - ${end}`;
+  }
+  return PERIOD_FILTERS.find((item) => item.value === period)?.label ?? "Toute periode";
+}
+
+function buildBeneficiaryNotes(form: ExpenseFormState) {
+  const rows = [
+    form.beneficiaryName && `Beneficiaire: ${form.beneficiaryName}`,
+    form.beneficiaryContact && `Contact beneficiaire: ${form.beneficiaryContact}`,
+    form.beneficiaryAccount && `Compte / wallet beneficiaire: ${form.beneficiaryAccount}`,
+    form.beneficiaryReference && `Reference paiement: ${form.beneficiaryReference}`
+  ].filter(Boolean);
+
+  return [form.comments.trim(), rows.join("\n")].filter(Boolean).join("\n\n");
+}
+
 export function FinancialOperationsPage() {
   const { lang } = useI18n();
   const role = useAuthStore((state) => state.role);
@@ -519,14 +609,24 @@ export function FinancialOperationsPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [expensePeriodFilter, setExpensePeriodFilter] = useState("ALL");
+  const [expenseDateFrom, setExpenseDateFrom] = useState("");
+  const [expenseDateTo, setExpenseDateTo] = useState("");
   const [accountingSearch, setAccountingSearch] = useState("");
   const [accountingDepartmentFilter, setAccountingDepartmentFilter] = useState("ALL");
   const [cashflowSearch, setCashflowSearch] = useState("");
   const [cashflowSourceFilter, setCashflowSourceFilter] = useState("ALL");
+  const [cashflowPeriodFilter, setCashflowPeriodFilter] = useState("ALL");
+  const [cashflowDateFrom, setCashflowDateFrom] = useState("");
+  const [cashflowDateTo, setCashflowDateTo] = useState("");
   const [submittingKey, setSubmittingKey] = useState<string | null>(null);
   const [expenseForm, setExpenseForm] = useState<ExpenseFormState>(EMPTY_EXPENSE_FORM);
   const [pendingAttachments, setPendingAttachments] = useState<ExpenseAttachment[]>([]);
   const [vendorForm, setVendorForm] = useState<VendorFormState>(EMPTY_VENDOR_FORM);
+  const [vendorSearch, setVendorSearch] = useState("");
+  const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
+  const [editingVendorId, setEditingVendorId] = useState<string | null>(null);
+  const [vendorEditForm, setVendorEditForm] = useState<VendorFormState>(EMPTY_VENDOR_FORM);
   const [budgetForm, setBudgetForm] = useState<BudgetFormState>(EMPTY_BUDGET_FORM);
   const [salaryForm, setSalaryForm] = useState<SalaryFormState>(EMPTY_SALARY_FORM);
   const [payrollForm, setPayrollForm] = useState<PayrollFormState>(EMPTY_PAYROLL_FORM);
@@ -690,15 +790,17 @@ export function FinancialOperationsPage() {
     return cashflowEntries.filter((entry) => {
       const reference = entry.expense?.title || entry.payrollRun?.title || entry.payrollItem?.salarySlipNumber || "";
       const matchesSource = cashflowSourceFilter === "ALL" || entry.sourceType === cashflowSourceFilter;
+      const matchesPeriod = isWithinPeriod(entry.referenceDate, cashflowPeriodFilter, cashflowDateFrom, cashflowDateTo);
       const matchesSearch = !needle
         || entry.sourceType.toLowerCase().includes(needle)
         || entry.direction.toLowerCase().includes(needle)
         || (entry.method || "").toLowerCase().includes(needle)
         || reference.toLowerCase().includes(needle)
+        || (entry.expense?.department || entry.payrollRun?.department || entry.payrollItem?.salaryProfile.department || "").toLowerCase().includes(needle)
         || (entry.notes || "").toLowerCase().includes(needle);
-      return matchesSource && matchesSearch;
+      return matchesSource && matchesPeriod && matchesSearch;
     });
-  }, [cashflowEntries, cashflowSearch, cashflowSourceFilter]);
+  }, [cashflowDateFrom, cashflowDateTo, cashflowEntries, cashflowPeriodFilter, cashflowSearch, cashflowSourceFilter]);
 
   const cashflowBreakdown = useMemo(() => {
     const grouped = filteredCashflowEntries.reduce<Record<string, { count: number; volume: number }>>((acc, entry) => {
@@ -723,15 +825,59 @@ export function FinancialOperationsPage() {
   const filteredExpenses = useMemo(() => {
     return expenses.filter((expense) => {
       const matchesStatus = statusFilter === "ALL" || expense.status === statusFilter;
+      const matchesPeriod = isWithinPeriod(expense.expenseDate, expensePeriodFilter, expenseDateFrom, expenseDateTo);
       const needle = search.trim().toLowerCase();
       const matchesSearch = !needle
         || expense.title.toLowerCase().includes(needle)
         || expense.department.toLowerCase().includes(needle)
         || expense.category.name.toLowerCase().includes(needle)
-        || (expense.vendor?.name ?? "").toLowerCase().includes(needle);
-      return matchesStatus && matchesSearch;
+        || expense.status.toLowerCase().includes(needle)
+        || (expense.paymentMethod ?? "").toLowerCase().includes(needle)
+        || (expense.supplierName ?? "").toLowerCase().includes(needle)
+        || (expense.vendor?.name ?? "").toLowerCase().includes(needle)
+        || (expense.vendor?.contactName ?? "").toLowerCase().includes(needle)
+        || (expense.vendor?.phone ?? "").toLowerCase().includes(needle)
+        || (expense.vendor?.email ?? "").toLowerCase().includes(needle)
+        || (expense.comments ?? "").toLowerCase().includes(needle);
+      return matchesStatus && matchesPeriod && matchesSearch;
     });
-  }, [expenses, search, statusFilter]);
+  }, [expenseDateFrom, expenseDateTo, expensePeriodFilter, expenses, search, statusFilter]);
+
+  const vendorUsage = useMemo(() => {
+    return expenses.reduce<Record<string, { count: number; total: number; departments: Set<string>; lastExpenseDate?: string }>>((acc, expense) => {
+      const vendorId = expense.vendor?.id;
+      if (!vendorId) return acc;
+      const current = acc[vendorId] ?? { count: 0, total: 0, departments: new Set<string>() };
+      current.count += 1;
+      current.total += expense.amount;
+      current.departments.add(expense.department || "Non renseigne");
+      if (!current.lastExpenseDate || new Date(expense.expenseDate).getTime() > new Date(current.lastExpenseDate).getTime()) {
+        current.lastExpenseDate = expense.expenseDate;
+      }
+      acc[vendorId] = current;
+      return acc;
+    }, {});
+  }, [expenses]);
+
+  const filteredVendors = useMemo(() => {
+    const needle = vendorSearch.trim().toLowerCase();
+    return vendors.filter((vendor) => {
+      const usage = vendorUsage[vendor.id];
+      const haystack = [
+        vendor.name,
+        vendor.contactName,
+        vendor.phone,
+        vendor.email,
+        vendor.address,
+        vendor.notes,
+        usage ? Array.from(usage.departments).join(" ") : "",
+        usage ? String(usage.count) : "",
+        usage ? String(usage.total) : ""
+      ].filter(Boolean).join(" ").toLowerCase();
+      return !needle || haystack.includes(needle);
+    });
+  }, [vendorSearch, vendorUsage, vendors]);
+  const selectedVendor = vendors.find((vendor) => vendor.id === selectedVendorId) ?? null;
 
   const documentEntries = useMemo<DocumentEntry[]>(() => {
     return expenses
@@ -1173,12 +1319,69 @@ export function FinancialOperationsPage() {
     ]);
   }
 
+  function exportExpensesExcel() {
+    exportWorkbook(`registre-depenses-${new Date().toISOString().slice(0, 10)}`, [
+      {
+        name: "Synthese",
+        rows: [{
+          "Depenses filtrees": filteredExpenses.length,
+          "Periode": periodLabel(expensePeriodFilter, expenseDateFrom, expenseDateTo),
+          "Statut": statusFilter === "ALL" ? "Tous" : statusFilter,
+          "Total": filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0),
+          "Approuvees": filteredExpenses.filter((expense) => expense.status === "APPROVED").length,
+          "En attente": filteredExpenses.filter((expense) => expense.status === "PENDING").length
+        }]
+      },
+      {
+        name: "Registre depenses",
+        rows: filteredExpenses.map((expense) => ({
+          "Date": new Date(expense.expenseDate).toLocaleDateString("fr-FR"),
+          "Titre ou motif": expense.title,
+          "Beneficiaire": expense.vendor?.name || expense.supplierName || "",
+          "Contact beneficiaire": expense.vendor?.phone || expense.vendor?.email || expense.vendor?.contactName || "",
+          "Departement": expense.department,
+          "Categorie": expense.category.name,
+          "Statut": expense.status,
+          "Mode": expense.paymentMethod || "",
+          "Montant": expense.amount,
+          "Devise": expense.currency,
+          "Budget": expense.budget?.name || "",
+          "Commentaires": expense.comments || "",
+          "Pieces": expense.attachments?.length || 0
+        }))
+      }
+    ]);
+  }
+
+  function printExpensesReport() {
+    printLedgerReport(
+      "Registre des depenses",
+      `Recherche strategique des depenses filtrees. Periode: ${periodLabel(expensePeriodFilter, expenseDateFrom, expenseDateTo)}.`,
+      ["Date", "Titre ou motif", "Beneficiaire", "Departement", "Categorie", "Statut", "Montant"],
+      filteredExpenses.map((expense) => [
+        new Date(expense.expenseDate).toLocaleDateString("fr-FR"),
+        expense.title,
+        expense.vendor?.name || expense.supplierName || "",
+        expense.department,
+        expense.category.name,
+        expense.status,
+        currency.format(expense.amount)
+      ]),
+      [
+        { label: "Depenses filtrees", value: String(filteredExpenses.length), detail: `Statut: ${statusFilter === "ALL" ? "Tous" : statusFilter}` },
+        { label: "Volume filtre", value: currency.format(filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0)), detail: "Somme des depenses correspondant aux criteres" },
+        { label: "Periode", value: periodLabel(expensePeriodFilter, expenseDateFrom, expenseDateTo), detail: "Intervalle d'analyse applique au registre" },
+        { label: "Taux approuve", value: formatPercent(ratioPercent(filteredExpenses.filter((expense) => expense.status === "APPROVED").length, filteredExpenses.length)), detail: "Depenses approuvees / lignes filtrees" }
+      ]
+    );
+  }
+
   function printAccountingReport() {
     printLedgerReport(
       "Journal comptable",
       "Vue consolidee des ecritures issues des depenses et de la paie.",
       ["Date", "Type", "Direction", "Titre", "Departement", "Montant", "Source"],
-      accountingEntries.map((entry) => [
+      filteredAccountingEntries.map((entry) => [
         new Date(entry.entryDate).toLocaleDateString("fr-FR"),
         entry.entryType,
         entry.direction,
@@ -1199,9 +1402,9 @@ export function FinancialOperationsPage() {
   function printCashflowReport() {
     printLedgerReport(
       "Journal de tresorerie",
-      "Vue consolidee des sorties et references de cash liees aux operations financieres.",
+      `Vue consolidee des sorties et references de cash liees aux operations financieres. Periode: ${periodLabel(cashflowPeriodFilter, cashflowDateFrom, cashflowDateTo)}.`,
       ["Date", "Source", "Direction", "Methode", "Montant", "Reference", "Notes"],
-      cashflowEntries.map((entry) => [
+      filteredCashflowEntries.map((entry) => [
         new Date(entry.referenceDate).toLocaleDateString("fr-FR"),
         entry.sourceType,
         entry.direction,
@@ -1215,6 +1418,29 @@ export function FinancialOperationsPage() {
         { label: "Ticket moyen sortie", value: currency.format(cashflowMetrics.averageOutflow), detail: "Moyenne des lignes OUTFLOW" },
         { label: "Part paie", value: formatPercent(cashflowMetrics.payrollShare), detail: `Paie ${currency.format(cashflowMetrics.payrollOutflow)}` },
         { label: "Couverture cash", value: `${cashflowMetrics.coverageRatio.toFixed(2)}x`, detail: "Cash disponible / sorties journalisées" }
+      ]
+    );
+  }
+
+  function printOperationsReport() {
+    if (!overview) return;
+    printLedgerReport(
+      "Rapport general des operations",
+      "Document officiel EduPay consolidant depenses, budgets, paie, comptabilite, tresorerie et pieces justificatives.",
+      ["Module", "Lignes", "Volume / indicateur", "Observation"],
+      [
+        ["Depenses", String(expenses.length), currency.format(overview.expenses.totalExpenses), `${expenseStats.pending} en attente`],
+        ["Budgets", String(budgets.length), currency.format(budgets.reduce((sum, budget) => sum + budget.plannedAmount, 0)), `${budgets.filter((budget) => budget.status === "EXCEEDED").length} depassement(s)`],
+        ["Paie", String(payrollRuns.length), currency.format(overview.payroll.totalPayroll), `${salaryProfiles.length} profil(s)`],
+        ["Comptabilite", String(accountingEntries.length), currency.format(accountingMetrics.totalVolume), accountingMetrics.topDepartmentName],
+        ["Tresorerie", String(cashflowEntries.length), currency.format(overview.cashflow.availableCash), `Variation ${currency.format(cashflowMetrics.netMovement)}`],
+        ["Documents", String(documentEntries.length), String(documentEntries.length), "Pieces justificatives indexees"]
+      ],
+      [
+        { label: "Cash disponible", value: currency.format(overview.cashflow.availableCash), detail: "Solde operationnel apres charges reconnues" },
+        { label: "Passifs", value: currency.format(overview.liabilities.supplierDebt + overview.liabilities.payrollLiability), detail: "Fournisseurs et paie non soldes" },
+        { label: "Approbations", value: String(overview.expenses.pendingApprovalSteps), detail: "Etapes de validation en attente" },
+        { label: "Profit / perte", value: currency.format(overview.cashflow.profitLoss), detail: "Lecture consolidee EduPay" }
       ]
     );
   }
@@ -1328,6 +1554,63 @@ export function FinancialOperationsPage() {
     }
   }
 
+  function beginVendorEdit(vendor: Vendor) {
+    setSelectedVendorId(vendor.id);
+    setEditingVendorId(vendor.id);
+    setVendorEditForm({
+      name: vendor.name,
+      contactName: vendor.contactName ?? "",
+      phone: vendor.phone ?? "",
+      email: vendor.email ?? "",
+      address: vendor.address ?? "",
+      notes: vendor.notes ?? ""
+    });
+  }
+
+  async function handleUpdateVendor(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingVendorId) return;
+    setActionError(null);
+    setSuccess(null);
+    setSubmittingKey("vendor-update");
+    try {
+      const updated = await api<Vendor>(`/api/expenses/vendors/${editingVendorId}`, {
+        method: "PUT",
+        body: JSON.stringify(vendorEditForm)
+      });
+      setVendors((current) => current.map((vendor) => vendor.id === updated.id ? updated : vendor).sort((left, right) => left.name.localeCompare(right.name)));
+      setSelectedVendorId(updated.id);
+      setEditingVendorId(null);
+      setVendorEditForm(EMPTY_VENDOR_FORM);
+      setSuccess("Fournisseur modifie.");
+    } catch (submitError) {
+      setActionError(submitError instanceof Error ? submitError.message : "Impossible de modifier le fournisseur.");
+    } finally {
+      setSubmittingKey(null);
+    }
+  }
+
+  async function handleDeleteVendor(vendor: Vendor) {
+    const usage = vendorUsage[vendor.id];
+    const confirmed = window.confirm(`Supprimer ${vendor.name} ?${usage?.count ? ` ${usage.count} depense(s) seront conservees mais detachees de ce fournisseur.` : ""}`);
+    if (!confirmed) return;
+    setActionError(null);
+    setSuccess(null);
+    setSubmittingKey(`vendor-delete-${vendor.id}`);
+    try {
+      await api(`/api/expenses/vendors/${vendor.id}`, { method: "DELETE" });
+      setVendors((current) => current.filter((item) => item.id !== vendor.id));
+      setExpenses((current) => current.map((expense) => expense.vendor?.id === vendor.id ? { ...expense, vendor: null } : expense));
+      if (selectedVendorId === vendor.id) setSelectedVendorId(null);
+      if (editingVendorId === vendor.id) setEditingVendorId(null);
+      setSuccess("Fournisseur supprime sans effacer les depenses historiques.");
+    } catch (submitError) {
+      setActionError(submitError instanceof Error ? submitError.message : "Impossible de supprimer le fournisseur.");
+    } finally {
+      setSubmittingKey(null);
+    }
+  }
+
   async function handleCreateBudget(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setActionError(null);
@@ -1380,8 +1663,8 @@ export function FinancialOperationsPage() {
           amount: Number(expenseForm.amount || 0),
           paymentMethod: expenseForm.paymentMethod,
           expenseDate: expenseForm.expenseDate,
-          supplierName: expenseForm.supplierName,
-          comments: expenseForm.comments,
+          supplierName: expenseForm.beneficiaryName || expenseForm.supplierName,
+          comments: buildBeneficiaryNotes(expenseForm),
           attachments: [
             ...(expenseForm.attachmentName && expenseForm.attachmentUrl
               ? [{ kind: "EXPENSE_SUPPORT", fileName: expenseForm.attachmentName, fileUrl: expenseForm.attachmentUrl }]
@@ -1610,7 +1893,10 @@ export function FinancialOperationsPage() {
               <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">{L("Étapes en attente", "Pending steps")}</p>
               <p className="mt-1 font-display text-xl font-bold text-white sm:text-2xl">{safeOverview.expenses.pendingApprovalSteps}</p>
             </div>
-            <button onClick={exportOperationsWorkbook} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/25 bg-cyan-400/10 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-400/20 sm:col-span-2">
+            <button onClick={printOperationsReport} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-brand-300/25 bg-brand-500/10 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-500/20">
+              <Printer className="h-4 w-4" /> {L("PDF / Imprimer", "PDF / Print")}
+            </button>
+            <button onClick={exportOperationsWorkbook} className="inline-flex items-center justify-center gap-2 rounded-2xl border border-cyan-300/25 bg-cyan-400/10 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-400/20">
               <Download className="h-4 w-4" /> {L("Exporter le pack Excel", "Export Excel pack")}
             </button>
           </div>
@@ -1710,15 +1996,32 @@ export function FinancialOperationsPage() {
         <div className="space-y-6">
           <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
             <SectionCard title="Workflow des depenses" subtitle="Recherche, suivi de statut et traitement des approbations en cours.">
-              <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
-                <SearchField value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Rechercher une depense, un service, un fournisseur..." />
+              <div className="grid gap-3 xl:grid-cols-[minmax(220px,0.9fr)_auto_auto_auto]">
+                <SearchField value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Recherche precise: motif, beneficiaire, service, mode..." />
                 <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="input min-w-[180px]">
                   <option value="ALL">Tous les statuts</option>
                   <option value="PENDING">Pending</option>
                   <option value="APPROVED">Approved</option>
                   <option value="REJECTED">Rejected</option>
                 </select>
+                <select value={expensePeriodFilter} onChange={(event) => setExpensePeriodFilter(event.target.value)} className="input min-w-[180px]">
+                  {PERIOD_FILTERS.map((period) => <option key={period.value} value={period.value}>{period.label}</option>)}
+                </select>
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={printExpensesReport} className="inline-flex items-center justify-center gap-2 rounded-xl border border-brand-300/25 bg-brand-500/10 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500/20">
+                    <Printer className="h-4 w-4" /> PDF
+                  </button>
+                  <button onClick={exportExpensesExcel} className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20">
+                    <Download className="h-4 w-4" /> Excel
+                  </button>
+                </div>
               </div>
+              {expensePeriodFilter === "CUSTOM" && (
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <input className="input" type="date" value={expenseDateFrom} onChange={(event) => setExpenseDateFrom(event.target.value)} aria-label="Date debut depenses" />
+                  <input className="input" type="date" value={expenseDateTo} onChange={(event) => setExpenseDateTo(event.target.value)} aria-label="Date fin depenses" />
+                </div>
+              )}
 
               <div className="mt-5 space-y-3">
                 {filteredExpenses.map((expense) => {
@@ -1741,12 +2044,12 @@ export function FinancialOperationsPage() {
                           <p className="font-semibold text-white">{expense.budget?.name ?? "Hors budget"}</p>
                         </div>
                         <div>
-                          <p className="text-ink-dim">Fournisseur</p>
+                          <p className="text-ink-dim">Beneficiaire</p>
                           <p className="font-semibold text-white">{expense.vendor?.name ?? expense.supplierName ?? "Non precise"}</p>
                         </div>
                         <div>
-                          <p className="text-ink-dim">Etape courante</p>
-                          <p className="font-semibold text-white">{currentStep ? `${currentStep.role} / stage ${currentStep.stage}` : "Workflow termine"}</p>
+                          <p className="text-ink-dim">Mode / etape</p>
+                          <p className="font-semibold text-white">{expense.paymentMethod || "Mode non precise"} - {currentStep ? `${currentStep.role} / stage ${currentStep.stage}` : "Workflow termine"}</p>
                         </div>
                       </div>
                       {expense.comments && <p className="mt-3 text-sm text-ink-dim">{expense.comments}</p>}
@@ -1820,6 +2123,14 @@ export function FinancialOperationsPage() {
                   </>
                 )}
                 <ActionNodeCard
+                  title="Base fournisseurs"
+                  subtitle="Voir, rechercher, modifier et supprimer les tiers payables."
+                  detail={`${filteredVendors.length}/${vendors.length} fournisseur(s)`}
+                  icon={Users}
+                  tone="border-emerald-300/25 bg-emerald-500/10 text-emerald-100"
+                  onClick={() => setActiveSubDialog("vendor-registry")}
+                />
+                <ActionNodeCard
                   title="Justificatifs"
                   subtitle="Voir les pieces indexees dans la branche Documents."
                   detail={`${documentEntries.length} piece(s)`}
@@ -1835,7 +2146,7 @@ export function FinancialOperationsPage() {
             <OperationsSubDialog title="Nouvelle depense" subtitle="Soumettre une sortie de cash avec categorie, budget et piece justificative." onClose={() => setActiveSubDialog(null)}>
               <form className="grid gap-3" onSubmit={handleCreateExpense}>
                     <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
-                      Titre
+                      Titre ou motif de la depense
                       <input className="input" value={expenseForm.title} onChange={(event) => setExpenseForm((current) => ({ ...current, title: event.target.value }))} placeholder="Ex: Achat de fournitures" required />
                     </label>
                     <div className="grid gap-3 sm:grid-cols-2">
@@ -1856,15 +2167,29 @@ export function FinancialOperationsPage() {
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
-                        Fournisseur existant
+                        Beneficiaire repertorie
                         <select className="input" value={expenseForm.vendorId} onChange={(event) => setExpenseForm((current) => ({ ...current, vendorId: event.target.value }))}>
-                          <option value="">Aucun fournisseur existant</option>
+                          <option value="">Aucun beneficiaire existant</option>
                           {vendors.map((vendor) => <option key={vendor.id} value={vendor.id}>{vendor.name}</option>)}
                         </select>
                       </label>
                       <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
-                        Fournisseur libre
-                        <input className="input" value={expenseForm.supplierName} onChange={(event) => setExpenseForm((current) => ({ ...current, supplierName: event.target.value }))} placeholder="Nom si le fournisseur n'existe pas encore" />
+                        Beneficiaire libre
+                        <input className="input" value={expenseForm.beneficiaryName} onChange={(event) => setExpenseForm((current) => ({ ...current, beneficiaryName: event.target.value, supplierName: event.target.value }))} placeholder="Nom de la personne, societe ou compte paye" />
+                      </label>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                        Contact beneficiaire
+                        <input className="input" value={expenseForm.beneficiaryContact} onChange={(event) => setExpenseForm((current) => ({ ...current, beneficiaryContact: event.target.value }))} placeholder="Telephone, email ou contact" />
+                      </label>
+                      <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                        Compte / wallet
+                        <input className="input" value={expenseForm.beneficiaryAccount} onChange={(event) => setExpenseForm((current) => ({ ...current, beneficiaryAccount: event.target.value }))} placeholder="IBAN, compte, MPESA, Airtel..." />
+                      </label>
+                      <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                        Reference paiement
+                        <input className="input" value={expenseForm.beneficiaryReference} onChange={(event) => setExpenseForm((current) => ({ ...current, beneficiaryReference: event.target.value }))} placeholder="Cheque, facture, transaction" />
                       </label>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
@@ -1939,6 +2264,7 @@ export function FinancialOperationsPage() {
             <OperationsSubDialog title="Nouveau fournisseur" subtitle="Creer un tiers payable pour les achats, abonnements et utilities." onClose={() => setActiveSubDialog(null)}>
               <form className="grid gap-3" onSubmit={handleCreateVendor}>
                     <input className="input" value={vendorForm.name} onChange={(event) => setVendorForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nom fournisseur" required />
+                    <input className="input" value={vendorForm.contactName} onChange={(event) => setVendorForm((current) => ({ ...current, contactName: event.target.value }))} placeholder="Personne contact" />
                     <input className="input" value={vendorForm.phone} onChange={(event) => setVendorForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Telephone" />
                     <input className="input" value={vendorForm.email} onChange={(event) => setVendorForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" />
                     <input className="input" value={vendorForm.address} onChange={(event) => setVendorForm((current) => ({ ...current, address: event.target.value }))} placeholder="Adresse" />
@@ -1947,6 +2273,95 @@ export function FinancialOperationsPage() {
                       Ajouter le fournisseur
                     </button>
               </form>
+            </OperationsSubDialog>
+          )}
+
+          {activeSubDialog === "vendor-registry" && (
+            <OperationsSubDialog title="Base fournisseurs" subtitle="Registre consultable des tiers payables, avec lecture, modification, suppression et recherche strategique." onClose={() => { setActiveSubDialog(null); setEditingVendorId(null); }}>
+              <div className="grid gap-4">
+                <SearchField
+                  value={vendorSearch}
+                  onChange={(event) => setVendorSearch(event.target.value)}
+                  placeholder="Recherche fournisseur, contact, telephone, email, departement, montant ou note"
+                />
+                <div className="grid gap-3 lg:grid-cols-[0.95fr_1.05fr]">
+                  <div className="max-h-[56vh] space-y-2 overflow-auto pr-1">
+                    {filteredVendors.map((vendor) => {
+                      const usage = vendorUsage[vendor.id];
+                      const isSelected = selectedVendorId === vendor.id;
+                      return (
+                        <div key={vendor.id} className={`rounded-2xl border p-3 transition ${isSelected ? "border-brand-300/40 bg-brand-500/10" : "border-white/10 bg-slate-950/35 hover:border-white/20"}`}>
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-white">{vendor.name}</p>
+                              <p className="mt-1 text-xs text-ink-dim">{vendor.contactName || vendor.phone || vendor.email || "Contact non renseigne"}</p>
+                            </div>
+                            <span className="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-[11px] font-semibold text-ink-dim">{usage?.count ?? 0} depense(s)</span>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button type="button" onClick={() => { setSelectedVendorId(vendor.id); setEditingVendorId(null); }} className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2 py-1 text-xs font-semibold text-white hover:bg-white/10">
+                              <Eye className="h-3.5 w-3.5" /> Voir
+                            </button>
+                            {canWrite && (
+                              <>
+                                <button type="button" onClick={() => beginVendorEdit(vendor)} className="inline-flex items-center gap-1 rounded-lg border border-cyan-300/20 bg-cyan-500/10 px-2 py-1 text-xs font-semibold text-cyan-100 hover:bg-cyan-500/20">
+                                  <Pencil className="h-3.5 w-3.5" /> Modifier
+                                </button>
+                                <button type="button" disabled={submittingKey === `vendor-delete-${vendor.id}`} onClick={() => void handleDeleteVendor(vendor)} className="inline-flex items-center gap-1 rounded-lg border border-red-300/20 bg-red-500/10 px-2 py-1 text-xs font-semibold text-red-100 hover:bg-red-500/20 disabled:opacity-60">
+                                  <Trash2 className="h-3.5 w-3.5" /> Supprimer
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {!filteredVendors.length && <p className="rounded-2xl border border-white/10 bg-slate-950/40 p-4 text-sm text-ink-dim">Aucun fournisseur ne correspond a cette recherche.</p>}
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                    {editingVendorId ? (
+                      <form className="grid gap-3" onSubmit={handleUpdateVendor}>
+                        <p className="text-sm font-semibold text-white">Modification fournisseur</p>
+                        <input className="input" value={vendorEditForm.name} onChange={(event) => setVendorEditForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nom fournisseur" required />
+                        <input className="input" value={vendorEditForm.contactName} onChange={(event) => setVendorEditForm((current) => ({ ...current, contactName: event.target.value }))} placeholder="Personne contact" />
+                        <input className="input" value={vendorEditForm.phone} onChange={(event) => setVendorEditForm((current) => ({ ...current, phone: event.target.value }))} placeholder="Telephone" />
+                        <input className="input" value={vendorEditForm.email} onChange={(event) => setVendorEditForm((current) => ({ ...current, email: event.target.value }))} placeholder="Email" />
+                        <input className="input" value={vendorEditForm.address} onChange={(event) => setVendorEditForm((current) => ({ ...current, address: event.target.value }))} placeholder="Adresse" />
+                        <textarea className="input min-h-24" value={vendorEditForm.notes} onChange={(event) => setVendorEditForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes fournisseur" />
+                        <div className="flex flex-wrap gap-2">
+                          <button type="submit" disabled={submittingKey === "vendor-update"} className="btn-primary px-4 py-2 text-sm font-semibold disabled:opacity-60">Enregistrer</button>
+                          <button type="button" onClick={() => setEditingVendorId(null)} className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10">Annuler</button>
+                        </div>
+                      </form>
+                    ) : selectedVendor ? (
+                      <div className="grid gap-4">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-ink-dim">Fiche fournisseur</p>
+                          <h3 className="mt-1 text-2xl font-bold text-white">{selectedVendor.name}</h3>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <InfoPill label="Contact" value={selectedVendor.contactName || "Non renseigne"} />
+                          <InfoPill label="Telephone" value={selectedVendor.phone || "Non renseigne"} />
+                          <InfoPill label="Email" value={selectedVendor.email || "Non renseigne"} />
+                          <InfoPill label="Adresse" value={selectedVendor.address || "Non renseigne"} />
+                          <InfoPill label="Depenses liees" value={String(vendorUsage[selectedVendor.id]?.count ?? 0)} />
+                          <InfoPill label="Volume total" value={currency.format(vendorUsage[selectedVendor.id]?.total ?? 0)} />
+                        </div>
+                        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">Departements touches</p>
+                          <p className="mt-2 text-sm text-white">{vendorUsage[selectedVendor.id] ? Array.from(vendorUsage[selectedVendor.id].departments).join(", ") : "Aucun historique"}</p>
+                        </div>
+                        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">Notes</p>
+                          <p className="mt-2 whitespace-pre-wrap text-sm text-ink-dim">{selectedVendor.notes || "Aucune note."}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-ink-dim">Selectionnez un fournisseur pour afficher sa fiche detaillee.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
             </OperationsSubDialog>
           )}
         </div>
@@ -2359,13 +2774,31 @@ export function FinancialOperationsPage() {
           </SectionCard>
 
           <SectionCard title="Journal de cashflow" subtitle="Reference, source, moyen de paiement et notes operationnelles.">
-            <div className="mb-4 flex flex-wrap gap-3">
-              <SearchField value={cashflowSearch} onChange={(event) => setCashflowSearch(event.target.value)} placeholder="Rechercher une source, une méthode, une référence ou une note..." />
-              <select value={cashflowSourceFilter} onChange={(event) => setCashflowSourceFilter(event.target.value)} className="input min-w-[220px]">
+            <div className="mb-4 grid gap-2 xl:grid-cols-[minmax(180px,0.7fr)_auto_auto]">
+              <SearchField
+                value={cashflowSearch}
+                onChange={(event) => setCashflowSearch(event.target.value)}
+                placeholder="Recherche fine..."
+                wrapperClassName="max-w-xl"
+                inputClassName="h-9 text-xs"
+              />
+              <select value={cashflowSourceFilter} onChange={(event) => setCashflowSourceFilter(event.target.value)} className="input h-9 min-w-[180px] text-xs">
                 <option value="ALL">Toutes les sources</option>
                 {cashflowSourceOptions.map((source) => <option key={source} value={source}>{source}</option>)}
               </select>
+              <select value={cashflowPeriodFilter} onChange={(event) => setCashflowPeriodFilter(event.target.value)} className="input h-9 min-w-[180px] text-xs">
+                {PERIOD_FILTERS.map((period) => <option key={period.value} value={period.value}>{period.label}</option>)}
+              </select>
             </div>
+            {cashflowPeriodFilter === "CUSTOM" && (
+              <div className="mb-4 grid gap-2 sm:grid-cols-2">
+                <input className="input h-9 text-xs" type="date" value={cashflowDateFrom} onChange={(event) => setCashflowDateFrom(event.target.value)} aria-label="Date debut tresorerie" />
+                <input className="input h-9 text-xs" type="date" value={cashflowDateTo} onChange={(event) => setCashflowDateTo(event.target.value)} aria-label="Date fin tresorerie" />
+              </div>
+            )}
+            <p className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100">
+              Periodicite appliquee: {periodLabel(cashflowPeriodFilter, cashflowDateFrom, cashflowDateTo)} - {filteredCashflowEntries.length} ligne(s)
+            </p>
             <div className="mb-4 grid gap-3 xl:grid-cols-[1.15fr_0.85fr]">
               <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-cyan-100">Répartition par source</p>
