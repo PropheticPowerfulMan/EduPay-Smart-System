@@ -77,8 +77,17 @@ export function Sidebar() {
 
   return (
     <>
-      <nav className={`fixed inset-x-3 bottom-3 z-50 pb-[env(safe-area-inset-bottom)] transition-all duration-300 md:hidden ${isMobileNavOpen ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-24 opacity-0"}`}>
+      <nav className={`fixed inset-x-3 bottom-3 z-50 pb-[env(safe-area-inset-bottom)] transition-all duration-300 lg:hidden ${isMobileNavOpen ? "translate-y-0 opacity-100" : "pointer-events-none translate-y-24 opacity-0"}`}>
         <div className="glass edupay-mobile-nav flex items-center gap-1 overflow-x-auto rounded-2xl p-2 shadow-2xl">
+          <button
+            type="button"
+            onClick={() => setMobileNavOpen(false)}
+            className="flex h-12 min-w-12 flex-none items-center justify-center rounded-xl border border-brand-300/30 bg-brand-500/10 text-brand-100 transition hover:border-brand-300/55 hover:bg-brand-500/18 hover:text-white"
+            aria-label="Masquer le menu"
+            title="Masquer le menu"
+          >
+            <PanelLeftClose className="h-5 w-5" />
+          </button>
           {links.map((link) => (
             <NavLink
               key={`mobile-open-${link.to}`}
@@ -105,43 +114,22 @@ export function Sidebar() {
       </nav>
 
       {!isMobileNavOpen && (
-        <div className="fixed left-3 top-1/2 z-50 flex -translate-y-1/2 flex-col items-center gap-3 rounded-[2rem] bg-slate-950/78 px-2 py-3 shadow-[0_24px_48px_rgba(0,0,0,0.34)] backdrop-blur-2xl md:hidden">
+        <div className="fixed inset-x-0 bottom-3 z-50 flex justify-center px-3 pb-[env(safe-area-inset-bottom)] lg:hidden">
           <button
             type="button"
             onClick={() => setMobileNavOpen(true)}
-            className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-brand-300/32 bg-brand-500/10 text-brand-100 transition-all hover:border-brand-300/55 hover:bg-brand-500/18 hover:text-white"
+            className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-brand-300/32 bg-slate-950/86 px-4 text-sm font-bold text-brand-100 shadow-[0_18px_38px_rgba(0,0,0,0.34)] backdrop-blur-2xl transition-all hover:border-brand-300/55 hover:bg-brand-500/18 hover:text-white"
             aria-label="Afficher la navigation mobile"
             title="Afficher la navigation"
           >
             <PanelLeftOpen className="h-5 w-5" />
+            Menu
           </button>
-          <div className="h-px w-8 bg-gradient-to-r from-transparent via-brand-300/45 to-transparent" />
-          <div className="edupay-scrollbar flex max-h-[58vh] flex-col gap-2 overflow-y-auto pr-0.5">
-            {links.map((link) => (
-              <NavLink
-                key={`mobile-rail-${link.to}`}
-                to={link.to}
-                title={link.label}
-                onMouseEnter={() => prefetchLink(link.to)}
-                onFocus={() => prefetchLink(link.to)}
-                onTouchStart={() => prefetchLink(link.to)}
-                className={({ isActive }) =>
-                  `flex h-11 w-11 items-center justify-center rounded-2xl border transition-all duration-200 ${
-                    isActive
-                      ? "border-brand-300/45 bg-gradient-to-br from-brand-500/28 to-white/10 text-white shadow-[0_14px_28px_rgba(20,184,222,0.18)]"
-                      : "border-white/10 bg-white/[0.04] text-brand-100 hover:border-brand-300/35 hover:bg-brand-500/10 hover:text-white"
-                  }`
-                }
-              >
-                {link.icon}
-              </NavLink>
-            ))}
-          </div>
         </div>
       )}
 
       {isDesktopSidebarOpen ? (
-        <aside className="hidden w-72 shrink-0 md:flex md:flex-col">
+        <aside className="hidden w-72 shrink-0 lg:flex lg:flex-col">
           <div className="glass sticky top-20 flex h-[calc(100vh-6.5rem)] flex-col gap-6 overflow-hidden rounded-3xl p-4 transition-all duration-300">
             <div className="pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full border border-brand-300/20 bg-brand-500/10 blur-sm" />
             <div className="relative space-y-4">
@@ -194,7 +182,7 @@ export function Sidebar() {
           </div>
         </aside>
       ) : (
-        <div className="hidden w-[5.25rem] shrink-0 md:flex md:flex-col">
+        <div className="hidden w-[5.25rem] shrink-0 lg:flex lg:flex-col">
           <div className="sticky top-20 flex h-[calc(100vh-6.5rem)] justify-center">
             <div className="edupay-nav-rail relative flex w-full flex-col items-center rounded-[2rem] bg-slate-950/78 px-2 py-4 shadow-[0_24px_48px_rgba(0,0,0,0.32)] backdrop-blur-2xl">
               <button

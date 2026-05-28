@@ -1035,17 +1035,164 @@ export function FinancialOperationsPage() {
     ]);
   }
 
-  function openDocument(fileUrl: string) {
-    window.open(fileUrl, "_blank", "noopener,noreferrer");
+  function findExpenseForAttachment(file: ExpenseAttachment | DocumentEntry) {
+    if ("expenseId" in file) {
+      return expenses.find((expense) => expense.id === file.expenseId) ?? null;
+    }
+    return expenses.find((expense) =>
+      (expense.attachments ?? []).some((attachment) =>
+        attachment.id === file.id ||
+        (attachment.fileName === file.fileName && attachment.fileUrl === file.fileUrl)
+      )
+    ) ?? null;
   }
 
-  function downloadDocument(file: ExpenseAttachment) {
+  function buildExpenseSupportDocumentHtml(file: ExpenseAttachment | DocumentEntry) {
+    const expense = findExpenseForAttachment(file);
+    const brand = schoolBranding;
+    const logoSrc = escapeHtml(new URL(brand.logoSrc, window.location.href).toString());
+    const generatedAt = new Date();
+    const documentReference = `KCS-EXP-${generatedAt.toISOString().slice(0, 10)}-${expense?.id ?? ("expenseId" in file ? file.expenseId : "UNLINKED")}-${file.id}`.replace(/[^A-Z0-9-]/gi, "-");
+    const sourceIsImage = /^data:image\//i.test(file.fileUrl) || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.fileUrl.split("?")[0] ?? "");
+    const sourceIsPdf = /^data:application\/pdf/i.test(file.fileUrl) || /\.pdf$/i.test(file.fileUrl.split("?")[0] ?? "");
+    const sourceLabel = file.fileUrl?.startsWith("data:")
+      ? "Fichier charge dans EduPay"
+      : (file.fileUrl || "Reference non renseignee");
+    const approvalRows = (expense?.approvalSteps ?? []).map((step) => `
+      <tr>
+        <td>${escapeHtml(step.stage)}</td>
+        <td>${escapeHtml(step.role)}</td>
+        <td>${escapeHtml(step.status)}</td>
+        <td>${escapeHtml(step.comments || "-")}</td>
+      </tr>
+    `).join("");
+    const sourcePreview = sourceIsImage
+      ? `<img class="attachment-preview" src="${escapeHtml(file.fileUrl)}" alt="Piece justificative ${escapeHtml(file.fileName)}" />`
+      : sourceIsPdf
+        ? `<iframe class="attachment-frame" src="${escapeHtml(file.fileUrl)}" title="Piece justificative ${escapeHtml(file.fileName)}"></iframe>`
+        : `<div class="source-box"><div class="label">Source / reference</div><div class="source-text">${escapeHtml(sourceLabel)}</div></div>`;
+
+    return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <title>Piece justificative ${escapeHtml(file.fileName)}</title>
+  <style>
+    @page { size: A4; margin: 15mm; }
+    body { position: relative; margin: 0; background: #f8fafc; color: #0f172a; font-family: Arial, Helvetica, sans-serif; padding: 22px; }
+    .watermark-text { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 86px; font-weight: 900; letter-spacing: 14px; color: rgba(11,46,89,0.055); transform: rotate(-22deg); pointer-events: none; user-select: none; }
+    .watermark-logo { position: fixed; left: 50%; top: 50%; width: 300px; height: 300px; opacity: 0.075; transform: translate(-50%, -50%); object-fit: contain; filter: grayscale(100%) contrast(1.05); pointer-events: none; user-select: none; }
+    .topbar { display:flex; justify-content:space-between; gap:12px; padding: 0 2px 10px; color:#64748b; font-size:10px; text-transform:uppercase; letter-spacing:0.14em; }
+    .topbar strong { color:#0b2e59; }
+    .sheet { position: relative; z-index: 2; max-width: 820px; margin: 0 auto; background: white; border: 1px solid #cbd5e1; border-radius: 18px; overflow: hidden; box-shadow: 0 20px 60px rgba(15,23,42,0.08); }
+    .hero { padding: 26px; background: linear-gradient(135deg, #082f49, #1f4f8f); color: white; display:flex; justify-content:space-between; gap:20px; align-items:flex-start; }
+    .hero-main { display:flex; align-items:center; gap:15px; min-width: 0; }
+    .hero-logo { width: 62px; height: 62px; object-fit: contain; border-radius: 999px; background: white; padding: 6px; border: 1px solid rgba(255,255,255,0.2); }
+    .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.13em; color: #64748b; font-weight: 800; }
+    .hero .label { color: ${escapeHtml(brand.colors.accent)}; }
+    h1 { margin: 7px 0 0; font-size: 27px; line-height: 1.12; }
+    .hero p { margin: 6px 0 0; color: #dbeafe; overflow-wrap: anywhere; }
+    .hero-meta { text-align:right; font-size:12px; color: rgba(255,255,255,0.88); min-width: 180px; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; padding: 22px 26px 12px; }
+    .card { border: 1px solid #e2e8f0; border-radius: 14px; padding: 14px; min-width: 0; }
+    .value { margin-top: 8px; font-size: 16px; font-weight: 800; color: #0b2e59; overflow-wrap: anywhere; }
+    .amount { color: #0f766e; font-size: 19px; }
+    .table-wrap { padding: 8px 26px 22px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border-bottom: 1px solid #e2e8f0; padding: 10px; text-align: left; font-size: 12px; vertical-align: top; }
+    th { color: #475569; text-transform: uppercase; font-size: 10px; letter-spacing: 0.08em; }
+    .attachment { margin: 0 26px 18px; border: 1px solid #dbeafe; border-radius: 16px; overflow: hidden; background: #f8fafc; }
+    .attachment-head { padding: 12px 14px; border-bottom: 1px solid #dbeafe; display:flex; justify-content:space-between; gap:12px; color:#0b2e59; font-weight:800; }
+    .attachment-preview { display:block; width: 100%; max-height: 420px; object-fit: contain; background:white; }
+    .attachment-frame { display:block; width: 100%; height: 430px; border:0; background:white; }
+    .source-box { padding: 16px; }
+    .source-text { margin-top:8px; color:#0f172a; font-weight:700; overflow-wrap:anywhere; }
+    .compliance { margin: 0 26px 18px; border: 1px solid rgba(15,118,110,0.22); border-left: 5px solid #0f766e; border-radius: 14px; background: rgba(240,253,250,0.96); padding: 12px 14px; color: #134e4a; font-size: 11px; line-height: 1.5; }
+    .signatures { display:grid; grid-template-columns: 1fr 1fr; gap:14px; padding: 0 26px 20px; }
+    .signature-box { min-height: 74px; border:1px dashed rgba(11,46,89,0.24); border-radius:14px; background: rgba(255,255,255,0.88); padding:12px; }
+    .signature-title { font-size:10px; text-transform:uppercase; letter-spacing:0.14em; font-weight:800; color:#64748b; }
+    .signature-line { margin-top:32px; border-top:1px solid rgba(11,46,89,0.24); padding-top:6px; font-size:11px; color:#0b2e59; font-weight:700; }
+    .foot { padding: 14px 26px 24px; font-size: 11px; color: #475569; display:flex; justify-content:space-between; gap:12px; border-top: 1px solid #e2e8f0; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } .sheet { box-shadow: none; } }
+  </style>
+</head>
+<body>
+  <div class="watermark-text">${escapeHtml(brand.shortName)}</div>
+  <img class="watermark-logo" src="${logoSrc}" alt="" />
+  <div class="topbar"><span><strong>${escapeHtml(brand.shortName)}</strong> · piece justificative officielle</span><span>Reference ${escapeHtml(documentReference)}</span></div>
+  <div class="sheet">
+    <div class="hero">
+      <div class="hero-main">
+        <img class="hero-logo" src="${logoSrc}" alt="Logo ${escapeHtml(brand.schoolName)}" />
+        <div>
+          <div class="label">${escapeHtml(brand.appName)}</div>
+          <h1>Piece justificative de depense</h1>
+          <p>${escapeHtml(file.fileName)} · ${escapeHtml(expense?.title ?? ("expenseTitle" in file ? file.expenseTitle : "Depense non liee"))}</p>
+        </div>
+      </div>
+      <div class="hero-meta">
+        <div style="font-weight:700;">${escapeHtml(brand.schoolName)}</div>
+        <div style="margin-top:4px;">${escapeHtml(brand.tagline)}</div>
+        <div style="margin-top:10px;">${escapeHtml(generatedAt.toLocaleDateString("fr-FR"))}</div>
+        <div>${escapeHtml(generatedAt.toLocaleTimeString("fr-FR"))}</div>
+      </div>
+    </div>
+    <div class="grid">
+      <div class="card"><div class="label">Reference document</div><div class="value">${escapeHtml(documentReference)}</div></div>
+      <div class="card"><div class="label">Statut workflow</div><div class="value">${escapeHtml(expense?.status ?? ("status" in file ? file.status : "Non renseigne"))}</div></div>
+      <div class="card"><div class="label">Depense</div><div class="value">${escapeHtml(expense?.title ?? ("expenseTitle" in file ? file.expenseTitle : "-"))}</div></div>
+      <div class="card"><div class="label">Montant</div><div class="value amount">${escapeHtml(expense ? currency.format(expense.amount) : "-")}</div></div>
+      <div class="card"><div class="label">Departement</div><div class="value">${escapeHtml(expense?.department ?? ("department" in file ? file.department : "-"))}</div></div>
+      <div class="card"><div class="label">Beneficiaire</div><div class="value">${escapeHtml(expense?.vendor?.name ?? expense?.supplierName ?? "-")}</div></div>
+      <div class="card"><div class="label">Categorie</div><div class="value">${escapeHtml(expense?.category?.name ?? "-")}</div></div>
+      <div class="card"><div class="label">Date depense</div><div class="value">${escapeHtml(new Date(expense?.expenseDate ?? ("expenseDate" in file ? file.expenseDate : Date.now())).toLocaleDateString("fr-FR"))}</div></div>
+    </div>
+    <div class="attachment">
+      <div class="attachment-head"><span>Piece source</span><span>${escapeHtml(file.mimeType || "type non precise")}</span></div>
+      ${sourcePreview}
+    </div>
+    <div class="table-wrap">
+      <div class="label">Workflow de validation</div>
+      <table>
+        <thead><tr><th>Etape</th><th>Role</th><th>Statut</th><th>Commentaire</th></tr></thead>
+        <tbody>${approvalRows || `<tr><td colspan="4">Aucune etape de validation renseignee.</td></tr>`}</tbody>
+      </table>
+    </div>
+    <div class="compliance">Ce document encapsule la piece justificative et le contexte de depense dans le format administratif ${escapeHtml(brand.shortName)}. La reference, le statut, le montant et le workflow permettent de verifier la trace sans dependre uniquement du fichier brut.</div>
+    <div class="signatures">
+      <div class="signature-box"><div class="signature-title">Controle operationnel</div><div class="signature-line">Responsable departement</div></div>
+      <div class="signature-box"><div class="signature-title">Visa finance</div><div class="signature-line">Comptabilite / Direction</div></div>
+    </div>
+    <div class="foot"><span>Document officiel ${escapeHtml(brand.appName)} genere pour ${escapeHtml(brand.schoolName)}.</span><span>${escapeHtml(generatedAt.toLocaleString("fr-FR"))}</span></div>
+  </div>
+</body>
+</html>`;
+  }
+
+  function openExpenseSupportDocument(file: ExpenseAttachment | DocumentEntry) {
+    const html = buildExpenseSupportDocumentHtml(file);
+    const opened = window.open("", "_blank");
+    if (!opened) {
+      printHtmlDocument(html);
+      return;
+    }
+    opened.opener = null;
+    opened.document.open();
+    opened.document.write(html);
+    opened.document.close();
+  }
+
+  function downloadExpenseSupportDocument(file: ExpenseAttachment | DocumentEntry) {
+    const html = buildExpenseSupportDocumentHtml(file);
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = file.fileUrl;
-    link.download = file.fileName;
+    link.href = url;
+    link.download = `piece-justificative-${file.fileName.replace(/\.[^.]+$/, "").replace(/[^a-z0-9-]+/gi, "-") || file.id}.html`;
     document.body.appendChild(link);
     link.click();
     link.remove();
+    window.URL.revokeObjectURL(url);
   }
 
   function readFileAsAttachment(file: File) {
@@ -2058,7 +2205,7 @@ export function FinancialOperationsPage() {
                           {expense.attachments.map((attachment) => (
                             <button
                               key={attachment.id}
-                              onClick={() => openDocument(attachment.fileUrl)}
+                              onClick={() => openExpenseSupportDocument(attachment)}
                               className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1 hover:border-brand-300/25 hover:text-white"
                             >
                               Piece: {attachment.fileName}
@@ -2890,10 +3037,10 @@ export function FinancialOperationsPage() {
                     <StatusBadge value={entry.status} />
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <button onClick={() => openDocument(entry.fileUrl)} className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white hover:border-brand-300/25 hover:bg-brand-500/10">
+                    <button onClick={() => openExpenseSupportDocument(entry)} className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white hover:border-brand-300/25 hover:bg-brand-500/10">
                       Ouvrir
                     </button>
-                    <button onClick={() => downloadDocument(entry)} className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white hover:border-brand-300/25 hover:bg-brand-500/10">
+                    <button onClick={() => downloadExpenseSupportDocument(entry)} className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white hover:border-brand-300/25 hover:bg-brand-500/10">
                       Télécharger
                     </button>
                   </div>

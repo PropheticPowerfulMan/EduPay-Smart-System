@@ -183,6 +183,8 @@ const mockPayments: any[] = [
   }
 ];
 
+const mockFinanceAgreements: any[] = [];
+
 let paymentNotificationsEnabled = true;
 
 function getPaymentMethodLabel(method: string) {
@@ -337,6 +339,170 @@ function parentWithStudents(parent: any) {
       className: (mockClasses.find((c) => c.id === s.classId) || {}).name || s.classId
     }));
   return { ...parent, students };
+}
+
+function roundMoney(value: number) {
+  return Math.round((Number(value || 0) + Number.EPSILON) * 100) / 100;
+}
+
+function classNameFor(classId: string) {
+  return (mockClasses.find((c) => c.id === classId) || {}).name || classId || "Classe non renseignee";
+}
+
+function gradeGroupFor(classId: string) {
+  const name = classNameFor(classId).toUpperCase();
+  if (name.startsWith("K")) return "KINDERGARTEN";
+  const grade = Number(name.match(/\d+/)?.[0] || 0);
+  if (grade <= 5) return "PRIMARY";
+  if (grade <= 8) return "MIDDLE_SCHOOL";
+  return "HIGH_SCHOOL";
+}
+
+function paymentOptionLabel(paymentOptionType: string) {
+  const labels: Record<string, string> = {
+    STANDARD_MONTHLY: "Mensualite standard",
+    THREE_INSTALLMENTS: "Paiement en 3 tranches",
+    SPECIAL_OWNER_AGREEMENT: "Accord special parent-ecole",
+    ANNUAL: "Paiement annuel"
+  };
+  return labels[paymentOptionType] || paymentOptionType;
+}
+
+function paymentShareForStudent(payment: any, student: any, siblings: any[]) {
+  if (payment.status !== "COMPLETED") return 0;
+  const studentIds = Array.isArray(payment.students) ? payment.students : [];
+  if (studentIds.includes(student.id)) {
+    const selectedCount = Math.max(studentIds.length, 1);
+    return Number(payment.amount || 0) / selectedCount;
+  }
+  if (payment.parentId === student.parentId && studentIds.length === 0) {
+    return Number(payment.amount || 0) / Math.max(siblings.length, 1);
+  }
+  return 0;
+}
+
+function buildFinanceProfile(parentId: string) {
+  const parent = mockParents.find((p) => p.id === parentId);
+  if (!parent) return null;
+
+  const students = mockStudents
+    .filter((student) => student.parentId === parent.id)
+    .map((student) => ({ ...student, className: classNameFor(student.classId) }));
+  const parentPayments = mockPayments
+    .filter((payment) => payment.parentId === parent.id)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  const completedPayments = parentPayments.filter((payment) => payment.status === "COMPLETED");
+  const pendingPayments = parentPayments.filter((payment) => payment.status === "PENDING");
+  const failedPayments = parentPayments.filter((payment) => payment.status === "FAILED");
+
+  const studentRows = students.map((student) => {
+    const paid = roundMoney(parentPayments.reduce((sum, payment) => sum + paymentShareForStudent(payment, student, students), 0));
+    const expectedTotal = roundMoney(Number(student.annualFee || 0));
+    const balance = roundMoney(Math.max(expectedTotal - paid, 0));
+    const paymentOptionType = student.paymentOptionType || "STANDARD_MONTHLY";
+    return {
+      id: student.id,
+      fullName: student.fullName,
+      className: student.className,
+      gradeGroup: gradeGroupFor(student.classId),
+      expectedTotal,
+      originalAmount: expectedTotal,
+      reductionTotal: 0,
+      paid,
+      balance,
+      completionRate: expectedTotal > 0 ? roundMoney((paid / expectedTotal) * 100) : 0,
+      overdueInstallments: balance > 0 ? 1 : 0,
+      paymentOptionType,
+      paymentOptionLabel: paymentOptionLabel(paymentOptionType),
+      planName: paymentOptionLabel(paymentOptionType)
+    };
+  });
+
+  const totalExpected = roundMoney(studentRows.reduce((sum, row) => sum + row.expectedTotal, 0));
+  const totalPaid = roundMoney(completedPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0));
+  const totalDebt = roundMoney(Math.max(totalExpected - totalPaid, 0));
+  const activeTuitionPlan = studentRows.length
+    ? Array.from(new Set(studentRows.map((student) => student.planName))).join(" / ")
+    : "Aucun plan actif";
+  const debts = studentRows
+    .filter((student) => student.balance > 0)
+    .map((student) => ({
+      id: `debt-${parent.id}-${student.id}`,
+      title: `Solde scolaire - ${student.fullName}`,
+      reason: "Frais scolaires restants",
+      originalAmount: student.expectedTotal,
+      amountRemaining: student.balance,
+      status: "OPEN",
+      academicYearId: "demo-2026",
+      academicYearName: "2026-2027",
+      carriedOverFromYearId: null,
+      carriedOverFromYearName: null,
+      dueDate: new Date(new Date().getFullYear(), 8, 30).toISOString(),
+      settledAt: null,
+      createdAt: new Date().toISOString()
+    }));
+
+  return {
+    academicYear: {
+      id: "demo-2026",
+      name: "2026-2027",
+      startDate: new Date(new Date().getFullYear(), 8, 1).toISOString(),
+      endDate: new Date(new Date().getFullYear() + 1, 5, 30).toISOString()
+    },
+    parent: {
+      id: parent.id,
+      fullName: parent.fullName,
+      phone: parent.phone || "",
+      email: parent.email || "",
+      preferredLanguage: parent.preferredLanguage || "fr"
+    },
+    profile: {
+      id: `profile-${parent.id}`,
+      activeTuitionPlan,
+      activeTuitionPlanId: null,
+      activeAgreementId: null,
+      totalPaid,
+      totalDebt,
+      totalReduction: 0,
+      carriedOverDebt: 0,
+      overdueInstallments: debts.length,
+      pendingPaymentsTotal: roundMoney(pendingPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)),
+      failedPaymentsTotal: roundMoney(failedPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)),
+      paymentBehaviorScore: totalExpected > 0 ? roundMoney(Math.max(0, 100 - (totalDebt / totalExpected) * 100)) : 100,
+      lastPaymentAt: completedPayments[0]?.createdAt ? new Date(completedPayments[0].createdAt).toISOString() : null,
+      childrenLinkedToAccount: students.length,
+      expectedNetRevenue: totalExpected,
+      completionRate: totalExpected > 0 ? roundMoney((totalPaid / totalExpected) * 100) : 0
+    },
+    students: studentRows,
+    installments: [],
+    reductions: [],
+    debts,
+    agreements: mockFinanceAgreements.filter((agreement) => agreement.parentId === parent.id),
+    alerts: debts.length ? [{
+      id: `alert-${parent.id}`,
+      type: "PAYMENT_DELAY",
+      title: "Solde parent a suivre",
+      message: `${parent.fullName} a encore ${totalDebt.toFixed(2)} USD a regulariser.`,
+      severity: totalDebt > 0 ? "HIGH" : "LOW",
+      status: "OPEN",
+      createdAt: new Date().toISOString()
+    }] : [],
+    paymentHistory: parentPayments.map((payment) => ({
+      id: payment.id,
+      transactionNumber: payment.transactionNumber,
+      amount: Number(payment.amount || 0),
+      reason: payment.reason || "Paiement",
+      method: payment.method || "CASH",
+      status: payment.status || "COMPLETED",
+      createdAt: new Date(payment.createdAt).toISOString(),
+      receiptNumber: payment.transactionNumber,
+      allocationTrace: null,
+      students: mockStudents
+        .filter((student) => Array.isArray(payment.students) ? payment.students.includes(student.id) : student.parentId === parent.id)
+        .map((student) => ({ id: student.id, fullName: student.fullName }))
+    }))
+  };
 }
 
 app.get("/api/parents", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: any, res) => {
@@ -554,6 +720,84 @@ app.post("/api/payments", authGuard, requireRole("ADMIN", "ACCOUNTANT"), async (
 
 app.get("/api/payments", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (_req: any, res) => {
   return res.json(mockPayments);
+});
+
+// Routes: Finance demo
+app.get("/api/finance/catalog", authGuard, requireRole("ADMIN", "ACCOUNTANT", "PARENT"), (_req: any, res) => {
+  return res.json({
+    academicYear: {
+      id: "demo-2026",
+      name: "2026-2027",
+      startDate: new Date(new Date().getFullYear(), 8, 1).toISOString(),
+      endDate: new Date(new Date().getFullYear() + 1, 5, 30).toISOString()
+    },
+    plans: [
+      { id: "plan-standard-monthly", paymentOptionType: "STANDARD_MONTHLY", gradeGroup: "PRIMARY", name: "Mensualite standard" },
+      { id: "plan-three-installments", paymentOptionType: "THREE_INSTALLMENTS", gradeGroup: "PRIMARY", name: "Paiement en 3 tranches" },
+      { id: "plan-owner-agreement", paymentOptionType: "SPECIAL_OWNER_AGREEMENT", gradeGroup: "CUSTOM", name: "Accord special parent-ecole" },
+      { id: "plan-annual", paymentOptionType: "ANNUAL", gradeGroup: "PRIMARY", name: "Paiement annuel" }
+    ]
+  });
+});
+
+app.get("/api/finance/parents/:parentId/profile", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: any, res) => {
+  const profile = buildFinanceProfile(req.params.parentId);
+  if (!profile) return res.status(404).json({ message: "Parent finance profile not found." });
+  return res.json(profile);
+});
+
+app.get("/api/finance/me/profile", authGuard, requireRole("PARENT"), (req: any, res) => {
+  const parent = mockParents.find((p) => p.userId === req.user?.sub);
+  if (!parent) return res.status(404).json({ message: "Parent not found" });
+  const profile = buildFinanceProfile(parent.id);
+  if (!profile) return res.status(404).json({ message: "Parent finance profile not found." });
+  return res.json(profile);
+});
+
+app.post("/api/finance/assignments", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: any, res) => {
+  const { parentId, studentId, paymentOptionType } = req.body || {};
+  const parent = mockParents.find((p) => p.id === parentId);
+  if (!parent) return res.status(404).json({ message: "Parent not found" });
+  const targets = mockStudents.filter((student) =>
+    student.parentId === parent.id && (!studentId || student.id === studentId)
+  );
+  for (const student of targets) {
+    student.paymentOptionType = paymentOptionType || "STANDARD_MONTHLY";
+  }
+  return res.status(201).json({
+    parentId: parent.id,
+    assignedStudents: targets.length,
+    paymentOptionType: paymentOptionType || "STANDARD_MONTHLY"
+  });
+});
+
+app.post("/api/finance/agreements", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: any, res) => {
+  const { parentId, studentId, title, customTotal, reductionAmount, status, installments } = req.body || {};
+  const parent = mockParents.find((p) => p.id === parentId);
+  if (!parent) return res.status(404).json({ message: "Parent not found" });
+  const balanceDue = roundMoney((Number(customTotal || 0) - Number(reductionAmount || 0)));
+  const agreement = {
+    id: `agreement-${Date.now()}`,
+    parentId,
+    studentId,
+    title: title || "Accord special",
+    status: status || "PENDING_APPROVAL",
+    customTotal: roundMoney(Number(customTotal || 0)),
+    reductionAmount: roundMoney(Number(reductionAmount || 0)),
+    balanceDue: Math.max(balanceDue, 0),
+    paymentOptionType: "SPECIAL_OWNER_AGREEMENT",
+    gradeGroup: req.body?.gradeGroup || "CUSTOM",
+    approvedAt: status === "APPROVED" ? new Date().toISOString() : null,
+    approvalRequestedAt: new Date().toISOString(),
+    notes: req.body?.notes || "",
+    privateNotes: req.body?.privateNotes || "",
+    installments: Array.isArray(installments) ? installments : [],
+    createdAt: new Date().toISOString()
+  };
+  mockFinanceAgreements.push(agreement);
+  const student = mockStudents.find((entry) => entry.id === studentId && entry.parentId === parent.id);
+  if (student) student.paymentOptionType = "SPECIAL_OWNER_AGREEMENT";
+  return res.status(201).json(agreement);
 });
 
 // Routes: Analytics

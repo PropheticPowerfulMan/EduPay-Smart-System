@@ -56,7 +56,7 @@ type FinanceSnapshot = {
     completionRate: number;
     overdueInstallments: number;
   }>;
-  réductions: Array<{
+  reductions: Array<{
     id: string;
     title: string;
     amount: number;
@@ -119,7 +119,7 @@ type AllocationTrace = {
   }>;
 };
 
-type AdminParentModule = "students" | "debts" | "alerts" | "réductions" | "agreements" | "payments";
+type AdminParentModule = "students" | "debts" | "alerts" | "reductions" | "agreements" | "payments";
 type AdminParentAction = "assignment" | "agreement";
 
 function uniqueReductionRows<T extends { studentName?: string | null; scope?: string | null; amount: number; title: string }>(rows: T[]) {
@@ -130,7 +130,7 @@ function uniqueReductionRows<T extends { studentName?: string | null; scope?: st
   }, new Map<string, T>()).values());
 }
 
-type ReductionDisplayRow = FinanceSnapshot["réductions"][number];
+type ReductionDisplayRow = FinanceSnapshot["reductions"][number];
 
 function getReductionOrigin(row: Pick<ReductionDisplayRow, "scope" | "title" | "paymentOptionType">) {
   const scope = String(row.scope ?? "").toUpperCase();
@@ -826,7 +826,7 @@ export function FinanceParentAdminPage() {
   const firstDueDate = debtDueDates.length ? new Date(Math.min(...debtDueDates.map((date) => date.getTime()))) : null;
   const lastDueDate = debtDueDates.length ? new Date(Math.max(...debtDueDates.map((date) => date.getTime()))) : null;
   const paymentCount = snapshot?.paymentHistory?.length ?? 0;
-  const visibleReductions = snapshot ? uniqueReductionRows(snapshot.réductions) : [];
+  const visibleReductions = snapshot ? uniqueReductionRows(snapshot.reductions ?? []) : [];
   const groupedReductions = groupReductionRows(visibleReductions);
   const scholarshipRows = visibleReductions.filter((reduction) =>
     reduction.scope === "MANUAL" ||
@@ -846,7 +846,7 @@ export function FinanceParentAdminPage() {
     { id: "students", title: copy.studentsPlansTitle, subtitle: copy.studentsPlansSubtitle, count: snapshot.students.length, metric: formatCopy(copy.coveredMetric, { rate: snapshot.profile.completionRate.toFixed(1) }), Icon: CalendarClock, toneClass: "border-brand-300/20 bg-brand-500/10 text-brand-100" },
     { id: "debts", title: copy.historicalDebtsTitle, subtitle: copy.historicalDebtsSubtitle, count: snapshot.debts.length, metric: money.format(historicalDebtTotal), Icon: FileClock, toneClass: "border-red-300/20 bg-red-500/10 text-red-100" },
     { id: "alerts", title: copy.alertsTitle, subtitle: copy.alertsSubtitle, count: snapshot.alerts.length, metric: formatCopy(copy.lateMetric, { count: snapshot.profile.overdueInstallments }), Icon: ShieldAlert, toneClass: "border-amber-300/20 bg-amber-500/10 text-amber-100" },
-    { id: "réductions", title: copy.réductionsTitle, subtitle: copy.réductionsSubtitle, count: groupedReductions.length || visibleReductions.length, metric: money.format(scholarshipTotal || snapshot.profile.totalReduction), Icon: HandCoins, toneClass: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100" },
+    { id: "reductions", title: copy.réductionsTitle, subtitle: copy.réductionsSubtitle, count: groupedReductions.length || visibleReductions.length, metric: money.format(scholarshipTotal || snapshot.profile.totalReduction), Icon: HandCoins, toneClass: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100" },
     { id: "agreements", title: copy.agreementsTitle, subtitle: copy.agreementsSubtitle, count: snapshot.agreements.length, metric: snapshot.agreements[0] ? money.format(snapshot.agreements[0].balanceDue) : copy.none, Icon: Save, toneClass: "border-emerald-300/20 bg-emerald-500/10 text-emerald-100" },
     { id: "payments", title: copy.paymentsTitle, subtitle: copy.paymentsSubtitle, count: paymentCount, metric: money.format(snapshot.profile.totalPaid), Icon: ReceiptText, toneClass: "border-violet-300/20 bg-violet-500/10 text-violet-100" }
   ] : [];
@@ -1368,7 +1368,7 @@ export function FinanceParentAdminPage() {
                     </div>
                   )}
 
-                  {activeModule === "réductions" && (
+                  {activeModule === "reductions" && (
                     <div className="space-y-4">
                       {groupedReductions.length === 0 && <p className="text-sm text-ink-dim">{copy.noReductionApplied}</p>}
                       {groupedReductions.map((group) => (
