@@ -620,17 +620,16 @@ parentRouter.use(authGuard);
 
 // GET all parents
 parentRouter.get("/", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
-  if (orbitRegistryIsEnabled()) {
-    const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);
-    return res.json(mirrored.parents.map((parent) => enrichParent({
-      ...parent,
-      id: parent.id,
-      displayId: parent.displayId || parent.id,
-      createdAt: parent.createdAt || new Date(0),
-    })));
-  }
-
   try {
+    const localParentsCount = await prisma.parent.count({ where: { schoolId: req.user!.schoolId } });
+    if (orbitRegistryIsEnabled() && (localParentsCount === 0 || req.query.syncOrbit === "1")) {
+      try {
+        await syncOrbitRegistryMirror(req.user!.schoolId);
+      } catch (syncError) {
+        console.error("[PARENT_LIST_ORBIT_SYNC] Local list preserved after Orbit sync failure", syncError);
+      }
+    }
+
     const parents = await prisma.parent.findMany({
       where: { schoolId: req.user!.schoolId },
       include: parentInclude
@@ -1267,6 +1266,17 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
       where: { id },
       include: parentInclude
     });
+    if (!parent) {
+      return res.status(404).json({ message: "Parent non trouvé après mise à jour." });
+    }
+
+    const persistedPhone = parent.phone.replace(/\s+/g, "");
+    if (parent.fullName !== payload.fullName || parent.email !== normalizedEmail || persistedPhone !== normalizedPhone) {
+      return res.status(409).json({
+        message: "La modification parent n'a pas été confirmée en base. Rechargez la page et réessayez."
+      });
+    }
+
     const notificationStatus = parent
       ? await notifyParentEntityChange({
         schoolId: req.user!.schoolId,

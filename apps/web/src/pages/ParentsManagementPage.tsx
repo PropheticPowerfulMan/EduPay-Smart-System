@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useI18n } from "../i18n";
 import { SearchField } from "../components/SearchField";
@@ -97,6 +97,40 @@ type ParentFinanceSnapshot = {
   students: ParentFinanceStudent[];
   debts: ParentFinanceDebt[];
 };
+
+function normalizeParentForUi(parent: Parent): Parent {
+  const parts = String(parent.fullName ?? "").split(" ");
+  return {
+    ...parent,
+    id: String(parent.id ?? ""),
+    displayId: parent.displayId ? String(parent.displayId) : undefined,
+    nom: String(parent.nom ?? parts[0] ?? ""),
+    postnom: String(parent.postnom ?? parts[1] ?? ""),
+    prenom: String(parent.prenom ?? parts[2] ?? ""),
+    fullName: String(parent.fullName ?? [parent.nom, parent.postnom, parent.prenom].filter(Boolean).join(" ") ?? ""),
+    phone: String(parent.phone ?? ""),
+    email: String(parent.email ?? ""),
+    physicalAddress: parent.physicalAddress ? String(parent.physicalAddress) : "",
+    photoUrl: parent.photoUrl ? String(parent.photoUrl) : "",
+    preferredLanguage: parent.preferredLanguage === "en" ? "en" : "fr",
+    createdAt: parent.createdAt || new Date(0).toISOString(),
+    students: Array.isArray(parent.students)
+      ? parent.students.map((student) => ({
+          ...student,
+          id: String(student.id ?? ""),
+          displayId: student.displayId ? String(student.displayId) : undefined,
+          fullName: String(student.fullName ?? ""),
+          classId: String(student.classId ?? ""),
+          className: String(student.className ?? ""),
+          annualFee: toSafeNumber(student.annualFee),
+          createdAt: student.createdAt || parent.createdAt || new Date(0).toISOString(),
+          paymentOptionType: student.paymentOptionType ? String(student.paymentOptionType) : undefined,
+          paymentOptionLabel: student.paymentOptionLabel ? String(student.paymentOptionLabel) : undefined,
+          tuitionPlanName: student.tuitionPlanName ? String(student.tuitionPlanName) : undefined,
+        }))
+      : []
+  };
+}
 
 function toSafeNumber(value: unknown) {
   const numeric = Number(value);
@@ -1246,6 +1280,41 @@ function AccessNotificationModal({
       </div>
     </div>
   );
+}
+
+class ParentDetailBoundary extends Component<
+  { children: ReactNode; onClose: () => void },
+  { error: Error | null }
+> {
+  state = { error: null as Error | null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error) {
+    console.error("[PARENT_DETAIL_MODAL_RENDER]", error);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={this.props.onClose} />
+        <section className="relative w-full max-w-lg rounded-2xl border border-red-400/30 bg-slate-950 p-6 shadow-2xl">
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-red-200">Suivi parent indisponible</p>
+          <h2 className="mt-2 font-display text-2xl font-bold text-white">Le dossier n'a pas pu être affiché.</h2>
+          <p className="mt-3 text-sm leading-6 text-ink-dim">
+            Une donnée du parent ou de son profil financier est incohérente. La liste reste disponible, et l'erreur est maintenant isolée au lieu de casser toute la page.
+          </p>
+          <button type="button" onClick={this.props.onClose} className="mt-5 w-full rounded-xl bg-red-400 px-4 py-3 text-sm font-black text-slate-950">
+            Fermer
+          </button>
+        </section>
+      </div>
+    );
+  }
 }
 
 function DetailModal({
@@ -2525,7 +2594,7 @@ export function ParentsManagementPage() {
     ]);
 
     if (parentsResult.status === "fulfilled") {
-      setParents(parentsResult.value);
+      setParents(parentsResult.value.map(normalizeParentForUi));
     } else {
       const message = parentsResult.reason instanceof Error ? parentsResult.reason.message : "Erreur API";
       nextApiError = message;
@@ -2618,7 +2687,11 @@ export function ParentsManagementPage() {
     try {
       setApiError(null);
       if (id) {
-        const updated = await api<{ notificationStatus?: { dashboard?: string; email?: string; sms?: string; adminEmail?: string }; syncMode?: string }>(`/api/parents/${id}`, { method: "PUT", body: JSON.stringify(body) });
+        const updated = await api<Parent & { notificationStatus?: { dashboard?: string; email?: string; sms?: string; adminEmail?: string }; syncMode?: string }>(`/api/parents/${id}`, { method: "PUT", body: JSON.stringify(body) });
+        const normalizedUpdated = normalizeParentForUi(updated);
+        setParents((current) => current.map((parent) => parent.id === id ? normalizedUpdated : parent));
+        setViewTarget((current) => current?.id === id ? normalizedUpdated : current);
+        setEditTarget((current) => current?.id === id ? normalizedUpdated : current);
         setMutationNotice([
           `Le dossier parent de ${fullName} a été modifié avec succès.`,
           updated.syncMode === "ORBIT_MIRROR" ? "La modification a été reprise depuis le registre partagé." : "EduPay a enregistré la modification localement.",
@@ -2724,14 +2797,16 @@ export function ParentsManagementPage() {
         </div>
       )}
       {viewTarget && (
-        <DetailModal
-          parent={viewTarget}
-          financeSnapshot={financeSnapshot}
-          financeLoading={financeLoading}
-          financeError={financeError}
-          onClose={() => setViewTarget(null)}
-          t={t}
-        />
+        <ParentDetailBoundary onClose={() => setViewTarget(null)}>
+          <DetailModal
+            parent={normalizeParentForUi(viewTarget)}
+            financeSnapshot={financeSnapshot}
+            financeLoading={financeLoading}
+            financeError={financeError}
+            onClose={() => setViewTarget(null)}
+            t={t}
+          />
+        </ParentDetailBoundary>
       )}
       {credentials && <CredentialsModal credentials={credentials} onClose={() => setCredentials(null)} />}
       {duplicateParentMessage && <DuplicateParentDialog message={duplicateParentMessage} onClose={() => setDuplicateParentMessage(null)} />}
