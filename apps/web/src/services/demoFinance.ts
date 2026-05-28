@@ -164,7 +164,7 @@ let runtimeStudentOverrides: Record<string, StudentConfiguration> = {};
 const ACADEMIC_YEAR = {
   id: "demo-ay-2026-2027",
   name: "2026-2027",
-  startDate: "2026-08-01T00:00:00.000Z",
+  startDate: "2026-09-01T00:00:00.000Z",
   endDate: "2027-06-30T23:59:59.999Z"
 };
 

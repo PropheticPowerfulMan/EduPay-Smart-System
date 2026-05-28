@@ -104,7 +104,7 @@ function inferAudience(subject: string, text: string) {
     return { label: "Espace élève", accent: "#12aee8" };
   }
   if (content.includes("employ") || content.includes("enseign") || content.includes("staff")) {
-    return { label: "Espace employe", accent: "#16a34a" };
+    return { label: "Espace employé", accent: "#16a34a" };
   }
   return { label: "Notification EduPay", accent: BRAND_GOLD };
 }
@@ -173,7 +173,7 @@ function buildBrandedEmailHtml(input: EmailInput) {
             <td style="background:${BRAND_BLUE};border-radius:0 0 28px 28px;padding:20px 28px;text-align:center">
               <p style="margin:0;color:#ffffff;font-size:13px;font-weight:700">${SCHOOL_NAME}</p>
               <p style="margin:5px 0 0;color:#cfe2ff;font-size:12px">Macampagne, Ngaliema · ${SCHOOL_TAGLINE}</p>
-              <p style="margin:10px 0 0;color:#9fc2ea;font-size:11px">&copy; ${year} ${SCHOOL_SHORT_NAME}. Notification automatisee EduPay.</p>
+              <p style="margin:10px 0 0;color:#9fc2ea;font-size:11px">&copy; ${year} ${SCHOOL_SHORT_NAME}. Notification automatisée EduPay.</p>
             </td>
           </tr>
         </table>

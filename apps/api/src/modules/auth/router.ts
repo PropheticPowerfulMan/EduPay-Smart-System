@@ -431,17 +431,17 @@ authRouter.post("/forgot-password", recoveryLimiter, async (req, res) => {
       });
       await sendEmail({
         to: user.email,
-        subject: "Reinitialisation de mot de passe EduPay",
+        subject: "Réinitialisation de mot de passe EduPay",
         text: [
           `Bonjour ${user.fullName},`,
           "",
           "Une demande de réinitialisation de mot de passe a été reçue pour votre compte EduPay.",
           "",
-          `Code de reinitialisation: ${token}`,
+          `Code de réinitialisation: ${token}`,
           `Lien direct: ${buildPasswordResetLink(token)}`,
           "Ce code expire dans 30 minutes et ne peut être utilisé qu'une seule fois.",
           "",
-          "Si vous n'etes pas a l'origine de cette demande, ignorez ce message."
+          "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message."
         ].join("\n")
       });
     }
@@ -460,7 +460,7 @@ authRouter.post("/reset-password", recoveryLimiter, async (req, res) => {
   });
 
   if (!resetToken || resetToken.usedAt || resetToken.expiresAt.getTime() < Date.now()) {
-    return res.status(400).json({ message: "Code de reinitialisation invalide ou expire." });
+    return res.status(400).json({ message: "Code de réinitialisation invalide ou expiré." });
   }
 
   const passwordHash = await bcrypt.hash(payload.newPassword, 12);
@@ -523,7 +523,7 @@ authRouter.post("/recover-admin-password", recoveryLimiter, async (req, res) => 
       `Bonjour ${user.fullName},`,
       "",
       "Le mot de passe administrateur EduPay vient d'être réinitialisé avec le code de récupération serveur.",
-      "Si vous n'avez pas effectue cette action, changez immediatement ADMIN_RECOVERY_CODE et JWT_SECRET."
+      "Si vous n'avez pas effectué cette action, changez immédiatement ADMIN_RECOVERY_CODE et JWT_SECRET."
     ].join("\n")
   }).catch((error) => console.error("Admin recovery email failed", error));
 

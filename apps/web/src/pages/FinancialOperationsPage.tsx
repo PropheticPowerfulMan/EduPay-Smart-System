@@ -1426,13 +1426,13 @@ export function FinancialOperationsPage() {
     if (!overview) return;
     printLedgerReport(
       "Rapport général des opérations",
-      "Document officiel EduPay consolidant dépenses, budgets, paie, comptabilit?, trésorerie et pièces justificatives.",
+      "Document officiel EduPay consolidant dépenses, budgets, paie, comptabilité, trésorerie et pièces justificatives.",
       ["Module", "Lignes", "Volume / indicateur", "Observation"],
       [
         ["Dépenses", String(expenses.length), currency.format(overview.expenses.totalExpenses), `${expenseStats.pending} en attente`],
         ["Budgets", String(budgets.length), currency.format(budgets.reduce((sum, budget) => sum + budget.plannedAmount, 0)), `${budgets.filter((budget) => budget.status === "EXCEEDED").length} depassement(s)`],
         ["Paie", String(payrollRuns.length), currency.format(overview.payroll.totalPayroll), `${salaryProfiles.length} profil(s)`],
-        ["Comptabilite", String(accountingEntries.length), currency.format(accountingMetrics.totalVolume), accountingMetrics.topDepartmentName],
+        ["Comptabilité", String(accountingEntries.length), currency.format(accountingMetrics.totalVolume), accountingMetrics.topDepartmentName],
         ["Trésorerie", String(cashflowEntries.length), currency.format(overview.cashflow.availableCash), `Variation ${currency.format(cashflowMetrics.netMovement)}`],
         ["Documents", String(documentEntries.length), String(documentEntries.length), "Pieces justificatives indexees"]
       ],
@@ -1454,7 +1454,7 @@ export function FinancialOperationsPage() {
           "Dépenses": overview.expenses.totalExpenses,
           "Budgets": budgets.length,
           "Paies": payrollRuns.length,
-          "Comptabilite": accountingEntries.length,
+          "Comptabilité": accountingEntries.length,
           "Trésorerie": cashflowEntries.length,
           "Documents": documentEntries.length,
           "Cash disponible": overview.cashflow.availableCash
@@ -1499,7 +1499,7 @@ export function FinancialOperationsPage() {
         }))
       },
       {
-        name: "Comptabilite",
+        name: "Comptabilité",
         rows: accountingEntries.map((entry) => ({
           "Date": new Date(entry.entryDate).toLocaleDateString("fr-FR"),
           "Type": entry.entryType,
@@ -1546,7 +1546,7 @@ export function FinancialOperationsPage() {
       setVendors((current) => [created, ...current]);
       setVendorForm(EMPTY_VENDOR_FORM);
       setActiveSubDialog(null);
-      setSuccess("Fournisseur ajout?.");
+      setSuccess("Fournisseur ajouté.");
     } catch (submitError) {
       setActionError(submitError instanceof Error ? submitError.message : "Impossible de creer le fournisseur.");
     } finally {
@@ -1582,7 +1582,7 @@ export function FinancialOperationsPage() {
       setSelectedVendorId(updated.id);
       setEditingVendorId(null);
       setVendorEditForm(EMPTY_VENDOR_FORM);
-      setSuccess("Fournisseur modifi?.");
+      setSuccess("Fournisseur modifié.");
     } catch (submitError) {
       setActionError(submitError instanceof Error ? submitError.message : "Impossible de modifier le fournisseur.");
     } finally {
@@ -1603,7 +1603,7 @@ export function FinancialOperationsPage() {
       setExpenses((current) => current.map((expense) => expense.vendor?.id === vendor.id ? { ...expense, vendor: null } : expense));
       if (selectedVendorId === vendor.id) setSelectedVendorId(null);
       if (editingVendorId === vendor.id) setEditingVendorId(null);
-      setSuccess("Fournisseur supprim? sans effacer les dépenses historiques.");
+      setSuccess("Fournisseur supprimé sans effacer les dépenses historiques.");
     } catch (submitError) {
       setActionError(submitError instanceof Error ? submitError.message : "Impossible de supprimer le fournisseur.");
     } finally {
@@ -1737,7 +1737,7 @@ export function FinancialOperationsPage() {
       setSalaryProfiles((current) => [created, ...current]);
       setSalaryForm(EMPTY_SALARY_FORM);
       setActiveSubDialog(null);
-      setSuccess("Profil salarial ajout?.");
+      setSuccess("Profil salarial ajouté.");
       await refreshOverview();
       await refreshLedgers();
     } catch (submitError) {

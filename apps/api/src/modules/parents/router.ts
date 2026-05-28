@@ -353,7 +353,7 @@ const parentInclude = {
       class: true,
       planAssignments: {
         where: { isActive: true },
-        include: { tuitionPlan: true },
+        include: { tuitionPlan: true, financialAgreement: true },
         orderBy: { updatedAt: "desc" as const }
       }
     }
@@ -388,7 +388,7 @@ function enrichParent(p: any) {
         paymentOptionLabel: assignment?.paymentOptionType
           ? getPaymentOptionLabel(assignment.paymentOptionType)
           : s.paymentOptionLabel ?? "",
-        tuitionPlanName: assignment?.tuitionPlan?.name ?? s.tuitionPlanName ?? ""
+        tuitionPlanName: assignment?.financialAgreement?.title ?? assignment?.tuitionPlan?.name ?? s.tuitionPlanName ?? ""
       };
     })
   };
@@ -1047,7 +1047,7 @@ parentRouter.post("/:id/reset-password", authorize("ADMIN", "ACCOUNTANT"), async
   } catch (error) {
     console.error("DB unavailable on parent password reset", error);
     if (!demoDataFallbackEnabled()) {
-      return res.status(503).json({ message: "Reinitialisation parent temporairement indisponible." });
+      return res.status(503).json({ message: "Réinitialisation parent temporairement indisponible." });
     }
     const parent = demoParents.find((p) => p.id === id);
     if (!parent) return res.status(404).json({ message: "Parent non trouve" });

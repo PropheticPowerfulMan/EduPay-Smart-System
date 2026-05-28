@@ -397,7 +397,7 @@ function Badge({ text, color }: { text: string; color: string }) {
 }
 
 function formatMoney(amount: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(amount);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(toSafeNumber(amount));
 }
 
 function formatDateLabel(value?: string | null) {
@@ -480,59 +480,67 @@ function slugify(value: string) {
 
 function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSnapshot | null) {
   const brand = schoolBranding;
+  const parentStudents = Array.isArray(parent.students) ? parent.students : [];
+  const safeFinanceSnapshot = normalizeParentFinanceSnapshot(financeSnapshot);
   const generatedAt = new Date();
   const documentReference = escapeHtml(`KCS-PAR-${generatedAt.toISOString().slice(0, 10)}-${(parent.displayId || parent.id).replace(/[^A-Za-z0-9-]/g, "")}`);
   const logoSrc = escapeHtml(new URL(brand.logoSrc, window.location.href).toString());
-  const studentRows = parent.students.map((student) => {
-    const financeRow = financeSnapshot?.students.find((entry) => entry.id === student.id);
+  const getStudentPlanLabel = (student: Student, financeRow?: ParentFinanceStudent) =>
+    student.tuitionPlanName
+    || student.paymentOptionLabel
+    || student.paymentOptionType
+    || (financeRow ? "Plan financier actif" : "-");
+  const studentRows = parentStudents.map((student) => {
+    const financeRow = safeFinanceSnapshot?.students.find((entry) => entry.id === student.id);
+    const planLabel = getStudentPlanLabel(student, financeRow);
     return `
       <tr>
         <td>${escapeHtml(student.fullName)}</td>
         <td>${escapeHtml(student.className || student.classId)}</td>
-        <td>${escapeHtml(student.tuitionPlanName || student.paymentOptionLabel || "-")}</td>
+        <td>${escapeHtml(planLabel)}</td>
         <td>${escapeHtml(formatDateTimeLabel(student.createdAt))}</td>
-        <td>$ ${student.annualFee.toFixed(2)}</td>
-        <td>${financeRow ? `$ ${financeRow.expectedTotal.toFixed(2)}` : "-"}</td>
-        <td>${financeRow ? `$ ${financeRow.paid.toFixed(2)}` : "-"}</td>
-        <td>${financeRow ? `$ ${financeRow.balance.toFixed(2)}` : "-"}</td>
+        <td>${formatMoney(student.annualFee)}</td>
+        <td>${financeRow ? formatMoney(financeRow.expectedTotal) : "-"}</td>
+        <td>${financeRow ? formatMoney(financeRow.paid) : "-"}</td>
+        <td>${financeRow ? formatMoney(financeRow.balance) : "-"}</td>
       </tr>`;
   }).join("");
 
-  const debtRows = financeSnapshot?.debts.length
-    ? financeSnapshot.debts.map((debt) => `
+  const debtRows = safeFinanceSnapshot?.debts.length
+    ? safeFinanceSnapshot.debts.map((debt) => `
       <tr>
         <td>${escapeHtml(debt.title)}</td>
         <td>${escapeHtml(getDebtReferenceYear(debt))}</td>
-        <td>$ ${debt.originalAmount.toFixed(2)}</td>
-        <td>$ ${debt.amountRemaining.toFixed(2)}</td>
+        <td>${formatMoney(debt.originalAmount)}</td>
+        <td>${formatMoney(debt.amountRemaining)}</td>
         <td>${escapeHtml(getDebtStatusLabel(debt.status))}</td>
         <td>${escapeHtml(formatDateLabel(debt.dueDate))}</td>
       </tr>`).join("")
     : `<tr><td colspan="6">Aucune dette détaillée enregistrée.</td></tr>`;
 
-  const summarySection = financeSnapshot ? `
+  const summarySection = safeFinanceSnapshot ? `
     <section class="panel">
       <h2>Synthèse financière</h2>
       <div class="summary-grid">
-        <div><span>Année académique</span><strong>${escapeHtml(financeSnapshot.academicYear.name)}</strong></div>
-        <div><span>Total payé</span><strong>$ ${financeSnapshot.profile.totalPaid.toFixed(2)}</strong></div>
-        <div><span>Dette totale</span><strong>$ ${financeSnapshot.profile.totalDebt.toFixed(2)}</strong></div>
-        <div><span>Réductions</span><strong>$ ${financeSnapshot.profile.totalReduction.toFixed(2)}</strong></div>
-        <div><span>Dette reportée</span><strong>$ ${financeSnapshot.profile.carriedOverDebt.toFixed(2)}</strong></div>
-        <div><span>Taux de couverture</span><strong>${financeSnapshot.profile.completionRate.toFixed(1)}%</strong></div>
+        <div><span>Année académique</span><strong>${escapeHtml(safeFinanceSnapshot.academicYear.name)}</strong></div>
+        <div><span>Total payé</span><strong>${formatMoney(safeFinanceSnapshot.profile.totalPaid)}</strong></div>
+        <div><span>Dette totale</span><strong>${formatMoney(safeFinanceSnapshot.profile.totalDebt)}</strong></div>
+        <div><span>Réductions</span><strong>${formatMoney(safeFinanceSnapshot.profile.totalReduction)}</strong></div>
+        <div><span>Dette reportée</span><strong>${formatMoney(safeFinanceSnapshot.profile.carriedOverDebt)}</strong></div>
+        <div><span>Taux de couverture</span><strong>${toSafeNumber(safeFinanceSnapshot.profile.completionRate).toFixed(1)}%</strong></div>
       </div>
     </section>` : "";
 
-  const financeDetailsSection = financeSnapshot ? `
+  const financeDetailsSection = safeFinanceSnapshot ? `
     <section class="panel">
       <h2>Analyse financière détaillée</h2>
       <div class="summary-grid">
-        <div><span>Revenu net attendu</span><strong>$ ${financeSnapshot.profile.expectedNetRevenue.toFixed(2)}</strong></div>
-        <div><span>Paiements en attente</span><strong>$ ${financeSnapshot.profile.pendingPaymentsTotal.toFixed(2)}</strong></div>
-        <div><span>Paiements échoués</span><strong>$ ${financeSnapshot.profile.failedPaymentsTotal.toFixed(2)}</strong></div>
-        <div><span>Échéances en retard</span><strong>${financeSnapshot.profile.overdueInstallments}</strong></div>
-        <div><span>Score comportement</span><strong>${financeSnapshot.profile.paymentBehaviorScore.toFixed(1)}%</strong></div>
-        <div><span>Dernier paiement</span><strong>${escapeHtml(formatDateLabel(financeSnapshot.profile.lastPaymentAt))}</strong></div>
+        <div><span>Revenu net attendu</span><strong>${formatMoney(safeFinanceSnapshot.profile.expectedNetRevenue)}</strong></div>
+        <div><span>Paiements en attente</span><strong>${formatMoney(safeFinanceSnapshot.profile.pendingPaymentsTotal)}</strong></div>
+        <div><span>Paiements échoués</span><strong>${formatMoney(safeFinanceSnapshot.profile.failedPaymentsTotal)}</strong></div>
+        <div><span>Échéances en retard</span><strong>${safeFinanceSnapshot.profile.overdueInstallments}</strong></div>
+        <div><span>Score comportement</span><strong>${toSafeNumber(safeFinanceSnapshot.profile.paymentBehaviorScore).toFixed(1)}%</strong></div>
+        <div><span>Dernier paiement</span><strong>${escapeHtml(formatDateLabel(safeFinanceSnapshot.profile.lastPaymentAt))}</strong></div>
       </div>
     </section>` : "";
 
@@ -542,6 +550,7 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
       <meta charset="utf-8" />
       <title>${escapeHtml(brand.schoolName)} - Rapport parent - ${escapeHtml(parent.fullName)}</title>
       <style>
+        @page { size: A4; margin: 8mm; }
         :root {
           --brand-primary: ${brand.colors.primary};
           --brand-secondary: ${brand.colors.secondary};
@@ -556,7 +565,7 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
           position: relative;
           font-family: "Segoe UI", Arial, sans-serif;
           margin: 0;
-          padding: 28px;
+          padding: 12px;
           color: var(--ink);
           background:
             radial-gradient(circle at top right, rgba(143, 183, 232, 0.32), transparent 24%),
@@ -597,8 +606,8 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
           justify-content: space-between;
           gap: 24px;
           align-items: flex-start;
-          padding: 20px 22px;
-          border-radius: 20px;
+          padding: 14px 16px;
+          border-radius: 16px;
           background: linear-gradient(135deg, var(--brand-primary), var(--brand-secondary));
           color: white;
           box-shadow: 0 20px 45px rgba(11, 46, 89, 0.18);
@@ -621,12 +630,12 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
           z-index: 1;
         }
         .header-logo {
-          width: 76px;
-          height: 76px;
+          width: 58px;
+          height: 58px;
           object-fit: contain;
-          border-radius: 22px;
+          border-radius: 16px;
           background: white;
-          padding: 8px;
+          padding: 6px;
           border: 1px solid rgba(255,255,255,0.25);
           box-shadow: 0 8px 22px rgba(0,0,0,0.16);
         }
@@ -637,63 +646,63 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
           color: rgba(255,255,255,0.72);
           margin-bottom: 6px;
         }
-        .school-name { font-size: 28px; font-weight: 800; line-height: 1.1; }
+        .school-name { font-size: 22px; font-weight: 800; line-height: 1.05; }
         .school-meta { margin-top: 6px; font-size: 12px; color: rgba(255,255,255,0.86); }
         .report-box {
-          min-width: 220px;
+          min-width: 190px;
           position: relative;
           z-index: 1;
-          padding: 14px 16px;
-          border-radius: 16px;
+          padding: 10px 12px;
+          border-radius: 14px;
           background: rgba(255,255,255,0.1);
           border: 1px solid rgba(255,255,255,0.16);
           backdrop-filter: blur(10px);
         }
-        .report-box strong { display: block; font-size: 20px; margin-top: 8px; }
+        .report-box strong { display: block; font-size: 16px; margin-top: 6px; }
         .meta-grid {
           display: grid;
-          grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 16px;
-          margin-top: 18px;
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+          gap: 8px;
+          margin-top: 10px;
         }
         .panel {
           position: relative;
           border: 1px solid rgba(148, 163, 184, 0.28);
-          border-radius: 18px;
-          padding: 18px;
-          margin-top: 18px;
+          border-radius: 12px;
+          padding: 10px;
+          margin-top: 10px;
           background: rgba(255,255,255,0.92);
           box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
         }
         .panel h2 {
-          font-size: 15px;
+          font-size: 11px;
           font-weight: 800;
           text-transform: uppercase;
           letter-spacing: 0.14em;
           color: var(--brand-primary);
-          margin-bottom: 12px;
+          margin-bottom: 6px;
         }
-        .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+        .summary-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 7px; }
         .summary-grid div {
           border: 1px solid rgba(143, 183, 232, 0.42);
-          border-radius: 14px;
-          padding: 12px;
+          border-radius: 10px;
+          padding: 8px;
           background: linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(232, 241, 252, 0.88));
         }
-        .summary-grid span { display: block; font-size: 11px; color: var(--muted); text-transform: uppercase; }
-        .summary-grid strong { display: block; margin-top: 6px; font-size: 16px; }
-        .muted { color: var(--muted); font-size: 12px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-        th, td { border: 1px solid var(--line); padding: 9px; text-align: left; font-size: 12px; vertical-align: top; }
+        .summary-grid span { display: block; font-size: 8px; color: var(--muted); text-transform: uppercase; }
+        .summary-grid strong { display: block; margin-top: 4px; font-size: 11px; }
+        .muted { color: var(--muted); font-size: 9px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 6px; table-layout: fixed; }
+        th, td { border: 1px solid var(--line); padding: 5px; text-align: left; font-size: 9px; vertical-align: top; word-break: break-word; }
         th {
           background: linear-gradient(180deg, rgba(11, 46, 89, 0.08), rgba(31, 79, 143, 0.04));
           color: var(--brand-primary);
           text-transform: uppercase;
           letter-spacing: 0.08em;
-          font-size: 11px;
+          font-size: 8px;
         }
         .footer {
-          margin-top: 18px;
+          margin-top: 10px;
           display: flex;
           justify-content: space-between;
           gap: 12px;
@@ -701,28 +710,28 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
           color: var(--muted);
         }
         .compliance {
-          margin-top: 16px;
+          margin-top: 10px;
           border: 1px solid rgba(15, 118, 110, 0.2);
           border-left: 5px solid #0f766e;
           border-radius: 14px;
           background: rgba(240, 253, 250, 0.96);
-          padding: 12px 14px;
+          padding: 8px 10px;
           color: #134e4a;
           font-size: 11px;
           line-height: 1.5;
         }
         .signatures {
-          margin-top: 16px;
+          margin-top: 10px;
           display: grid;
           grid-template-columns: repeat(2, minmax(0, 1fr));
-          gap: 16px;
+          gap: 10px;
         }
         .signature-box {
-          min-height: 82px;
+          min-height: 50px;
           border: 1px dashed rgba(11, 46, 89, 0.24);
-          border-radius: 14px;
+          border-radius: 10px;
           background: rgba(255,255,255,0.88);
-          padding: 12px;
+          padding: 8px;
         }
         .signature-title {
           font-size: 10px;
@@ -732,7 +741,7 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
           color: var(--muted);
         }
         .signature-line {
-          margin-top: 38px;
+          margin-top: 18px;
           border-top: 1px solid rgba(11, 46, 89, 0.24);
           padding-top: 6px;
           font-size: 11px;
@@ -740,7 +749,7 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
           font-weight: 700;
         }
         @media print {
-          body { padding: 12px; }
+          body { padding: 0; }
           .panel, .header { break-inside: avoid; }
         }
       </style>
@@ -796,7 +805,7 @@ function buildParentReportHtml(parent: Parent, financeSnapshot: ParentFinanceSna
           </div>
           <div>
             <p class="muted">Nombre d'enfants liés</p>
-            <strong>${parent.students.length}</strong>
+            <strong>${parentStudents.length}</strong>
           </div>
         </div>
       </section>
@@ -905,7 +914,9 @@ function printParentReport(parent: Parent, financeSnapshot: ParentFinanceSnapsho
 }
 
 function exportParentReportExcel(parent: Parent, financeSnapshot: ParentFinanceSnapshot | null) {
-  const financeStudents = new Map((financeSnapshot?.students ?? []).map((student) => [student.id, student]));
+  const parentStudents = Array.isArray(parent.students) ? parent.students : [];
+  const safeFinanceSnapshot = normalizeParentFinanceSnapshot(financeSnapshot);
+  const financeStudents = new Map((safeFinanceSnapshot?.students ?? []).map((student) => [student.id, student]));
   exportWorkbook(`rapport-parent-${slugify(parent.fullName)}-${new Date().toISOString().slice(0, 10)}`, [
     {
       name: "Parent",
@@ -918,17 +929,17 @@ function exportParentReportExcel(parent: Parent, financeSnapshot: ParentFinanceS
         "Téléphone": parent.phone,
         "Email": parent.email,
         "Date inscription exacte": formatDateTimeLabel(parent.createdAt),
-        "Enfants liés": parent.students.length,
-        "Année académique": financeSnapshot?.academicYear.name ?? "-",
-        "Total payé": financeSnapshot?.profile.totalPaid ?? null,
-        "Dette totale": financeSnapshot?.profile.totalDebt ?? null,
-        "Réductions": financeSnapshot?.profile.totalReduction ?? null,
-        "Dette reportée": financeSnapshot?.profile.carriedOverDebt ?? null,
+        "Enfants liés": parentStudents.length,
+        "Année académique": safeFinanceSnapshot?.academicYear.name ?? "-",
+        "Total payé": safeFinanceSnapshot?.profile.totalPaid ?? null,
+        "Dette totale": safeFinanceSnapshot?.profile.totalDebt ?? null,
+        "Réductions": safeFinanceSnapshot?.profile.totalReduction ?? null,
+        "Dette reportée": safeFinanceSnapshot?.profile.carriedOverDebt ?? null,
       }]
     },
     {
       name: "Enfants",
-      rows: parent.students.map((student) => {
+      rows: parentStudents.map((student) => {
         const financeRow = financeStudents.get(student.id);
         return {
           "ID Élève": student.displayId || student.id,
@@ -947,7 +958,7 @@ function exportParentReportExcel(parent: Parent, financeSnapshot: ParentFinanceS
     },
     {
       name: "Dettes",
-      rows: (financeSnapshot?.debts ?? []).map((debt) => ({
+      rows: (safeFinanceSnapshot?.debts ?? []).map((debt) => ({
         "Ligne": debt.title,
         "Motif": debt.reason || "-",
         "Année de référence": getDebtReferenceYear(debt),
@@ -1253,6 +1264,7 @@ function DetailModal({
   t: (k: string) => string;
 }) {
   const [pdfExporting, setPdfExporting] = useState(false);
+  const parentStudents = Array.isArray(parent.students) ? parent.students : [];
   const safeFinanceSnapshot = useMemo(() => normalizeParentFinanceSnapshot(financeSnapshot), [financeSnapshot]);
   const debtHistory = useMemo(() => {
     if (!safeFinanceSnapshot) return [] as Array<{ year: string; amountRemaining: number; originalAmount: number; count: number }>;
@@ -1366,13 +1378,13 @@ function DetailModal({
 
             <div>
               <p className="text-sm font-bold text-ink-dim uppercase tracking-[0.1em] mb-3">
-                {t("pmChildren")} ({parent.students.length})
+                {t("pmChildren")} ({parentStudents.length})
               </p>
-              {parent.students.length === 0 ? (
+              {parentStudents.length === 0 ? (
                 <p className="text-sm text-ink-dim italic">{t("pmNoChildren")}</p>
               ) : (
                 <div className="space-y-2">
-                  {parent.students.map((st) => {
+                  {parentStudents.map((st) => {
                     const financeRow = financeStudentsById.get(st.id);
                     const expectedAmount = Number(financeRow?.expectedTotal ?? st.annualFee ?? 0);
                     const enrolledAt = st.createdAt || parent.createdAt;
@@ -1549,7 +1561,7 @@ function DetailModal({
                               </div>
                               <div>
                                 <p className="text-[10px] uppercase tracking-[0.14em] text-ink-dim">Complétion</p>
-                                <p className="mt-1 font-bold text-white">{student.completionRate.toFixed(1)}%</p>
+                                <p className="mt-1 font-bold text-white">{toSafeNumber(student.completionRate).toFixed(1)}%</p>
                               </div>
                             </div>
                           </div>
@@ -2577,7 +2589,8 @@ export function ParentsManagementPage() {
     if (!q) return parents;
 
     return parents.filter((parent) => {
-      const studentsHaystack = parent.students
+      const parentStudents = Array.isArray(parent.students) ? parent.students : [];
+      const studentsHaystack = parentStudents
         .flatMap((student) => [student.id, student.displayId, student.fullName, student.className, student.classId])
         .filter(Boolean)
         .join(" ")
@@ -2693,7 +2706,7 @@ export function ParentsManagementPage() {
 
   const stats = useMemo(() => ({
     total: parents.length,
-    totalStudents: parents.reduce((s, p) => s + p.students.length, 0)
+    totalStudents: parents.reduce((s, p) => s + (Array.isArray(p.students) ? p.students.length : 0), 0)
   }), [parents]);
 
   return (
@@ -2806,7 +2819,9 @@ export function ParentsManagementPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((parent, idx) => (
+                {filtered.map((parent, idx) => {
+                  const parentStudents = Array.isArray(parent.students) ? parent.students : [];
+                  return (
                   <tr
                     key={parent.id}
                     className="border-b border-slate-700/30 hover:bg-slate-800/30 transition-colors"
@@ -2836,8 +2851,8 @@ export function ParentsManagementPage() {
                     <td className="py-4 px-5 text-ink-dim hidden lg:table-cell truncate max-w-[180px]">{parent.email || "-"}</td>
                     <td className="py-4 px-5 text-center">
                       <Badge
-                        text={`${parent.students.length} ${parent.students.length === 1 ? t("pmChild") : t("pmChildrenCount")}`}
-                        color={parent.students.length > 0 ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30" : "bg-slate-700/50 text-ink-dim"}
+                        text={`${parentStudents.length} ${parentStudents.length === 1 ? t("pmChild") : t("pmChildrenCount")}`}
+                        color={parentStudents.length > 0 ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30" : "bg-slate-700/50 text-ink-dim"}
                       />
                     </td>
                     <td className="py-4 px-5">
@@ -2861,7 +2876,7 @@ export function ParentsManagementPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                );})}
               </tbody>
             </table>
           </div>
