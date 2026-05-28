@@ -71,7 +71,7 @@ function compareReceiptWithApi(receipt: ReceiptVerificationRecord, apiPayment: V
   if (receipt.transaction.transactionNumber !== apiPayment.transactionNumber) mismatches.push("Transaction");
   if (receipt.transaction.amount !== apiPayment.amount.toFixed(5)) mismatches.push("Montant");
   if (receipt.transaction.reason.trim() !== apiPayment.reason.trim()) mismatches.push("Motif");
-  if (receipt.transaction.methodCode !== apiPayment.method) mismatches.push("Methode");
+  if (receipt.transaction.methodCode !== apiPayment.method) mismatches.push("Méthode");
   if (receipt.transaction.statusCode !== apiPayment.status) mismatches.push("Statut");
   if (receipt.parties.parentFullName.trim() !== apiPayment.parentFullName.trim()) mismatches.push("Parent");
   if (receipt.parties.paymentSubjectName.trim() !== apiPayment.paymentSubjectName.trim()) mismatches.push("Paiement pour");
@@ -231,12 +231,12 @@ export function ReceiptVerificationPage() {
                   <p className="mt-3 text-sm leading-6 text-current/90">
                     {txParam
                       ? `Le QR a ouvert la verification de la transaction ${txParam}. EduPay recherche maintenant ce paiement dans la base.`
-                      : "Le lien scanne ne contient pas de reference EduPay valide."}
+                      : "Le lien scanné ne contient pas de référence EduPay valide."}
                   </p>
                 </div>
 
                 {apiState === "loading" && <p className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-ink-dim">Verification de la transaction dans l'API EduPay en cours...</p>}
-                {apiState === "missing" && <p className="rounded-3xl border border-amber-400/20 bg-amber-500/10 p-5 text-sm text-amber-100">Aucune transaction correspondante n'a ete trouvee en base pour ce numero.</p>}
+                {apiState === "missing" && <p className="rounded-3xl border border-amber-400/20 bg-amber-500/10 p-5 text-sm text-amber-100">Aucune transaction correspondante n'a été trouvée en base pour ce numéro.</p>}
                 {apiState === "error" && <p className="rounded-3xl border border-red-400/20 bg-red-500/10 p-5 text-sm text-red-100">La verification en base est indisponible pour le moment.</p>}
                 {apiState === "ready" && apiResult && (
                   <div className="space-y-6">
@@ -259,7 +259,7 @@ export function ReceiptVerificationPage() {
                         ["Eleves", apiResult.payment.studentNames.join(" / ") || "N/A"],
                         ["Motif", apiResult.payment.reason],
                         ["Montant", `$ ${formatMoney(apiResult.payment.amount)}`],
-                        ["Methode", apiResult.payment.method],
+                        ["Méthode", apiResult.payment.method],
                         ["Statut", apiResult.payment.status],
                         ["Code QR", codeParam || "N/A"]
                       ]} />
@@ -289,7 +289,7 @@ export function ReceiptVerificationPage() {
                 <div className={`rounded-3xl border p-5 ${apiState === "ready" && apiComparison?.matched ? "border-sky-400/30 bg-sky-500/10 text-sky-100" : "border-white/10 bg-white/5 text-ink"}`}>
                   <p className="text-xs font-black uppercase tracking-[0.22em] text-brand-300">Recoupement base de données</p>
                   {apiState === "loading" && <p className="mt-3 text-sm text-ink-dim">Verification de la transaction dans l'API EduPay en cours...</p>}
-                  {apiState === "missing" && <p className="mt-3 text-sm text-amber-100">Aucune transaction correspondante n'a ete trouvee en base pour ce numero.</p>}
+                  {apiState === "missing" && <p className="mt-3 text-sm text-amber-100">Aucune transaction correspondante n'a été trouvée en base pour ce numéro.</p>}
                   {apiState === "error" && <p className="mt-3 text-sm text-red-200">La verification en base est indisponible pour le moment.</p>}
                   {apiState === "ready" && apiResult && apiComparison && (
                     <div className="mt-3 space-y-3">
@@ -301,10 +301,10 @@ export function ReceiptVerificationPage() {
                       {apiResult.payment.downloads ? (
                         <div className="flex flex-wrap gap-3 pt-2">
                           <a href={resolveApiUrl(apiResult.payment.downloads.pdfPath)} target="_blank" rel="noreferrer" className="btn-primary inline-flex items-center justify-center px-5 py-3 text-sm font-semibold">
-                            Telecharger PDF
+                            Télécharger PDF
                           </a>
                           <a href={resolveApiUrl(apiResult.payment.downloads.pngPath)} target="_blank" rel="noreferrer" className="inline-flex items-center justify-center rounded-full border border-brand-300/40 bg-brand-500/10 px-5 py-3 text-sm font-semibold text-brand-100 transition hover:border-brand-200 hover:bg-brand-500/20">
-                            Telecharger PNG
+                            Télécharger PNG
                           </a>
                         </div>
                       ) : null}
@@ -324,7 +324,7 @@ export function ReceiptVerificationPage() {
                       ["Motif", receipt.transaction.reason],
                       ["Montant", `$ ${formatMoneyString(receipt.transaction.amount)}`],
                       ["Montant en lettres", receipt.transaction.amountWords],
-                      ["Methode", receipt.transaction.methodLabel],
+                      ["Méthode", receipt.transaction.methodLabel],
                       ["Statut", receipt.transaction.statusLabel]
                     ]} />
                   </section>

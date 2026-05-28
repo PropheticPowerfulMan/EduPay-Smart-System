@@ -34,7 +34,7 @@ export function buildLocalAssistantFallback(query: string, context: any) {
   const parents = Array.isArray(context?.parents) ? context.parents : [];
   const payments = Array.isArray(context?.payments) ? context.payments : [];
   const profiles = Array.isArray(context?.parentProfiles) ? context.parentProfiles : [];
-  const asksUnpaidStudents = /(liste|eleve|student|qui)/.test(q) && /(impay|non pay|pas encore pay|pas pay|sans paiement|retard|solde|debt|unpaid|not paid)/.test(q);
+  const asksUnpaidStudents = /(liste|élève|student|qui)/.test(q) && /(impay|non pay|pas encore pay|pas pay|sans paiement|retard|solde|debt|unpaid|not paid)/.test(q);
 
   if (asksUnpaidStudents) {
     const paidNames = new Set<string>();
@@ -86,21 +86,21 @@ export function buildLocalAssistantFallback(query: string, context: any) {
 
     return {
       answer: targets.length
-        ? `Liste precise des eleves ${noPaymentOnly ? "sans paiement enregistre" : "avec solde restant"} selon les donnees EduPay chargees.`
-        : "Aucun eleve correspondant n'apparait dans les donnees EduPay chargees.",
-      facts: [`${targets.length} eleve(s) concerne(s).`, ...facts],
+        ? `Liste précise des élèves ${noPaymentOnly ? "sans paiement enregistré" : "avec solde restant"} selon les données EduPay chargées.`
+        : "Aucun élève correspondant n'apparaît dans les données EduPay chargées.",
+      facts: [`${targets.length} élève(s) concerne(s).`, ...facts],
       tableRows,
-      actions: ["Verifier les paiements en attente avant relance.", "Contacter les parents avec le montant exact.", "Filtrer par classe si la liste doit etre traitee par niveau."],
-      confidence: "Analyse locale basee sur les donnees EduPay transmises a l'assistant.",
+      actions: ["Vérifier les paiements en attente avant relance.", "Contacter les parents avec le montant exact.", "Filtrer par classe si la liste doit être traitée par niveau."],
+      confidence: "Analyse locale basée sur les données EduPay transmises à l'assistant.",
       suggestions: ["Lister les parents avec solde", "Afficher les paiements en attente", "Voir les cas critiques par classe"]
     };
   }
 
   return {
-    answer: "Connexion IA distante indisponible. EduPay utilise l'analyse locale: controlez les soldes parents, les paiements en attente et les echeances en retard avant toute relance.",
+    answer: "Connexion IA distante indisponible. EduPay utilise l'analyse locale: controlez les soldes parents, les paiements en attente et les échéances en retard avant toute relance.",
     facts: [`${parents.length} parent(s) charges.`, `${payments.length} paiement(s) charges.`],
     actions: ["Relancer les dossiers avec solde restant.", "Valider ou corriger les paiements PENDING.", "Recalculer apres chaque encaissement."],
-    suggestions: ["Analyser les parents critiques", "Verifier les paiements en attente", "Generer un rapport financier"]
+    suggestions: ["Analyser les parents critiques", "Vérifier les paiements en attente", "Génèrer un rapport financier"]
   };
 }
 
@@ -153,6 +153,7 @@ async function queryOpenAiAssistant(query: string, context: any) {
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
+    signal: AbortSignal.timeout(18000),
     headers: {
       "Authorization": `Bearer ${env.OPENAI_API_KEY}`,
       "Content-Type": "application/json"
@@ -164,7 +165,7 @@ async function queryOpenAiAssistant(query: string, context: any) {
       messages: [
         {
           role: "system",
-          content: "Tu es l'assistant financier EduPay. Reponds en francais clair sauf demande contraire. Donne une reponse JSON avec answer, suggestions, facts, actions et confidence. Utilise uniquement les donnees fournies; si une information manque, dis-le."
+          content: "Tu es l'assistant financier EduPay, avec une conversation naturelle comme ChatGPT. Réponds en français clair sauf demande contraire. Donne une reponse JSON avec answer, suggestions, facts, actions et confidence. Utilise uniquement les données fournies; si une information manque, dis-le franchement et propose la meilleure prochaine action."
         },
         {
           role: "user",

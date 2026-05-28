@@ -12,8 +12,13 @@ function resolveReceiptBaseUrl(
   configuredBaseUrl: string,
   locationLike: Pick<Location, "origin">
 ) {
+  const configured = configuredBaseUrl.trim();
+  const origin = locationLike.origin;
+  const configuredLooksLikePlaceholder = /votredomaine|votre-site-public|mon-backend/i.test(configured);
+  const configuredIsUndeployedRenderDefault = /edupay-web\.onrender\.com/i.test(configured) && !/edupay-web\.onrender\.com/i.test(origin);
+  const safeConfiguredBaseUrl = configuredLooksLikePlaceholder || configuredIsUndeployedRenderDefault ? "" : configured;
   const baseCandidate = normalizeReceiptBaseUrl(
-    configuredBaseUrl || import.meta.env.BASE_URL || DEFAULT_RECEIPT_VERIFICATION_BASE_URL
+    safeConfiguredBaseUrl || import.meta.env.BASE_URL || DEFAULT_RECEIPT_VERIFICATION_BASE_URL
   );
 
   try {
@@ -206,15 +211,7 @@ export function buildReceiptVerificationQrUrl(
   locationLike: Pick<Location, "origin"> = window.location,
   configuredBaseUrlOverride?: string
 ) {
-  const security = buildReceiptSecurity(input);
-  const tx = encodeURIComponent(input.transactionNumber);
-  const code = encodeURIComponent(security.verificationCode);
-  const configuredBaseUrl = (configuredBaseUrlOverride
-    ?? import.meta.env.VITE_RECEIPT_VERIFICATION_BASE_URL
-    ?? import.meta.env.VITE_PUBLIC_APP_URL
-    ?? "").trim();
-  const baseUrl = resolveReceiptBaseUrl(configuredBaseUrl, locationLike);
-  return `${baseUrl}#/receipt/verify?tx=${tx}&c=${code}`;
+  return buildReceiptVerificationUrl(input, locationLike, configuredBaseUrlOverride);
 }
 
 export function parseReceiptVerificationToken(token: string | null) {

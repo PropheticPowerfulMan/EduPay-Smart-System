@@ -35,7 +35,7 @@ import {
   Zap
 } from "lucide-react";
 import { useI18n } from "../i18n";
-import { api } from "../services/api";
+import { api, getCachedApiResponse } from "../services/api";
 
 type Overview = {
   totalRevenue: number;
@@ -356,6 +356,16 @@ export function DashboardPage() {
     let cancelled = false;
 
     async function load() {
+      const cachedOverview = getCachedApiResponse<Overview>("/api/analytics/overview");
+      const cachedPayments = getCachedApiResponse<Payment[]>("/api/payments");
+      const cachedParents = getCachedApiResponse<Parent[]>("/api/parents");
+      if (cachedOverview || cachedPayments || cachedParents) {
+        setOverview(cachedOverview);
+        setPayments((cachedPayments ?? []).map((p) => ({ ...p, amount: asNumber(p.amount), status: p.status ?? "COMPLETED" })));
+        setParents(cachedParents ?? []);
+        setLoading(false);
+      }
+
       const [overviewResult, paymentsResult, parentsResult] = await Promise.all([
         api<Overview>("/api/analytics/overview").catch(() => null),
         api<Payment[]>("/api/payments").catch(() => []),

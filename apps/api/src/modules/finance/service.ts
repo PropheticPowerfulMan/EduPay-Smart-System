@@ -990,13 +990,15 @@ export async function runOverdueTuitionReminderSweep(input: {
   return result;
 }
 
-export async function getParentFinancialSnapshot(input: { schoolId: string; parentId: string; academicYearName?: string }) {
+export async function getParentFinancialSnapshot(input: { schoolId: string; parentId: string; academicYearName?: string; refreshOverdue?: boolean }) {
   const { academicYear, plans } = await getTargetAcademicYear(input.schoolId, input.academicYearName);
-  await runOverdueTuitionReminderSweep({
-    schoolId: input.schoolId,
-    parentId: input.parentId,
-    academicYearName: academicYear.name
-  });
+  if (input.refreshOverdue) {
+    await runOverdueTuitionReminderSweep({
+      schoolId: input.schoolId,
+      parentId: input.parentId,
+      academicYearName: academicYear.name
+    });
+  }
   const [parent, profile, assignments, discounts, debts, agreements, installments, alerts, payments, notificationLogs] = await Promise.all([
     prisma.parent.findFirst({
       where: { id: input.parentId, schoolId: input.schoolId },
@@ -1521,38 +1523,117 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
 
 export async function getSchoolFinanceOverview(input: { schoolId: string; academicYearName?: string }) {
   const { academicYear } = await getTargetAcademicYear(input.schoolId, input.academicYearName);
-  const [parents, payments] = await Promise.all([
-    prisma.parent.findMany({ where: { schoolId: input.schoolId }, select: { id: true, fullName: true } }),
+  const [parents, payments, discounts, alerts] = await Promise.all([
+    prisma.parent.findMany({
+      where: { schoolId: input.schoolId },
+      select: {
+        id: true,
+        fullName: true,
+        students: {
+          select: {
+            id: true,
+            fullName: true,
+            annualFee: true,
+            class: { select: { name: true, level: true } },
+            planAssignments: {
+              where: { isActive: true, academicYearId: academicYear.id },
+              include: { tuitionPlan: true, financialAgreement: true },
+              orderBy: { updatedAt: "desc" },
+              take: 1
+            }
+          }
+        }
+      }
+    }),
     prisma.payment.findMany({
       where: { schoolId: input.schoolId },
       include: { students: true },
       orderBy: { createdAt: "asc" }
+    }),
+    prisma.discount.findMany({
+      where: { schoolId: input.schoolId },
+      include: {
+        parent: { select: { fullName: true } },
+        student: { select: { fullName: true } }
+      },
+      orderBy: { effectiveDate: "desc" }
+    }),
+    prisma.financialAlert.findMany({
+      where: { schoolId: input.schoolId, status: "OPEN" },
+      select: { id: true, parentId: true }
     })
   ]);
-
-  const parentSnapshots = await Promise.all(parents.map((parent) => getParentFinancialSnapshot({
-    schoolId: input.schoolId,
-    parentId: parent.id,
-    academicYearName: academicYear.name
-  })));
 
   const monthStart = getCurrentMonthStart();
   const totalRevenue = roundCurrency(payments.filter((payment) => payment.status === "COMPLETED").reduce((sum, payment) => sum + Number(payment.amount || 0), 0));
   const monthlyRevenue = roundCurrency(payments.filter((payment) => payment.status === "COMPLETED" && payment.createdAt >= monthStart).reduce((sum, payment) => sum + Number(payment.amount || 0), 0));
-  const totalDebt = roundCurrency(parentSnapshots.reduce((sum, snapshot) => sum + snapshot.profile.totalDebt, 0));
-  const expectedRevenue = roundCurrency(parentSnapshots.reduce((sum, snapshot) => sum + snapshot.profile.expectedNetRevenue, 0));
-  const totalReduction = roundCurrency(parentSnapshots.reduce((sum, snapshot) => sum + snapshot.profile.totalReduction, 0));
+  const paidByParent = new Map<string, number>();
+  const paidByStudent = new Map<string, number>();
+  for (const payment of payments.filter((payment) => payment.status === "COMPLETED")) {
+    if (payment.parentId) paidByParent.set(payment.parentId, roundCurrency((paidByParent.get(payment.parentId) ?? 0) + Number(payment.amount || 0)));
+    const studentShare = payment.students.length > 0 ? roundCurrency(Number(payment.amount || 0) / payment.students.length) : 0;
+    for (const student of payment.students) {
+      paidByStudent.set(student.id, roundCurrency((paidByStudent.get(student.id) ?? 0) + studentShare));
+    }
+  }
+
+  const studentRows = parents.flatMap((parent) => parent.students.map((student) => {
+    const assignment = student.planAssignments[0] ?? null;
+    const expected = roundCurrency(Number(
+      assignment?.financialAgreement?.balanceDue ??
+      assignment?.expectedTotal ??
+      assignment?.tuitionPlan?.finalAmount ??
+      student.annualFee ??
+      0
+    ));
+    const reduction = roundCurrency(Number(
+      assignment?.financialAgreement?.reductionAmount ??
+      assignment?.reductionTotal ??
+      assignment?.tuitionPlan?.reductionAmount ??
+      0
+    ));
+    const paid = roundCurrency(paidByStudent.get(student.id) ?? 0);
+    const gradeGroup = assignment?.gradeGroup ?? resolveGradeGroup({ className: student.class?.name, level: student.class?.level, studentName: student.fullName });
+    return {
+      parentId: parent.id,
+      parentName: parent.fullName,
+      className: student.class?.name ?? getGradeGroupLabel(gradeGroup),
+      expected,
+      collected: paid,
+      debt: roundCurrency(Math.max(expected - paid, 0)),
+      reductions: reduction,
+      gradeGroup,
+      paymentOptionType: assignment?.paymentOptionType ?? PaymentOptionType.STANDARD_MONTHLY
+    };
+  }));
+
+  const parentTotals = Array.from(parents.reduce((acc, parent) => {
+    const rows = studentRows.filter((row) => row.parentId === parent.id);
+    acc.set(parent.id, {
+      parentId: parent.id,
+      parentName: parent.fullName,
+      totalDebt: roundCurrency(rows.reduce((sum, row) => sum + row.debt, 0)),
+      totalPaid: roundCurrency((paidByParent.get(parent.id) ?? 0) || rows.reduce((sum, row) => sum + row.collected, 0)),
+      carriedOverDebt: 0,
+      overdueInstallments: 0,
+      paymentBehaviorScore: rows.length ? roundCurrency(Math.min(100, (rows.reduce((sum, row) => sum + row.collected, 0) / Math.max(rows.reduce((sum, row) => sum + row.expected, 0), 1)) * 100)) : 0
+    });
+    return acc;
+  }, new Map<string, {
+    parentId: string;
+    parentName: string;
+    totalDebt: number;
+    totalPaid: number;
+    carriedOverDebt: number;
+    overdueInstallments: number;
+    paymentBehaviorScore: number;
+  }>()).values());
+
+  const totalDebt = roundCurrency(studentRows.reduce((sum, row) => sum + row.debt, 0));
+  const expectedRevenue = roundCurrency(studentRows.reduce((sum, row) => sum + row.expected, 0));
+  const totalReduction = roundCurrency(studentRows.reduce((sum, row) => sum + row.reductions, 0));
   const paymentCompletionRate = expectedRevenue > 0 ? roundCurrency(Math.min(100, (totalRevenue / expectedRevenue) * 100)) : 0;
-  const parentDebtAnalytics = parentSnapshots
-    .map((snapshot) => ({
-      parentId: snapshot.parent.id,
-      parentName: snapshot.parent.fullName,
-      totalDebt: snapshot.profile.totalDebt,
-      totalPaid: snapshot.profile.totalPaid,
-      carriedOverDebt: snapshot.profile.carriedOverDebt,
-      overdueInstallments: snapshot.profile.overdueInstallments,
-      paymentBehaviorScore: snapshot.profile.paymentBehaviorScore
-    }))
+  const parentDebtAnalytics = parentTotals
     .sort((left, right) => right.totalDebt - left.totalDebt)
     .slice(0, 10);
 
@@ -1564,34 +1645,31 @@ export async function getSchoolFinanceOverview(input: { schoolId: string; academ
     students: number;
   }>();
 
-  for (const snapshot of parentSnapshots) {
-    for (const student of snapshot.students) {
-      const key = student.className ?? getGradeGroupLabel(student.gradeGroup);
+  for (const student of studentRows) {
+      const key = student.className;
       const current = classAnalyticsMap.get(key) ?? { expected: 0, collected: 0, debt: 0, reductions: 0, students: 0 };
-      current.expected = roundCurrency(current.expected + student.expectedTotal);
-      current.collected = roundCurrency(current.collected + student.paid);
-      current.debt = roundCurrency(current.debt + student.balance);
-      current.reductions = roundCurrency(current.reductions + student.reductionTotal);
+      current.expected = roundCurrency(current.expected + student.expected);
+      current.collected = roundCurrency(current.collected + student.collected);
+      current.debt = roundCurrency(current.debt + student.debt);
+      current.reductions = roundCurrency(current.reductions + student.reductions);
       current.students += 1;
       classAnalyticsMap.set(key, current);
-    }
   }
 
-  const reductionReport = buildReductionAnalyticsFromSnapshots({
+  const reductionReport = buildFastReductionAnalytics({
     academicYearName: academicYear.name,
-    periodType: ReportType.CUMULATIVE,
-    parentSnapshots
+    discounts,
+    studentRows
   });
 
-  const alerts = parentSnapshots.flatMap((snapshot) => snapshot.alerts);
-  const parentsWithAlerts = parentSnapshots.filter((snapshot) => snapshot.alerts.length > 0).length;
+  const parentsWithAlerts = new Set(alerts.map((alert) => alert.parentId).filter(Boolean)).size;
   const financialHealthIndicators = {
     collectionEfficiency: paymentCompletionRate,
     debtExposure: expectedRevenue > 0 ? roundCurrency((totalDebt / expectedRevenue) * 100) : 0,
     reductionLoad: expectedRevenue > 0 ? roundCurrency((totalReduction / expectedRevenue) * 100) : 0,
-    alertPressure: parentSnapshots.length > 0 ? roundCurrency((parentsWithAlerts / parentSnapshots.length) * 100) : 0,
-    averageBehaviorScore: parentSnapshots.length > 0
-      ? roundCurrency(parentSnapshots.reduce((sum, snapshot) => sum + snapshot.profile.paymentBehaviorScore, 0) / parentSnapshots.length)
+    alertPressure: parents.length > 0 ? roundCurrency((parentsWithAlerts / parents.length) * 100) : 0,
+    averageBehaviorScore: parentTotals.length > 0
+      ? roundCurrency(parentTotals.reduce((sum, parent) => sum + parent.paymentBehaviorScore, 0) / parentTotals.length)
       : 0
   };
 
@@ -1622,8 +1700,86 @@ export async function getSchoolFinanceOverview(input: { schoolId: string; academ
     reductionStatistics: reductionReport,
     financialHealthIndicators,
     activeAlerts: alerts.length,
-    overdueParents: parentSnapshots.filter((snapshot) => snapshot.profile.overdueInstallments > 0).length,
-    parentsTracked: parentSnapshots.length
+    overdueParents: parentTotals.filter((parent) => parent.totalDebt > 0).length,
+    parentsTracked: parents.length
+  };
+}
+
+function buildFastReductionAnalytics(input: {
+  academicYearName: string;
+  discounts: Array<{
+    id: string;
+    title: string;
+    amount: any;
+    percentage: any;
+    parentId: string | null;
+    studentId: string | null;
+    academicYearId: string | null;
+    gradeGroup: GradeGroup | null;
+    paymentOptionType: PaymentOptionType | null;
+    scope: ReductionScope;
+    effectiveDate: Date;
+    parent?: { fullName: string } | null;
+    student?: { fullName: string } | null;
+  }>;
+  studentRows: Array<{ parentName: string; reductions: number; gradeGroup: GradeGroup; paymentOptionType: PaymentOptionType }>;
+}) {
+  const explicitRows = input.discounts.map((discount) => ({
+    id: discount.id,
+    title: discount.title,
+    amount: roundCurrency(Number(discount.amount || 0)),
+    percentage: discount.percentage ? roundCurrency(Number(discount.percentage)) : null,
+    parentId: discount.parentId,
+    parentName: discount.parent?.fullName ?? null,
+    studentId: discount.studentId,
+    studentName: discount.student?.fullName ?? null,
+    academicYearId: discount.academicYearId,
+    academicYearName: input.academicYearName,
+    gradeGroup: discount.gradeGroup,
+    paymentOptionType: discount.paymentOptionType,
+    scope: discount.scope,
+    source: "MANUAL",
+    effectiveDate: discount.effectiveDate.toISOString()
+  }));
+  const derivedRows = input.studentRows
+    .filter((row) => row.reductions > 0)
+    .map((row, index) => ({
+      id: `derived-plan-reduction-${index}`,
+      title: "Plan tuition reduction",
+      amount: row.reductions,
+      percentage: null,
+      parentId: null,
+      parentName: row.parentName,
+      studentId: null,
+      studentName: null,
+      academicYearId: null,
+      academicYearName: input.academicYearName,
+      gradeGroup: row.gradeGroup,
+      paymentOptionType: row.paymentOptionType,
+      scope: ReductionScope.PAYMENT_OPTION,
+      source: "TUITION_PLAN",
+      effectiveDate: new Date().toISOString()
+    }));
+  const reductions = [...explicitRows, ...derivedRows];
+  const byScope = groupCurrencyTotals(reductions.map((reduction) => ({ key: String(reduction.scope ?? "UNKNOWN"), amount: reduction.amount })));
+  const byGradeGroup = groupCurrencyTotals(reductions.map((reduction) => ({ key: String(reduction.gradeGroup ?? GradeGroup.CUSTOM), amount: reduction.amount })));
+  const byPaymentOption = groupCurrencyTotals(reductions.map((reduction) => ({ key: String(reduction.paymentOptionType ?? PaymentOptionType.CUSTOM), amount: reduction.amount })));
+
+  return {
+    academicYear: input.academicYearName,
+    periodType: ReportType.CUMULATIVE,
+    periodLabel: "Cumulative",
+    totalReductions: roundCurrency(reductions.reduce((sum, reduction) => sum + reduction.amount, 0)),
+    reductionCount: reductions.length,
+    scholarshipTotal: roundCurrency(reductions.reduce((sum, reduction) => sum + reduction.amount, 0)),
+    scholarshipCount: reductions.length,
+    manualScholarshipTotal: roundCurrency(explicitRows.reduce((sum, reduction) => sum + reduction.amount, 0)),
+    manualScholarshipCount: explicitRows.length,
+    byScope: byScope.map((entry) => ({ scope: entry.key, amount: entry.amount })),
+    byGradeGroup: byGradeGroup.map((entry) => ({ gradeGroup: entry.key, amount: entry.amount })),
+    byPaymentOption: byPaymentOption.map((entry) => ({ paymentOptionType: entry.key, amount: entry.amount })),
+    scholarships: reductions,
+    reductions
   };
 }
 

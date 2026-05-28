@@ -104,11 +104,6 @@ financeRouter.get("/overview", authorize("ADMIN", "ACCOUNTANT"), async (req: Aut
 
 financeRouter.get("/parents/:parentId/profile", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
   try {
-    await runOverdueTuitionReminderSweep({
-      schoolId: req.user!.schoolId,
-      parentId: req.params.parentId,
-      academicYearName: typeof req.query.academicYear === "string" ? req.query.academicYear : undefined
-    });
     const snapshot = await getParentFinancialSnapshot({
       schoolId: req.user!.schoolId,
       parentId: req.params.parentId,
@@ -128,11 +123,6 @@ financeRouter.get("/me/profile", authorize("PARENT"), async (req: AuthenticatedR
       select: { id: true }
     });
     const parent = parentRecord?.id ?? ((req.user && req.user.role === "PARENT") ? req.user.sub : "");
-    await runOverdueTuitionReminderSweep({
-      schoolId: req.user!.schoolId,
-      parentId: parent,
-      academicYearName: typeof req.query.academicYear === "string" ? req.query.academicYear : undefined
-    });
     const snapshot = await getParentFinancialSnapshot({
       schoolId: req.user!.schoolId,
       parentId: parent,

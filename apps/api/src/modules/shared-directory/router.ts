@@ -4,6 +4,7 @@ import { authGuard, AuthenticatedRequest, authorize } from "../../middlewares/au
 import { deleteOrbitTeacher, orbitRegistryIsEnabled, syncOrbitRegistryMirror, updateOrbitTeacher } from "../../integrations/orbitRegistry";
 import { getParentFinancialSnapshot } from "../finance/service";
 import { prisma } from "../../prisma";
+import { notifyStandaloneEntityChange } from "../notifications/entityChange";
 
 export const sharedDirectoryRouter = Router();
 
@@ -24,7 +25,7 @@ const updateEmployeeSchema = z.object({
   jobTitle: z.string().trim().min(1).nullable().optional(),
   mustChangePassword: z.boolean().optional(),
 }).refine((value) => Object.values(value).some((item) => item !== undefined), {
-  message: "Au moins un champ doit etre fourni.",
+  message: "Au moins un champ doit être fourni.",
 });
 
 const activePlanAssignmentInclude = {
@@ -107,7 +108,12 @@ async function buildFinanceStudentLookup(schoolId: string, parentIds: string[]) 
 
 function serializeSharedStudent(student: {
   id: string;
+  orbitId?: string | null;
+  displayId?: string | null;
   externalStudentId?: string | null;
+  studentNumber?: string | null;
+  accessCode?: string | null;
+  mustChangePassword?: boolean | null;
   fullName: string;
   classId: string;
   createdAt?: Date | string | null;
@@ -132,9 +138,12 @@ function serializeSharedStudent(student: {
   return {
     ...splitFullName(student.fullName),
     id: student.id,
-    displayId: student.externalStudentId || student.id,
-    studentNumber: student.externalStudentId || student.id,
+    orbitId: student.orbitId || undefined,
+    displayId: student.displayId || student.externalStudentId || student.id,
+    studentNumber: student.studentNumber || student.externalStudentId || student.id,
     externalStudentId: student.externalStudentId || undefined,
+    accessCode: student.accessCode || undefined,
+    mustChangePassword: student.mustChangePassword ?? undefined,
     fullName: student.fullName,
     classId: student.classId,
     className: student.class?.name || student.classId,
@@ -170,11 +179,21 @@ sharedDirectoryRouter.get("/", async (req: AuthenticatedRequest, res) => {
     const localStudentById = new Map(localStudents.map((student) => [student.id, student]));
     const parents = mirrored.parents.map((parent) => ({
       ...parent,
-      students: parent.students.map((student) => serializeSharedStudent(localStudentById.get(student.id) ?? {
-        ...student,
-        class: { name: student.className },
-        parentId: parent.id,
-      }, req.user!.schoolId, parent.id, financeStudentLookup.get(student.id))),
+      students: parent.students.map((student) => {
+        const localStudent = localStudentById.get(student.id);
+        return serializeSharedStudent(localStudent ? {
+          ...localStudent,
+          orbitId: student.orbitId,
+          displayId: student.displayId,
+          studentNumber: student.studentNumber,
+          accessCode: student.accessCode,
+          mustChangePassword: student.mustChangePassword,
+        } : {
+          ...student,
+          class: { name: student.className },
+          parentId: parent.id,
+        }, req.user!.schoolId, parent.id, financeStudentLookup.get(student.id));
+      }),
     }));
     const students = parents.flatMap((parent) => parent.students);
 
@@ -275,7 +294,17 @@ sharedDirectoryRouter.put("/teachers/:id", authorize(...employeeWriteRoles), asy
   try {
     const result = await updateOrbitTeacher(req.params.id, payload);
     await syncOrbitRegistryMirror(req.user!.schoolId);
-    return res.json(result);
+    const notificationStatus = await notifyStandaloneEntityChange({
+      schoolId: req.user!.schoolId,
+      subject: "Mise à jour du dossier employé EduPay",
+      body: [
+        `Le dossier employé ${payload.fullName || req.params.id} vient d'être modifié dans EduPay.`,
+        "Les informations sont synchronisées avec le registre partagé de l'écosystème.",
+      ].join("\n"),
+      email: payload.email ?? undefined,
+      phone: payload.phone ?? undefined,
+    });
+    return res.json({ ...result, notificationStatus });
   } catch (error) {
     console.error("[TEACHER_UPDATE_ORBIT] Unable to update teacher in shared registry", error);
     return res.status(502).json({ message: error instanceof Error ? error.message : "Modification employe indisponible dans le registre partage." });

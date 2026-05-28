@@ -100,7 +100,7 @@ type StudentPaymentTableRow = {
 
 const USD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
-const FR_CONFIDENCE = "Analyse basee sur les donnees actuellement chargees dans EduPay.";
+const FR_CONFIDENCE = "Analyse basée sur les données actuellement chargées dans EduPay.";
 const EN_CONFIDENCE = "Analysis based on the data currently loaded in EduPay.";
 
 function asNumber(value: unknown) {
@@ -128,7 +128,7 @@ function parseDate(payment: Payment) {
 
 function shouldLoadDetailedProfiles(query: string) {
   const q = normalize(query);
-  return hasAny(q, ["impay", "retard", "solde", "dette", "unpaid", "late", "debt", "balance", "eleve", "student"]);
+  return hasAny(q, ["dossier complet", "profil parent", "historique parent", "parent profile", "full file"]);
 }
 
 async function loadAssistantContext(query = ""): Promise<AssistantContext> {
@@ -139,7 +139,7 @@ async function loadAssistantContext(query = ""): Promise<AssistantContext> {
     api<Payment[]>("/api/payments").catch(() => [])
   ]);
 
-  const profileParents = shouldLoadDetailedProfiles(query) ? parents.slice(0, 40) : [];
+  const profileParents = shouldLoadDetailedProfiles(query) ? parents.slice(0, 5) : [];
   const parentProfiles = (await Promise.all(
     profileParents.map((parent) => api<AssistantContext["parentProfiles"][number]>(`/api/finance/parents/${parent.id}/profile`).catch(() => null))
   )).filter((profile): profile is AssistantContext["parentProfiles"][number] => Boolean(profile));
@@ -287,7 +287,7 @@ function buildStudentPaymentRows(context: AssistantContext) {
             parentName: profile.parent.fullName,
             parentPhone: profile.parent.phone,
             parentEmail: profile.parent.email,
-            className: student.className || parentStudent?.className || "Classe non renseignee",
+            className: student.className || parentStudent?.className || "Classe non renseignée",
             expected,
             paid,
             balance,
@@ -305,7 +305,7 @@ function buildStudentPaymentRows(context: AssistantContext) {
           parentName: parent.fullName,
           parentPhone: parent.phone,
           parentEmail: parent.email,
-          className: student.className ?? "Classe non renseignee",
+          className: student.className ?? "Classe non renseignée",
           expected,
           paid,
           balance,
@@ -349,7 +349,7 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
   const mentionedParent = findMentionedParent(query, context);
   const studentRows = buildStudentPaymentRows(context);
   const mentionedClass = extractMentionedClass(query, studentRows);
-  const asksForStudentList = hasAny(q, ["liste", "list", "eleve", "student", "classe", "class"]);
+  const asksForStudentList = hasAny(q, ["liste", "list", "élève", "student", "classe", "class"]);
   const asksForUnpaid = hasAny(q, [
     "impay",
     "non pay",
@@ -382,23 +382,23 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
     return {
       answer: lang === "fr"
         ? targetRows.length > 0
-          ? `Voici la liste precise des eleves ${wantsNoPaymentYet ? "sans aucun paiement enregistre" : "qui ont encore un solde a payer"}${mentionedClass ? ` dans la classe ${mentionedClass}` : ""}.`
-          : `Aucun eleve ${wantsNoPaymentYet ? "sans paiement enregistre" : "avec solde restant"} n'apparait dans les donnees actuellement chargees${mentionedClass ? ` pour la classe ${mentionedClass}` : ""}.`
+          ? `Voici la liste precise des élèves ${wantsNoPaymentYet ? "sans aucun paiement enregistré" : "qui ont encore un solde à payer"}${mentionedClass ? ` dans la classe ${mentionedClass}` : ""}.`
+          : `Aucun élève ${wantsNoPaymentYet ? "sans paiement enregistré" : "avec solde restant"} n'apparaît dans les données actuellement chargées${mentionedClass ? ` pour la classe ${mentionedClass}` : ""}.`
         : targetRows.length > 0
           ? `Here is the precise list of students ${wantsNoPaymentYet ? "with no recorded payment yet" : "who still have a balance to pay"}${mentionedClass ? ` in ${mentionedClass}` : ""}.`
           : `No student ${wantsNoPaymentYet ? "with no recorded payment" : "with remaining balance"} appears in the currently loaded data${mentionedClass ? ` for ${mentionedClass}` : ""}.`,
       facts: lang === "fr"
         ? [
-            `${targetRows.length} eleve(s) concerne(s)${mentionedClass ? ` dans ${mentionedClass}` : ""}.`,
-            `Total attendu sur cette selection : ${USD.format(totalExpected)}.`,
-            `Total deja encaisse : ${USD.format(totalPaid)}.`,
+            `${targetRows.length} élève(s) concerne(s)${mentionedClass ? ` dans ${mentionedClass}` : ""}.`,
+            `Total attendu sur cette sélection : ${USD.format(totalExpected)}.`,
+            `Total déjà encaissé : ${USD.format(totalPaid)}.`,
             `Solde restant : ${USD.format(totalBalance)}.`,
-            ...(shownRows.length > 0 ? shownRows : ["Aucune ligne eleve a afficher."]),
-            ...(hiddenCount > 0 ? [`${hiddenCount} autre(s) eleve(s) non affiche(s) dans cette synthese.`] : [])
+            ...(shownRows.length > 0 ? shownRows : ["Aucune ligne élève à afficher."]),
+            ...(hiddenCount > 0 ? [`${hiddenCount} autre(s) élève(s) non affiché(s) dans cette synthese.`] : [])
           ]
         : [
             `${targetRows.length} student(s) concerned${mentionedClass ? ` in ${mentionedClass}` : ""}.`,
-            `Expected total for this selection: ${USD.format(totalExpected)}.`,
+            `Expected total for this sélection: ${USD.format(totalExpected)}.`,
             `Already collected: ${USD.format(totalPaid)}.`,
             `Remaining balance: ${USD.format(totalBalance)}.`,
             ...(shownRows.length > 0 ? shownRows : ["No student row to display."]),
@@ -406,7 +406,7 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
           ],
       tableRows,
       actions: lang === "fr"
-        ? ["Relancer les parents de cette liste avec le montant exact.", "Verifier les paiements PENDING avant sanction.", "Exporter ou filtrer par classe pour traitement financier."]
+        ? ["Relancer les parents de cette liste avec le montant exact.", "Vérifier les paiements PENDING avant sanction.", "Exporter ou filtrer par classe pour traitement financier."]
         : ["Follow up with these parents using the exact amount.", "Check PENDING payments before escalation.", "Export or filter by class for finance processing."],
       confidence: lang === "fr" ? FR_CONFIDENCE : EN_CONFIDENCE,
       suggestions: lang === "fr"
@@ -426,7 +426,7 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
     const debt = parentDebt?.debt ?? asNumber(parentProfile?.profile.totalDebt);
     return {
       answer: lang === "fr"
-        ? `Le dossier de ${mentionedParent.fullName} est identifiable et peut etre traite directement. Le point important est le solde restant, car il determine la priorite de relance.`
+        ? `Le dossier de ${mentionedParent.fullName} est identifiable et peut être traité directement. Le point important est le solde restant, car il déterminé la priorité de relance.`
         : `${mentionedParent.fullName}'s file is clearly identifiable and can be handled directly. The important point is the remaining balance, because it drives follow-up priority.`,
       facts: lang === "fr"
         ? [
@@ -434,7 +434,7 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
             `Total attendu : ${USD.format(expected)}.`,
             `Total encaisse : ${USD.format(paid)}.`,
             `Solde restant estime : ${USD.format(debt)}.`,
-            `Echeances en retard : ${parentProfile?.profile.overdueInstallments ?? 0}.`,
+            `Échéances en retard : ${parentProfile?.profile.overdueInstallments ?? 0}.`,
             `Contact disponible : ${mentionedParent.phone || mentionedParent.email || "non renseigne"}.`
           ]
         : [
@@ -446,11 +446,11 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
             `Available contact: ${mentionedParent.phone || mentionedParent.email || "not provided"}.`
           ],
       actions: lang === "fr"
-        ? ["Verifier le dernier paiement avant relance.", "Proposer un echeancier si le solde est eleve.", "Confirmer le canal de contact du parent."]
+        ? ["Vérifier le dernier paiement avant relance.", "Proposer un échéancier si le solde est élève.", "Confirmer le canal de contact du parent."]
         : ["Check the last payment before follow-up.", "Suggest a payment plan if the balance is high.", "Confirm the parent's contact channel."],
       confidence: lang === "fr" ? FR_CONFIDENCE : EN_CONFIDENCE,
       suggestions: lang === "fr"
-        ? ["Voir les retards critiques", "Proposer un echeancier", "Analyser les paiements recents"]
+        ? ["Voir les retards critiques", "Proposer un échéancier", "Analyser les paiements récents"]
         : ["Show critical delays", "Suggest a payment plan", "Analyze recent payments"]
     };
   }
@@ -460,7 +460,7 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
       answer: lang === "fr"
         ? topParent
           ? `La situation demande une action de relance ciblee. Le parent le plus prioritaire ressort nettement, donc il vaut mieux commencer par lui avant d'envoyer des messages generaux.`
-          : `Aucun retard net dominant n'apparait dans les donnees actuelles. Le point a surveiller reste le volume des paiements en attente.`
+          : `Aucun retard net dominant n'apparaît dans les données actuelles. Le point a surveiller reste le volume des paiements en attente.`
         : topParent
           ? `The situation calls for targeted follow-up. One priority parent stands out, so start there before sending broad reminders.`
           : `No dominant overdue case appears in current data. The main item to watch is pending payments.`,
@@ -470,7 +470,7 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
             topParent ? `Priorite actuelle : ${topParent.name} (${USD.format(topParent.debt)}).` : "Aucun parent prioritaire net.",
             `Dette globale estimee : ${USD.format(insights.outstandingDebt)}.`,
             `Paiements en attente : ${USD.format(insights.pendingAmount)}.`,
-            `Echeances en retard : ${insights.overdueInstallments}.`
+            `Échéances en retard : ${insights.overdueInstallments}.`
           ]
         : [
             `${insights.parentsWithDebt.length} parent(s) with remaining balance.`,
@@ -480,11 +480,11 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
             `Overdue installments: ${insights.overdueInstallments}.`
           ],
       actions: lang === "fr"
-        ? ["Contacter d'abord le parent prioritaire.", "Verifier si un paiement recent n'est pas encore valide.", "Preparer un echeancier court et clair."]
+        ? ["Contacter d'abord le parent prioritaire.", "Vérifier si un paiement récent n'est pas encore valide.", "Préparer un échéancier court et clair."]
         : ["Contact the priority parent first.", "Check whether a recent payment is still pending.", "Prepare a short and clear payment plan."],
       confidence: lang === "fr" ? FR_CONFIDENCE : EN_CONFIDENCE,
       suggestions: lang === "fr"
-        ? ["Relancer le parent prioritaire", "Verifier les paiements en attente", "Preparer un echeancier cible"]
+        ? ["Relancer le parent prioritaire", "Vérifier les paiements en attente", "Préparer un échéancier cible"]
         : ["Follow up with the priority parent", "Review pending payments", "Prepare a targeted payment plan"]
     };
   }
@@ -492,27 +492,27 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
   if (q.includes("revenu") || q.includes("recette") || q.includes("revenue") || q.includes("paiement total")) {
     return {
       answer: lang === "fr"
-        ? `La performance financiere est lisible: les encaissements sont corrects si le taux de succes reste proche ou au-dessus de 80 %. Les paiements en attente doivent etre traites rapidement pour ne pas fausser le suivi.`
+        ? `La performance financière est lisible: les encaissements sont corrects si le taux de succès reste proche ou au-dessus de 80 %. Les paiements en attente doivent être traités rapidement pour ne pas fausser le suivi.`
         : `Financial performance is readable: collections are healthy if the success rate stays near or above 80%. Pending payments should be reviewed quickly so tracking stays accurate.`,
       facts: lang === "fr"
         ? [
             `Revenu encaisse : ${USD.format(insights.revenue)}.`,
-            `Taux de succes : ${insights.successRate.toFixed(1)} %.`,
+            `Taux de succès : ${insights.successRate.toFixed(1)} %.`,
             `Paiements en attente : ${USD.format(insights.pendingAmount)}.`,
-            insights.bestMonth ? `Meilleur mois observe : ${insights.bestMonth[0]} (${USD.format(insights.bestMonth[1])}).` : "Pas assez d'historique mensuel pour identifier un meilleur mois."
+            insights.bestMonth ? `Meilleur mois observé : ${insights.bestMonth[0]} (${USD.format(insights.bestMonth[1])}).` : "Pas assez d'historique mensuel pour identifier un meilleur mois."
           ]
         : [
             `Collected revenue: ${USD.format(insights.revenue)}.`,
             `Success rate: ${insights.successRate.toFixed(1)}%.`,
             `Pending payments: ${USD.format(insights.pendingAmount)}.`,
-            insights.bestMonth ? `Best observed month: ${insights.bestMonth[0]} (${USD.format(insights.bestMonth[1])}).` : "Not enough monthly history to identify a best month."
+            insights.bestMonth ? `Best observéd month: ${insights.bestMonth[0]} (${USD.format(insights.bestMonth[1])}).` : "Not enough monthly history to identify a best month."
           ],
       actions: lang === "fr"
-        ? ["Valider les paiements en attente.", "Comparer les revenus aux frais attendus.", "Surveiller les parents a forte dette."]
+        ? ["Valider les paiements en attente.", "Comparer les revenus aux frais attendus.", "Surveiller les parents à forte dette."]
         : ["Validate pending payments.", "Compare revenue against expected fees.", "Monitor high-debt parents."],
       confidence: lang === "fr" ? FR_CONFIDENCE : EN_CONFIDENCE,
       suggestions: lang === "fr"
-        ? ["Comparer avec les retards", "Identifier les gros contributeurs", "Generer un rapport resume"]
+        ? ["Comparer avec les retards", "Identifier les gros contributeurs", "Générer un rapport résumé"]
         : ["Compare with delays", "Identify top contributors", "Generate a summary report"]
     };
   }
@@ -523,21 +523,21 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
       .join("; ");
     return {
       answer: lang === "fr"
-        ? `Les paiements recents donnent une bonne lecture du rythme actuel. Si les montants recents baissent, il faut relancer avant que la dette ne grossisse.`
+        ? `Les paiements récents donnent une bonne lecture du rythme actuel. Si les montants récents baissent, il faut relancer avant que la dette ne grossisse.`
         : `Recent payments give a good reading of the current rhythm. If recent amounts are falling, follow up before debt grows.`,
       facts: lang === "fr"
         ? [
-            insights.bestMonth ? `Meilleur mois observe : ${insights.bestMonth[0]} avec ${USD.format(insights.bestMonth[1])}.` : "Meilleur mois non determine.",
+            insights.bestMonth ? `Meilleur mois observé : ${insights.bestMonth[0]} avec ${USD.format(insights.bestMonth[1])}.` : "Meilleur mois non déterminé.",
             `Paiement moyen encaisse : ${USD.format(insights.averagePayment)}.`,
-            `Paiements recents : ${latest || "aucun paiement disponible"}.`
+            `Paiements récents : ${latest || "aucun paiement disponible"}.`
           ]
         : [
-            insights.bestMonth ? `Best observed month: ${insights.bestMonth[0]} with ${USD.format(insights.bestMonth[1])}.` : "Best month not determined.",
+            insights.bestMonth ? `Best observéd month: ${insights.bestMonth[0]} with ${USD.format(insights.bestMonth[1])}.` : "Best month not déterminéd.",
             `Average collected payment: ${USD.format(insights.averagePayment)}.`,
             `Recent payments: ${latest || "no payment available"}.`
           ],
       actions: lang === "fr"
-        ? ["Comparer les paiements recents aux retards.", "Verifier les statuts PENDING.", "Identifier les parents sans paiement recent."]
+        ? ["Comparer les paiements récents aux retards.", "Vérifier les statuts PENDING.", "Identifier les parents sans paiement récent."]
         : ["Compare recent payments with delays.", "Review PENDING statuses.", "Identify parents without recent payment."],
       confidence: lang === "fr" ? FR_CONFIDENCE : EN_CONFIDENCE,
       suggestions: lang === "fr"
@@ -551,8 +551,8 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
     return {
       answer: lang === "fr"
         ? names
-          ? `Les cas critiques doivent etre traites individuellement. Une relance generale risque d'etre moins efficace qu'un message personnalise avec montant, delai et option d'echeancier.`
-          : "Aucun profil critique net n'apparait avec les donnees actuelles."
+          ? `Les cas critiques doivent être traités individuellement. Une relance générale risque d'etre moins efficace qu'un message personnalisé avec montant, délai et option d'échéancier.`
+          : "Aucun profil critique net n'apparaît avec les données actuelles."
         : names
           ? `Critical cases should be handled individually. A general reminder is less effective than a personalized message with amount, deadline and payment-plan option.`
           : "No clear critical profile appears in current data.",
@@ -560,11 +560,11 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
         ? [names ? `Parents prioritaires : ${names}.` : "Aucun parent prioritaire net.", `Dette globale estimee : ${USD.format(insights.outstandingDebt)}.`]
         : [names ? `Priority parents: ${names}.` : "No clear priority parent.", `Estimated total debt: ${USD.format(insights.outstandingDebt)}.`],
       actions: lang === "fr"
-        ? ["Traiter les 3 premiers dossiers en priorite.", "Appeler si le montant est eleve.", "Documenter chaque relance."]
+        ? ["Traiter les 3 premiers dossiers en priorité.", "Appeler si le montant est élevé.", "Documenter chaque relance."]
         : ["Handle the top 3 files first.", "Call when the amount is high.", "Document every follow-up."],
       confidence: lang === "fr" ? FR_CONFIDENCE : EN_CONFIDENCE,
       suggestions: lang === "fr"
-        ? ["Envoyer une relance individuelle", "Controler l'historique du parent", "Generer une synthese de risque"]
+        ? ["Envoyer une relance individuelle", "Contrôler l'historique du parent", "Générer une synthèse de risque"]
         : ["Send an individual reminder", "Check parent history", "Generate a risk summary"]
     };
   }
@@ -573,17 +573,17 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
     const list = insights.topContributors.map((parent) => `${parent.name} (${USD.format(parent.paid)})`).join(", ");
     return {
       answer: lang === "fr"
-        ? list ? `Les contributions les plus fortes montrent les familles deja regulieres. Elles peuvent servir de reference pour suivre la stabilite des encaissements.` : "Aucune contribution parent claire n'est disponible dans les paiements actuels."
-        : list ? `The strongest contributions show the already regular families. They can be used as a reference for collection stability.` : "No clear parent contribution is available from current payments.",
+        ? list ? `Les contributions les plus fortes montrent les familles déjà régulières. Elles peuvent servir de référence pour suivre la stabilité des encaissements.` : "Aucune contribution parent claire n'est disponible dans les paiements actuels."
+        : list ? `The strongest contributions show the already regular families. They can be used as a référence for collection stability.` : "No clear parent contribution is available from current payments.",
       facts: lang === "fr"
         ? [list ? `Top contributions : ${list}.` : "Pas de top contribution disponible.", `Revenu encaisse total : ${USD.format(insights.revenue)}.`]
         : [list ? `Top contributions: ${list}.` : "No top contribution available.", `Total collected revenue: ${USD.format(insights.revenue)}.`],
       actions: lang === "fr"
-        ? ["Comparer ces familles aux dossiers en retard.", "Identifier les classes les plus stables.", "Preparer un rapport financier."]
+        ? ["Comparer ces familles aux dossiers en retard.", "Identifier les classes les plus stables.", "Préparer un rapport financier."]
         : ["Compare these families with overdue files.", "Identify the most stable classes.", "Prepare a financial report."],
       confidence: lang === "fr" ? FR_CONFIDENCE : EN_CONFIDENCE,
       suggestions: lang === "fr"
-        ? ["Afficher les retards critiques", "Comparer avec le revenu total", "Generer un rapport resume"]
+        ? ["Afficher les retards critiques", "Comparer avec le revenu total", "Générer un rapport résumé"]
         : ["Show critical delays", "Compare with total revenue", "Generate a summary report"]
     };
   }
@@ -591,14 +591,14 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
   const topDebts = insights.parentsWithDebt.slice(0, 3).map((parent) => `${parent.name}: ${USD.format(parent.debt)}`).join("; ");
   return {
     answer: lang === "fr"
-      ? "Voici une synthese administrative rapide. Elle donne une vue claire des volumes, du risque financier et de la prochaine action logique."
+      ? "Voici une synthèse administrative rapide. Elle donne une vue claire des volumes, du risque financier et de la prochaine action logique."
       : "Here is a quick administrative summary. It gives a clear view of volume, financial risk and the next logical action.",
     facts: lang === "fr"
       ? [
-          `${insights.parentCount} parent(s), ${insights.studentCount} eleve(s), ${context.payments.length} paiement(s).`,
+          `${insights.parentCount} parent(s), ${insights.studentCount} élève(s), ${context.payments.length} paiement(s).`,
           `Encaisse : ${USD.format(insights.revenue)}.`,
           `Dette estimee : ${USD.format(insights.outstandingDebt)}.`,
-          `Taux de succes : ${insights.successRate.toFixed(1)} %.`,
+          `Taux de succès : ${insights.successRate.toFixed(1)} %.`,
           `Priorites : ${topDebts || "aucune dette prioritaire detectee"}.`
         ]
       : [
@@ -609,11 +609,11 @@ function localAssistantReply(query: string, lang: "fr" | "en", context: Assistan
           `Priorities: ${topDebts || "no priority debt detected"}.`
         ],
     actions: lang === "fr"
-      ? ["Commencer par les dossiers prioritaires.", "Valider les paiements en attente.", "Revoir les chiffres apres chaque nouvel encaissement."]
+      ? ["Commencer par les dossiers prioritaires.", "Valider les paiements en attente.", "Revoir les chiffres après chaque nouvel encaissement."]
       : ["Start with priority files.", "Validate pending payments.", "Review figures after each new collection."],
     confidence: lang === "fr" ? FR_CONFIDENCE : EN_CONFIDENCE,
     suggestions: lang === "fr"
-      ? ["Voir les parents critiques", "Analyser le revenu total", "Afficher les paiements recents"]
+      ? ["Voir les parents critiques", "Analyser le revenu total", "Afficher les paiements récents"]
       : ["Show critical parents", "Analyze total revenue", "Show recent payments"]
   };
 }
@@ -629,7 +629,7 @@ function isGenericAssistantResponse(data: AssistantResponse | null | undefined) 
 
 function isPrecisionFinanceQuestion(query: string) {
   const q = normalize(query);
-  const asksForList = hasAny(q, ["liste", "list", "eleve", "student", "parent", "classe", "class", "qui"]);
+  const asksForList = hasAny(q, ["liste", "list", "élève", "student", "parent", "classe", "class", "qui"]);
   const asksForPaymentState = hasAny(q, [
     "impay",
     "non pay",
@@ -737,8 +737,8 @@ export function AIAssistantPage() {
         "Qui n'a pas paye ce mois-ci ?",
         "Quel est le revenu total ?",
         "Affiche les retards critiques",
-        "Quels sont les paiements recents ?",
-        "Genere un rapport resume"
+        "Quels sont les paiements récents ?",
+        "Genere un rapport résumé"
       ]
     : [
         "Who has not paid this month?",
@@ -754,10 +754,23 @@ export function AIAssistantPage() {
 
     setLoading(true);
     setError(null);
-    setMessages((current) => [...current, { id: `user-${Date.now()}`, role: "user", text: askedQuestion }]);
+    const now = Date.now();
+    const assistantMessageId = `assistant-${now}`;
+    setMessages((current) => [...current, { id: `user-${now}`, role: "user", text: askedQuestion }]);
 
     const context = await loadAssistantContext(askedQuestion);
     const localResult = localAssistantReply(askedQuestion, lang, context);
+    setResult(localResult);
+    setMessages((current) => [...current, {
+      id: assistantMessageId,
+      role: "assistant",
+      text: localResult.answer,
+      suggestions: localResult.suggestions,
+      facts: localResult.facts,
+      actions: localResult.actions,
+      confidence: localResult.confidence,
+      tableRows: localResult.tableRows
+    }]);
 
     try {
       const data = await api<AssistantResponse>("/api/ai/assistant", {
@@ -768,30 +781,21 @@ export function AIAssistantPage() {
         ...data,
         tableRows: data.tableRows ?? (isPrecisionFinanceQuestion(askedQuestion) ? localResult.tableRows : undefined)
       };
-      setResult(finalResult);
-      setMessages((current) => [...current, {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        text: finalResult.answer,
-        suggestions: finalResult.suggestions,
-        facts: finalResult.facts,
-        actions: finalResult.actions,
-        confidence: finalResult.confidence,
-        tableRows: finalResult.tableRows
-      }]);
+      if (!isGenericAssistantResponse(data)) {
+        setResult(finalResult);
+        setMessages((current) => current.map((message) => message.id === assistantMessageId ? {
+          ...message,
+          role: "assistant",
+          text: finalResult.answer,
+          suggestions: finalResult.suggestions,
+          facts: finalResult.facts,
+          actions: finalResult.actions,
+          confidence: finalResult.confidence,
+          tableRows: finalResult.tableRows
+        } : message));
+      }
       if (isGenericAssistantResponse(data)) setError(null);
     } catch {
-      setResult(localResult);
-      setMessages((current) => [...current, {
-        id: `assistant-${Date.now()}`,
-        role: "assistant",
-        text: localResult.answer,
-        suggestions: localResult.suggestions,
-        facts: localResult.facts,
-        actions: localResult.actions,
-        confidence: localResult.confidence,
-        tableRows: localResult.tableRows
-      }]);
       setError(null);
     } finally {
       setLoading(false);
@@ -914,7 +918,7 @@ export function AIAssistantPage() {
             </div>
           ) : (
             <p className="rounded-lg border border-slate-700/50 bg-slate-900/35 px-4 py-3 text-sm text-ink-dim">
-              Historique masque. Les nouvelles reponses continueront a etre enregistrees jusqu'a effacement.
+              Historique masqué. Les nouvelles réponses continueront ? être enregistrées jusqu’à effacement.
             </p>
           )}
         </div>

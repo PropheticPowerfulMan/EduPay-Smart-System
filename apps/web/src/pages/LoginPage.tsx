@@ -90,7 +90,7 @@ function ForgotPasswordModal({ onClose, t, initialResetToken = "" }: { onClose: 
         method: "POST",
         body: JSON.stringify({ token: resetToken.trim(), newPassword })
       });
-      setSuccessMessage(result.message || "Mot de passe reinitialise. Vous pouvez vous connecter.");
+      setSuccessMessage(result.message || "Mot de passe réinitialisé. Vous pouvez vous connecter.");
       setResetToken("");
       setNewPassword("");
       setConfirmPassword("");

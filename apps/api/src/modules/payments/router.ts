@@ -20,6 +20,7 @@ const bankTransferDetailsSchema = z.object({
 });
 
 const createPaymentSchema = z.object({
+  paymentCategory: z.enum(["TUITION", "SERVICE"]).optional().default("TUITION"),
   parentFullName: z.string().optional().default(""),
   parentId: z.string().optional(),
   studentIds: z.array(z.string()).optional().default([]),
@@ -33,7 +34,7 @@ const createPaymentSchema = z.object({
   notifyParent: z.boolean().optional(),
   bankTransferDetails: bankTransferDetailsSchema.optional()
 }).superRefine((payload, context) => {
-  if (orbitRegistryIsEnabled() && payload.studentExternalIds.length === 0) {
+  if (payload.paymentCategory === "TUITION" && orbitRegistryIsEnabled() && payload.studentExternalIds.length === 0) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["studentExternalIds"],
@@ -650,16 +651,18 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
       include: { parent: true, students: { include: { class: true } } }
     });
 
-    await applyPaymentToFinanceLedger({
-      schoolId: req.user!.schoolId,
-      paymentId: payment.id,
-      parentId,
-      studentIds: payment.students.map((student) => student.id)
-    }).catch((error) => console.error("Finance ledger sync failed", error));
-    await runOverdueTuitionReminderSweep({
-      schoolId: req.user!.schoolId,
-      parentId
-    }).catch((error) => console.error("Overdue tuition reminder sweep failed", error));
+    if (payload.paymentCategory === "TUITION") {
+      await applyPaymentToFinanceLedger({
+        schoolId: req.user!.schoolId,
+        paymentId: payment.id,
+        parentId,
+        studentIds: payment.students.map((student) => student.id)
+      }).catch((error) => console.error("Finance ledger sync failed", error));
+      await runOverdueTuitionReminderSweep({
+        schoolId: req.user!.schoolId,
+        parentId
+      }).catch((error) => console.error("Overdue tuition reminder sweep failed", error));
+    }
 
     try {
       const syncedStudentExternalIds = payload.studentExternalIds.length > 0
@@ -670,7 +673,12 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
 
       const studentsMissingExternalIds = payment.students.filter((student) => !student.externalStudentId);
 
-      if (orbitRegistryIsEnabled() && (syncedStudentExternalIds.length === 0 || studentsMissingExternalIds.length > 0)) {
+      if (payload.paymentCategory !== "TUITION") {
+        console.info("Orbit tuition payment sync skipped for non-tuition payment", {
+          paymentId: payment.id,
+          paymentCategory: payload.paymentCategory
+        });
+      } else if (orbitRegistryIsEnabled() && (syncedStudentExternalIds.length === 0 || studentsMissingExternalIds.length > 0)) {
         console.warn("Orbit payment sync skipped: one or more EduPay students are not linked to a shared external student id", {
           paymentId: payment.id,
           localStudentIds: studentsMissingExternalIds.map((student) => student.id),

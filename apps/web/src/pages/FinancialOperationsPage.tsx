@@ -158,7 +158,7 @@ type CashflowEntry = {
   amount: number;
   currency: string;
   method?: string | null;
-  referenceDate: string;
+  référenceDate: string;
   notes?: string | null;
   createdAt?: string;
   expense?: { id: string; title: string; department?: string | null; status?: string | null } | null;
@@ -209,7 +209,7 @@ type ExpenseFormState = {
   beneficiaryName: string;
   beneficiaryContact: string;
   beneficiaryAccount: string;
-  beneficiaryReference: string;
+  beneficiaryRéférence: string;
   comments: string;
   attachmentName: string;
   attachmentUrl: string;
@@ -286,7 +286,7 @@ const PERIOD_FILTERS = [
   { value: "WEEK", label: "Cette semaine" },
   { value: "MONTH", label: "Ce mois" },
   { value: "QUARTER", label: "Ce trimestre" },
-  { value: "YEAR", label: "Cette annee" },
+  { value: "YEAR", label: "Cette année" },
   { value: "CUSTOM", label: "Intervalle precis" }
 ];
 type OperationTab = "expenses" | "budgets" | "payroll" | "accounting" | "cashflow" | "documents";
@@ -305,7 +305,7 @@ const EMPTY_EXPENSE_FORM: ExpenseFormState = {
   beneficiaryName: "",
   beneficiaryContact: "",
   beneficiaryAccount: "",
-  beneficiaryReference: "",
+  beneficiaryRéférence: "",
   comments: "",
   attachmentName: "",
   attachmentUrl: ""
@@ -578,7 +578,7 @@ function buildBeneficiaryNotes(form: ExpenseFormState) {
     form.beneficiaryName && `Beneficiaire: ${form.beneficiaryName}`,
     form.beneficiaryContact && `Contact beneficiaire: ${form.beneficiaryContact}`,
     form.beneficiaryAccount && `Compte / wallet beneficiaire: ${form.beneficiaryAccount}`,
-    form.beneficiaryReference && `Reference paiement: ${form.beneficiaryReference}`
+    form.beneficiaryRéférence && `Référence paiement: ${form.beneficiaryRéférence}`
   ].filter(Boolean);
 
   return [form.comments.trim(), rows.join("\n")].filter(Boolean).join("\n\n");
@@ -661,7 +661,7 @@ export function FinancialOperationsPage() {
       })
       .catch((loadError) => {
         if (!active) return;
-        setError(loadError instanceof Error ? loadError.message : "Impossible de charger les operations financieres.");
+        setError(loadError instanceof Error ? loadError.message : "Impossible de charger les opérations financières.");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -788,14 +788,14 @@ export function FinancialOperationsPage() {
   const filteredCashflowEntries = useMemo(() => {
     const needle = cashflowSearch.trim().toLowerCase();
     return cashflowEntries.filter((entry) => {
-      const reference = entry.expense?.title || entry.payrollRun?.title || entry.payrollItem?.salarySlipNumber || "";
+      const référence = entry.expense?.title || entry.payrollRun?.title || entry.payrollItem?.salarySlipNumber || "";
       const matchesSource = cashflowSourceFilter === "ALL" || entry.sourceType === cashflowSourceFilter;
-      const matchesPeriod = isWithinPeriod(entry.referenceDate, cashflowPeriodFilter, cashflowDateFrom, cashflowDateTo);
+      const matchesPeriod = isWithinPeriod(entry.référenceDate, cashflowPeriodFilter, cashflowDateFrom, cashflowDateTo);
       const matchesSearch = !needle
         || entry.sourceType.toLowerCase().includes(needle)
         || entry.direction.toLowerCase().includes(needle)
         || (entry.method || "").toLowerCase().includes(needle)
-        || reference.toLowerCase().includes(needle)
+        || référence.toLowerCase().includes(needle)
         || (entry.expense?.department || entry.payrollRun?.department || entry.payrollItem?.salaryProfile.department || "").toLowerCase().includes(needle)
         || (entry.notes || "").toLowerCase().includes(needle);
       return matchesSource && matchesPeriod && matchesSearch;
@@ -965,7 +965,7 @@ export function FinancialOperationsPage() {
         <div>
           <div class="label" style="color:${escapeHtml(brand.colors.accent)}">${escapeHtml(brand.appName)}</div>
           <h1>Fiche salariale</h1>
-          <p>${item.salaryProfile.fullName} • ${item.salaryProfile.position} • ${run.period?.name ?? "Periode active"}</p>
+          <p>${item.salaryProfile.fullName} • ${item.salaryProfile.position} • ${run.period?.name ?? "Période active"}</p>
         </div>
       </div>
       <div class="hero-meta">
@@ -1018,7 +1018,7 @@ export function FinancialOperationsPage() {
         rows: [{
           "Numero de fiche": item.salarySlipNumber,
           "Run": run.title,
-          "Periode": run.period?.name ?? "Periode active",
+          "Période": run.period?.name ?? "Période active",
           "Employe": item.salaryProfile.fullName,
           "Code employe": item.salaryProfile.employeeCode,
           "Departement": item.salaryProfile.department,
@@ -1265,10 +1265,10 @@ export function FinancialOperationsPage() {
 
   function exportCashflowCsv() {
     downloadCsv(
-      `journal-tresorerie-${new Date().toISOString().slice(0, 10)}.csv`,
-      ["Date", "Source", "Direction", "Methode", "Montant", "Devise", "Reference", "Notes"],
+      `journal-trésorerie-${new Date().toISOString().slice(0, 10)}.csv`,
+      ["Date", "Source", "Direction", "Méthode", "Montant", "Devise", "Référence", "Notes"],
       filteredCashflowEntries.map((entry) => [
-        new Date(entry.referenceDate).toLocaleDateString("fr-FR"),
+        new Date(entry.référenceDate).toLocaleDateString("fr-FR"),
         entry.sourceType,
         entry.direction,
         entry.method || "",
@@ -1281,7 +1281,7 @@ export function FinancialOperationsPage() {
   }
 
   function exportCashflowExcel() {
-    exportWorkbook(`journal-tresorerie-${new Date().toISOString().slice(0, 10)}`, [
+    exportWorkbook(`journal-trésorerie-${new Date().toISOString().slice(0, 10)}`, [
       {
         name: "Synthese",
         rows: [{
@@ -1304,15 +1304,15 @@ export function FinancialOperationsPage() {
         }))
       },
       {
-        name: "Journal tresorerie",
+        name: "Journal trésorerie",
         rows: filteredCashflowEntries.map((entry) => ({
-          "Date": new Date(entry.referenceDate).toLocaleDateString("fr-FR"),
+          "Date": new Date(entry.référenceDate).toLocaleDateString("fr-FR"),
           "Source": entry.sourceType,
           "Direction": entry.direction,
-          "Methode": entry.method || "",
+          "Méthode": entry.method || "",
           "Montant": entry.amount,
           "Devise": entry.currency,
-          "Reference": entry.expense?.title || entry.payrollRun?.title || entry.payrollItem?.salarySlipNumber || "",
+          "Référence": entry.expense?.title || entry.payrollRun?.title || entry.payrollItem?.salarySlipNumber || "",
           "Notes": entry.notes || ""
         }))
       }
@@ -1324,8 +1324,8 @@ export function FinancialOperationsPage() {
       {
         name: "Synthese",
         rows: [{
-          "Depenses filtrees": filteredExpenses.length,
-          "Periode": periodLabel(expensePeriodFilter, expenseDateFrom, expenseDateTo),
+          "Dépenses filtrées": filteredExpenses.length,
+          "Période": periodLabel(expensePeriodFilter, expenseDateFrom, expenseDateTo),
           "Statut": statusFilter === "ALL" ? "Tous" : statusFilter,
           "Total": filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0),
           "Approuvees": filteredExpenses.filter((expense) => expense.status === "APPROVED").length,
@@ -1356,7 +1356,7 @@ export function FinancialOperationsPage() {
   function printExpensesReport() {
     printLedgerReport(
       "Registre des depenses",
-      `Recherche strategique des depenses filtrees. Periode: ${periodLabel(expensePeriodFilter, expenseDateFrom, expenseDateTo)}.`,
+      `Recherche strategique des depenses filtrées. Période: ${periodLabel(expensePeriodFilter, expenseDateFrom, expenseDateTo)}.`,
       ["Date", "Titre ou motif", "Beneficiaire", "Departement", "Categorie", "Statut", "Montant"],
       filteredExpenses.map((expense) => [
         new Date(expense.expenseDate).toLocaleDateString("fr-FR"),
@@ -1368,10 +1368,10 @@ export function FinancialOperationsPage() {
         currency.format(expense.amount)
       ]),
       [
-        { label: "Depenses filtrees", value: String(filteredExpenses.length), detail: `Statut: ${statusFilter === "ALL" ? "Tous" : statusFilter}` },
-        { label: "Volume filtre", value: currency.format(filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0)), detail: "Somme des depenses correspondant aux criteres" },
-        { label: "Periode", value: periodLabel(expensePeriodFilter, expenseDateFrom, expenseDateTo), detail: "Intervalle d'analyse applique au registre" },
-        { label: "Taux approuve", value: formatPercent(ratioPercent(filteredExpenses.filter((expense) => expense.status === "APPROVED").length, filteredExpenses.length)), detail: "Depenses approuvees / lignes filtrees" }
+        { label: "Dépenses filtrées", value: String(filteredExpenses.length), detail: `Statut: ${statusFilter === "ALL" ? "Tous" : statusFilter}` },
+        { label: "Volume filtre", value: currency.format(filteredExpenses.reduce((sum, expense) => sum + expense.amount, 0)), detail: "Somme des depenses correspondant aux critères" },
+        { label: "Période", value: periodLabel(expensePeriodFilter, expenseDateFrom, expenseDateTo), detail: "Intervalle d'analyse applique au registre" },
+        { label: "Taux approuve", value: formatPercent(ratioPercent(filteredExpenses.filter((expense) => expense.status === "APPROVED").length, filteredExpenses.length)), detail: "Dépenses approuvees / lignes filtrées" }
       ]
     );
   }
@@ -1401,11 +1401,11 @@ export function FinancialOperationsPage() {
 
   function printCashflowReport() {
     printLedgerReport(
-      "Journal de tresorerie",
-      `Vue consolidee des sorties et references de cash liees aux operations financieres. Periode: ${periodLabel(cashflowPeriodFilter, cashflowDateFrom, cashflowDateTo)}.`,
-      ["Date", "Source", "Direction", "Methode", "Montant", "Reference", "Notes"],
+      "Journal de trésorerie",
+      `Vue consolidée des sorties et références de cash liées aux opérations financières. Période : ${periodLabel(cashflowPeriodFilter, cashflowDateFrom, cashflowDateTo)}.`,
+      ["Date", "Source", "Direction", "Méthode", "Montant", "Référence", "Notes"],
       filteredCashflowEntries.map((entry) => [
-        new Date(entry.referenceDate).toLocaleDateString("fr-FR"),
+        new Date(entry.référenceDate).toLocaleDateString("fr-FR"),
         entry.sourceType,
         entry.direction,
         entry.method || "",
@@ -1425,19 +1425,19 @@ export function FinancialOperationsPage() {
   function printOperationsReport() {
     if (!overview) return;
     printLedgerReport(
-      "Rapport general des operations",
-      "Document officiel EduPay consolidant depenses, budgets, paie, comptabilite, tresorerie et pieces justificatives.",
+      "Rapport général des opérations",
+      "Document officiel EduPay consolidant dépenses, budgets, paie, comptabilit?, trésorerie et pièces justificatives.",
       ["Module", "Lignes", "Volume / indicateur", "Observation"],
       [
-        ["Depenses", String(expenses.length), currency.format(overview.expenses.totalExpenses), `${expenseStats.pending} en attente`],
+        ["Dépenses", String(expenses.length), currency.format(overview.expenses.totalExpenses), `${expenseStats.pending} en attente`],
         ["Budgets", String(budgets.length), currency.format(budgets.reduce((sum, budget) => sum + budget.plannedAmount, 0)), `${budgets.filter((budget) => budget.status === "EXCEEDED").length} depassement(s)`],
         ["Paie", String(payrollRuns.length), currency.format(overview.payroll.totalPayroll), `${salaryProfiles.length} profil(s)`],
         ["Comptabilite", String(accountingEntries.length), currency.format(accountingMetrics.totalVolume), accountingMetrics.topDepartmentName],
-        ["Tresorerie", String(cashflowEntries.length), currency.format(overview.cashflow.availableCash), `Variation ${currency.format(cashflowMetrics.netMovement)}`],
+        ["Trésorerie", String(cashflowEntries.length), currency.format(overview.cashflow.availableCash), `Variation ${currency.format(cashflowMetrics.netMovement)}`],
         ["Documents", String(documentEntries.length), String(documentEntries.length), "Pieces justificatives indexees"]
       ],
       [
-        { label: "Cash disponible", value: currency.format(overview.cashflow.availableCash), detail: "Solde operationnel apres charges reconnues" },
+        { label: "Cash disponible", value: currency.format(overview.cashflow.availableCash), detail: "Solde opérationnel après charges reconnues" },
         { label: "Passifs", value: currency.format(overview.liabilities.supplierDebt + overview.liabilities.payrollLiability), detail: "Fournisseurs et paie non soldes" },
         { label: "Approbations", value: String(overview.expenses.pendingApprovalSteps), detail: "Etapes de validation en attente" },
         { label: "Profit / perte", value: currency.format(overview.cashflow.profitLoss), detail: "Lecture consolidee EduPay" }
@@ -1447,21 +1447,21 @@ export function FinancialOperationsPage() {
 
   function exportOperationsWorkbook() {
     if (!overview) return;
-    exportWorkbook(`pack-financier-operations-${new Date().toISOString().slice(0, 10)}`, [
+    exportWorkbook(`pack-financier-opérations-${new Date().toISOString().slice(0, 10)}`, [
       {
         name: "Synthese",
         rows: [{
-          "Depenses": overview.expenses.totalExpenses,
+          "Dépenses": overview.expenses.totalExpenses,
           "Budgets": budgets.length,
           "Paies": payrollRuns.length,
           "Comptabilite": accountingEntries.length,
-          "Tresorerie": cashflowEntries.length,
+          "Trésorerie": cashflowEntries.length,
           "Documents": documentEntries.length,
           "Cash disponible": overview.cashflow.availableCash
         }]
       },
       {
-        name: "Depenses",
+        name: "Dépenses",
         rows: expenses.map((expense) => ({
           "Date": new Date(expense.expenseDate).toLocaleDateString("fr-FR"),
           "Titre": expense.title,
@@ -1511,14 +1511,14 @@ export function FinancialOperationsPage() {
         }))
       },
       {
-        name: "Tresorerie",
+        name: "Trésorerie",
         rows: cashflowEntries.map((entry) => ({
-          "Date": new Date(entry.referenceDate).toLocaleDateString("fr-FR"),
+          "Date": new Date(entry.référenceDate).toLocaleDateString("fr-FR"),
           "Source": entry.sourceType,
           "Direction": entry.direction,
           "Montant": entry.amount,
-          "Methode": entry.method || "",
-          "Reference": entry.expense?.title || entry.payrollRun?.title || entry.payrollItem?.salarySlipNumber || "",
+          "Méthode": entry.method || "",
+          "Référence": entry.expense?.title || entry.payrollRun?.title || entry.payrollItem?.salarySlipNumber || "",
           "Notes": entry.notes || ""
         }))
       },
@@ -1546,7 +1546,7 @@ export function FinancialOperationsPage() {
       setVendors((current) => [created, ...current]);
       setVendorForm(EMPTY_VENDOR_FORM);
       setActiveSubDialog(null);
-      setSuccess("Fournisseur ajoute.");
+      setSuccess("Fournisseur ajout?.");
     } catch (submitError) {
       setActionError(submitError instanceof Error ? submitError.message : "Impossible de creer le fournisseur.");
     } finally {
@@ -1582,7 +1582,7 @@ export function FinancialOperationsPage() {
       setSelectedVendorId(updated.id);
       setEditingVendorId(null);
       setVendorEditForm(EMPTY_VENDOR_FORM);
-      setSuccess("Fournisseur modifie.");
+      setSuccess("Fournisseur modifi?.");
     } catch (submitError) {
       setActionError(submitError instanceof Error ? submitError.message : "Impossible de modifier le fournisseur.");
     } finally {
@@ -1603,7 +1603,7 @@ export function FinancialOperationsPage() {
       setExpenses((current) => current.map((expense) => expense.vendor?.id === vendor.id ? { ...expense, vendor: null } : expense));
       if (selectedVendorId === vendor.id) setSelectedVendorId(null);
       if (editingVendorId === vendor.id) setEditingVendorId(null);
-      setSuccess("Fournisseur supprime sans effacer les depenses historiques.");
+      setSuccess("Fournisseur supprim? sans effacer les dépenses historiques.");
     } catch (submitError) {
       setActionError(submitError instanceof Error ? submitError.message : "Impossible de supprimer le fournisseur.");
     } finally {
@@ -1631,7 +1631,7 @@ export function FinancialOperationsPage() {
       setBudgets((current) => [created, ...current]);
       setBudgetForm(EMPTY_BUDGET_FORM);
       setActiveSubDialog(null);
-      setSuccess("Budget enregistre.");
+      setSuccess("Budget enregistré.");
       await refreshOverview();
       await refreshLedgers();
     } catch (submitError) {
@@ -1683,7 +1683,7 @@ export function FinancialOperationsPage() {
       setExpenseForm(EMPTY_EXPENSE_FORM);
       setPendingAttachments([]);
       setActiveSubDialog(null);
-      setSuccess("Depense soumise au workflow d'approbation.");
+      setSuccess("Dépense soumise au workflow d'approbation.");
       await refreshOverview();
       await refreshLedgers();
     } catch (submitError) {
@@ -1703,7 +1703,7 @@ export function FinancialOperationsPage() {
         body: JSON.stringify({ status })
       });
       setExpenses((current) => current.map((expense) => expense.id === expenseId ? updated : expense));
-      setSuccess(status === "APPROVED" ? "Etape d'approbation validee." : "Depense rejetee.");
+      setSuccess(status === "APPROVED" ? "Étape d'approbation validée." : "Dépense rejetée.");
       await refreshOverview();
       await refreshLedgers();
     } catch (submitError) {
@@ -1737,7 +1737,7 @@ export function FinancialOperationsPage() {
       setSalaryProfiles((current) => [created, ...current]);
       setSalaryForm(EMPTY_SALARY_FORM);
       setActiveSubDialog(null);
-      setSuccess("Profil salarial ajoute.");
+      setSuccess("Profil salarial ajout?.");
       await refreshOverview();
       await refreshLedgers();
     } catch (submitError) {
@@ -1765,7 +1765,7 @@ export function FinancialOperationsPage() {
       setPayrollRuns((current) => [created, ...current]);
       setPayrollForm(EMPTY_PAYROLL_FORM);
       setActiveSubDialog(null);
-      setSuccess("Run de paie genere.");
+      setSuccess("Run de paie généré.");
       await refreshOverview();
       await refreshLedgers();
     } catch (submitError) {
@@ -1779,9 +1779,9 @@ export function FinancialOperationsPage() {
     return (
       <div className="flex min-h-[65vh] items-center justify-center px-4">
         <div className="glass max-w-xl rounded-2xl border border-red-500/20 p-8 text-center shadow-xl">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-300">{L("Operations indisponibles", "Operations unavailable")}</p>
-          <h1 className="mt-3 font-display text-3xl font-bold text-white">{L("Les operations financieres ne sont pas disponibles", "Financial operations are unavailable")}</h1>
-          <p className="mt-3 text-sm text-ink-dim">{error ?? L("Aucune donnee n'a ete renvoyee.", "No data was returned.")}</p>
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-300">{L("Opérations indisponibles", "Operations unavailable")}</p>
+          <h1 className="mt-3 font-display text-3xl font-bold text-white">{L("Les opérations financières ne sont pas disponibles", "Financial Operations are unavailable")}</h1>
+          <p className="mt-3 text-sm text-ink-dim">{error ?? L("Aucune donnée n'a été renvoyée.", "No data was returned.")}</p>
         </div>
       </div>
     );
@@ -1983,7 +1983,7 @@ export function FinancialOperationsPage() {
 
       {!canWrite && (
         <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
-          Votre role est en lecture seule. Les formulaires de creation restent masques, mais les journaux et statuts restent consultables.
+          Votre role est en lecture seule. Les formulaires de création restent masques, mais les journaux et statuts restent consultables.
         </div>
       )}
 
@@ -2045,7 +2045,7 @@ export function FinancialOperationsPage() {
                         </div>
                         <div>
                           <p className="text-ink-dim">Beneficiaire</p>
-                          <p className="font-semibold text-white">{expense.vendor?.name ?? expense.supplierName ?? "Non precise"}</p>
+                          <p className="font-semibold text-white">{expense.vendor?.name ?? expense.supplierName ?? "Non précisé"}</p>
                         </div>
                         <div>
                           <p className="text-ink-dim">Mode / etape</p>
@@ -2087,17 +2087,17 @@ export function FinancialOperationsPage() {
                     </article>
                   );
                 })}
-                {!filteredExpenses.length && <p className="text-sm text-ink-dim">Aucune depense ne correspond au filtre actuel.</p>}
+                {!filteredExpenses.length && <p className="text-sm text-ink-dim">Aucune dépense ne correspond au filtre actuel.</p>}
               </div>
             </SectionCard>
 
-            <SectionCard title="Arborescence des actions" subtitle="Choisissez une branche, puis travaillez dans une boite de dialogue dediee.">
+            <SectionCard title="Arborescence des actions" subtitle="Choisissez une branche, puis travaillez dans une boite de dialogue dédiée.">
               <div className="grid gap-3">
                 <div className="rounded-2xl border border-cyan-300/15 bg-cyan-400/10 p-4">
                   <div className="flex items-start gap-3">
                     <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-cyan-200" />
                     <div>
-                      <p className="font-semibold text-white">Depenses</p>
+                      <p className="font-semibold text-white">Dépenses</p>
                       <p className="mt-1 text-sm text-ink-dim">Workflow principal: consulter, filtrer, valider ou rejeter les demandes.</p>
                     </div>
                   </div>
@@ -2114,7 +2114,7 @@ export function FinancialOperationsPage() {
                     />
                     <ActionNodeCard
                       title="Nouveau fournisseur"
-                      subtitle="Creer un tiers payable avant de lier une depense."
+                      subtitle="Créer un tiers payable avant de lier une depense."
                       detail={`${vendors.length} fournisseurs actifs`}
                       icon={UserPlus}
                       tone="border-brand-300/25 bg-brand-500/10 text-brand-100"
@@ -2160,7 +2160,7 @@ export function FinancialOperationsPage() {
                       <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
                         Budget associe
                         <select className="input" value={expenseForm.budgetId} onChange={(event) => setExpenseForm((current) => ({ ...current, budgetId: event.target.value }))}>
-                          <option value="">Aucun budget lie</option>
+                          <option value="">Aucun budget li?</option>
                           {budgets.map((budget) => <option key={budget.id} value={budget.id}>{budget.name}</option>)}
                         </select>
                       </label>
@@ -2188,8 +2188,8 @@ export function FinancialOperationsPage() {
                         <input className="input" value={expenseForm.beneficiaryAccount} onChange={(event) => setExpenseForm((current) => ({ ...current, beneficiaryAccount: event.target.value }))} placeholder="IBAN, compte, MPESA, Airtel..." />
                       </label>
                       <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
-                        Reference paiement
-                        <input className="input" value={expenseForm.beneficiaryReference} onChange={(event) => setExpenseForm((current) => ({ ...current, beneficiaryReference: event.target.value }))} placeholder="Cheque, facture, transaction" />
+                        Référence paiement
+                        <input className="input" value={expenseForm.beneficiaryRéférence} onChange={(event) => setExpenseForm((current) => ({ ...current, beneficiaryRéférence: event.target.value }))} placeholder="Cheque, facture, transaction" />
                       </label>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
@@ -2206,7 +2206,7 @@ export function FinancialOperationsPage() {
                       <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
                         Mode de paiement
                         <select className="input" value={expenseForm.paymentMethod} onChange={(event) => setExpenseForm((current) => ({ ...current, paymentMethod: event.target.value }))}>
-                          <option value="">Non precise</option>
+                          <option value="">Non précisé</option>
                           {PAYMENT_METHODS.map((method) => <option key={method} value={method}>{method}</option>)}
                         </select>
                       </label>
@@ -2221,8 +2221,8 @@ export function FinancialOperationsPage() {
                         <input className="input" value={expenseForm.attachmentName} onChange={(event) => setExpenseForm((current) => ({ ...current, attachmentName: event.target.value }))} placeholder="Ex: Facture, bon de livraison" />
                       </label>
                       <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
-                        Reference document
-                        <input className="input" value={expenseForm.attachmentUrl} onChange={(event) => setExpenseForm((current) => ({ ...current, attachmentUrl: event.target.value }))} placeholder="URL, numero ou reference interne" />
+                        Référence document
+                        <input className="input" value={expenseForm.attachmentUrl} onChange={(event) => setExpenseForm((current) => ({ ...current, attachmentUrl: event.target.value }))} placeholder="URL, numéro ou référence interne" />
                       </label>
                     </div>
                     <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
@@ -2261,7 +2261,7 @@ export function FinancialOperationsPage() {
           )}
 
           {activeSubDialog === "vendor-create" && canWrite && (
-            <OperationsSubDialog title="Nouveau fournisseur" subtitle="Creer un tiers payable pour les achats, abonnements et utilities." onClose={() => setActiveSubDialog(null)}>
+            <OperationsSubDialog title="Nouveau fournisseur" subtitle="Créer un tiers payable pour les achats, abonnements et utilities." onClose={() => setActiveSubDialog(null)}>
               <form className="grid gap-3" onSubmit={handleCreateVendor}>
                     <input className="input" value={vendorForm.name} onChange={(event) => setVendorForm((current) => ({ ...current, name: event.target.value }))} placeholder="Nom fournisseur" required />
                     <input className="input" value={vendorForm.contactName} onChange={(event) => setVendorForm((current) => ({ ...current, contactName: event.target.value }))} placeholder="Personne contact" />
@@ -2344,7 +2344,7 @@ export function FinancialOperationsPage() {
                           <InfoPill label="Telephone" value={selectedVendor.phone || "Non renseigne"} />
                           <InfoPill label="Email" value={selectedVendor.email || "Non renseigne"} />
                           <InfoPill label="Adresse" value={selectedVendor.address || "Non renseigne"} />
-                          <InfoPill label="Depenses liees" value={String(vendorUsage[selectedVendor.id]?.count ?? 0)} />
+                          <InfoPill label="Dépenses liees" value={String(vendorUsage[selectedVendor.id]?.count ?? 0)} />
                           <InfoPill label="Volume total" value={currency.format(vendorUsage[selectedVendor.id]?.total ?? 0)} />
                         </div>
                         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
@@ -2357,7 +2357,7 @@ export function FinancialOperationsPage() {
                         </div>
                       </div>
                     ) : (
-                      <p className="text-sm text-ink-dim">Selectionnez un fournisseur pour afficher sa fiche detaillee.</p>
+                      <p className="text-sm text-ink-dim">Sélectionnez un fournisseur pour afficher sa fiche détaillée.</p>
                     )}
                   </div>
                 </div>
@@ -2370,7 +2370,7 @@ export function FinancialOperationsPage() {
       {activeTab === "budgets" && (
         <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
           {canWrite && (
-            <SectionCard title="Arborescence budgetaire" subtitle="Les actions d'ecriture s'ouvrent dans une boite dediee, le suivi reste visible.">
+            <SectionCard title="Arborescence budgétaire" subtitle="Les actions d'écriture s'ouvrent dans une boîte dédiée, le suivi reste visible.">
               <div className="grid gap-3">
                 <ActionNodeCard
                   title="Nouveau budget"
@@ -2399,7 +2399,7 @@ export function FinancialOperationsPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="font-semibold text-white">{budget.name}</p>
-                      <p className="mt-1 text-xs text-ink-dim">{budget.department} • {budget.period?.name ?? "Periode active"} • {budget.category?.name ?? "Budget global"}</p>
+                      <p className="mt-1 text-xs text-ink-dim">{budget.department} • {budget.period?.name ?? "Période active"} • {budget.category?.name ?? "Budget global"}</p>
                     </div>
                     <StatusBadge value={budget.status} />
                   </div>
@@ -2444,7 +2444,7 @@ export function FinancialOperationsPage() {
                   />
                   <ActionNodeCard
                     title="Lancer une paie"
-                    subtitle="Generer un run depuis les profils salariaux actifs."
+                    subtitle="Générer un run depuis les profils salariaux actifs."
                     detail={`${payrollRuns.length} run(s)`}
                     icon={CircleDollarSign}
                     tone="border-emerald-300/25 bg-emerald-500/10 text-emerald-100"
@@ -2482,7 +2482,7 @@ export function FinancialOperationsPage() {
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
                         <p className="font-semibold text-white">{run.title}</p>
-                        <p className="mt-1 text-xs text-ink-dim">{run.department || "Tous departements"} • {run.period?.name ?? "Periode active"} • {labelizeFrequency(run.frequency)}</p>
+                        <p className="mt-1 text-xs text-ink-dim">{run.department || "Tous departements"} • {run.period?.name ?? "Période active"} • {labelizeFrequency(run.frequency)}</p>
                       </div>
                       <StatusBadge value={run.status} />
                     </div>
@@ -2520,7 +2520,7 @@ export function FinancialOperationsPage() {
                     </div>
                   </article>
                 ))}
-                {!payrollRuns.length && <p className="text-sm text-ink-dim">Aucun run de paie genere pour l'instant.</p>}
+                {!payrollRuns.length && <p className="text-sm text-ink-dim">Aucun run de paie généré pour l'instant.</p>}
               </div>
             </SectionCard>
           </div>
@@ -2602,7 +2602,7 @@ export function FinancialOperationsPage() {
           )}
 
           {activeSubDialog === "payroll-run-create" && canWrite && (
-            <OperationsSubDialog title="Lancer une paie" subtitle="Genere un run avec calcul net et sorties de cash correspondantes." onClose={() => setActiveSubDialog(null)}>
+            <OperationsSubDialog title="Lancer une paie" subtitle="Génère un run avec calcul net et sorties de cash correspondantes." onClose={() => setActiveSubDialog(null)}>
               <form className="grid gap-3" onSubmit={handleCreatePayrollRun}>
                 <input className="input" value={payrollForm.title} onChange={(event) => setPayrollForm((current) => ({ ...current, title: event.target.value }))} placeholder="Titre du run" required />
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -2613,7 +2613,7 @@ export function FinancialOperationsPage() {
                 </div>
                 <textarea className="input min-h-24" value={payrollForm.notes} onChange={(event) => setPayrollForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes du run" />
                 <button type="submit" disabled={submittingKey === "payroll"} className="rounded-xl border border-brand-500/30 bg-brand-500/10 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-500/20 disabled:opacity-60">
-                  Generer la paie
+                  Générer la paie
                 </button>
               </form>
             </OperationsSubDialog>
@@ -2725,7 +2725,7 @@ export function FinancialOperationsPage() {
                   </div>
                 </article>
               ))}
-              {!filteredAccountingEntries.length && <p className="text-sm text-ink-dim">Aucune ecriture comptable disponible pour le filtre actuel.</p>}
+              {!filteredAccountingEntries.length && <p className="text-sm text-ink-dim">Aucune écriture comptable disponible pour le filtre actuel.</p>}
             </div>
           </SectionCard>
         </div>
@@ -2733,10 +2733,10 @@ export function FinancialOperationsPage() {
 
       {activeTab === "cashflow" && (
         <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
-          <SectionCard title="Tresorerie" subtitle="Journal des sorties et mouvements de cash relies aux operations financieres.">
+          <SectionCard title="Trésorerie" subtitle="Journal des sorties et mouvements de cash reliés aux opérations financières.">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
               <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Lignes de tresorerie</p>
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Lignes de trésorerie</p>
                 <p className="mt-2 text-2xl font-bold text-white">{cashflowEntries.length}</p>
                 <p className="mt-2 text-xs text-ink-dim">Nombre d'enregistrements utilisés pour la lecture de cashflow.</p>
               </div>
@@ -2773,7 +2773,7 @@ export function FinancialOperationsPage() {
             </div>
           </SectionCard>
 
-          <SectionCard title="Journal de cashflow" subtitle="Reference, source, moyen de paiement et notes operationnelles.">
+          <SectionCard title="Journal de cashflow" subtitle="Référence, source, moyen de paiement et notes opérationnelles.">
             <div className="mb-4 grid gap-2 xl:grid-cols-[minmax(180px,0.7fr)_auto_auto]">
               <SearchField
                 value={cashflowSearch}
@@ -2792,8 +2792,8 @@ export function FinancialOperationsPage() {
             </div>
             {cashflowPeriodFilter === "CUSTOM" && (
               <div className="mb-4 grid gap-2 sm:grid-cols-2">
-                <input className="input h-9 text-xs" type="date" value={cashflowDateFrom} onChange={(event) => setCashflowDateFrom(event.target.value)} aria-label="Date debut tresorerie" />
-                <input className="input h-9 text-xs" type="date" value={cashflowDateTo} onChange={(event) => setCashflowDateTo(event.target.value)} aria-label="Date fin tresorerie" />
+                <input className="input h-9 text-xs" type="date" value={cashflowDateFrom} onChange={(event) => setCashflowDateFrom(event.target.value)} aria-label="Date début trésorerie" />
+                <input className="input h-9 text-xs" type="date" value={cashflowDateTo} onChange={(event) => setCashflowDateTo(event.target.value)} aria-label="Date fin trésorerie" />
               </div>
             )}
             <p className="mb-4 text-xs font-semibold uppercase tracking-[0.14em] text-cyan-100">
@@ -2839,7 +2839,7 @@ export function FinancialOperationsPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="font-semibold text-white">{entry.sourceType}</p>
-                      <p className="mt-1 text-xs text-ink-dim">{new Date(entry.referenceDate).toLocaleDateString("fr-FR")} • {entry.method || "Sans methode"}</p>
+                      <p className="mt-1 text-xs text-ink-dim">{new Date(entry.référenceDate).toLocaleDateString("fr-FR")} • {entry.method || "Sans methode"}</p>
                     </div>
                     <div className="flex items-center gap-2">
                       <StatusBadge value={entry.direction} />
@@ -2854,7 +2854,7 @@ export function FinancialOperationsPage() {
                   {entry.notes && <p className="mt-3 text-sm text-ink-dim">{entry.notes}</p>}
                 </article>
               ))}
-              {!filteredCashflowEntries.length && <p className="text-sm text-ink-dim">Aucun mouvement de tresorerie disponible pour le filtre actuel.</p>}
+              {!filteredCashflowEntries.length && <p className="text-sm text-ink-dim">Aucun mouvement de trésorerie disponible pour le filtre actuel.</p>}
             </div>
           </SectionCard>
         </div>
@@ -2862,18 +2862,18 @@ export function FinancialOperationsPage() {
 
       {activeTab === "documents" && (
         <div className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
-          <SectionCard title="Depot documentaire" subtitle="Toutes les pieces justificatives attachees aux depenses sont visibles ici.">
+          <SectionCard title="Depot documentaire" subtitle="Toutes les pieces justificatives attachées aux depenses sont visibles ici.">
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
               <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                 <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Documents indexes</p>
                 <p className="mt-2 text-2xl font-bold text-white">{documentEntries.length}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
-                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Depenses documentees</p>
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Dépenses documentees</p>
                 <p className="mt-2 text-2xl font-bold text-white">{expenses.filter((expense) => (expense.attachments?.length ?? 0) > 0).length}</p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4 text-sm text-ink-dim">
-                Ajoutez des justificatifs depuis l'onglet Depenses avec un vrai upload de fichiers ou une reference URL.
+                Ajoutez des justificatifs depuis l'onglet Dépenses avec un vrai upload de fichiers ou une référence URL.
               </div>
             </div>
           </SectionCard>
@@ -2894,7 +2894,7 @@ export function FinancialOperationsPage() {
                       Ouvrir
                     </button>
                     <button onClick={() => downloadDocument(entry)} className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-2 text-sm font-semibold text-white hover:border-brand-300/25 hover:bg-brand-500/10">
-                      Telecharger
+                      Télécharger
                     </button>
                   </div>
                 </article>

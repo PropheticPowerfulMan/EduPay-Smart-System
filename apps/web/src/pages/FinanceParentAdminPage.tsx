@@ -56,7 +56,7 @@ type FinanceSnapshot = {
     completionRate: number;
     overdueInstallments: number;
   }>;
-  reductions: Array<{
+  réductions: Array<{
     id: string;
     title: string;
     amount: number;
@@ -119,7 +119,7 @@ type AllocationTrace = {
   }>;
 };
 
-type AdminParentModule = "students" | "debts" | "alerts" | "reductions" | "agreements" | "payments";
+type AdminParentModule = "students" | "debts" | "alerts" | "réductions" | "agreements" | "payments";
 type AdminParentAction = "assignment" | "agreement";
 
 function uniqueReductionRows<T extends { studentName?: string | null; scope?: string | null; amount: number; title: string }>(rows: T[]) {
@@ -130,7 +130,7 @@ function uniqueReductionRows<T extends { studentName?: string | null; scope?: st
   }, new Map<string, T>()).values());
 }
 
-type ReductionDisplayRow = FinanceSnapshot["reductions"][number];
+type ReductionDisplayRow = FinanceSnapshot["réductions"][number];
 
 function getReductionOrigin(row: Pick<ReductionDisplayRow, "scope" | "title" | "paymentOptionType">) {
   const scope = String(row.scope ?? "").toUpperCase();
@@ -245,12 +245,12 @@ const pageCopy = {
     completion: "Couverture {{rate}}%",
     paid: "Payé",
     debt: "Dette",
-    reductions: "Bourses",
+    réductions: "Bourses",
     carryOver: "Solde antérieur inclus",
     overdue: "Échéances en retard",
     paidHelp: "Montant déjà encaissé sur le plan de scolarité.",
     debtHelp: "Reste à payer selon le plan actif et les ajustements.",
-    reductionsHelp: "Bourses, remises et réductions appliquées au dossier.",
+    réductionsHelp: "Bourses, remises et réductions appliquées au dossier.",
     carryOverHelp: "Dette d'une année précédente ramenée dans le suivi actuel.",
     overdueHelp: "Échéances du plan de paiement qui ne sont pas encore soldées.",
     coveredMetric: "{{rate}} % couvert",
@@ -262,8 +262,8 @@ const pageCopy = {
     historicalDebtsSubtitle: "Synthèse détaillée des dettes du parent : montants, années, échéances, dates de création, règlements et soldes.",
     alertsTitle: "Alertes",
     alertsSubtitle: "Alertes de retard, anomalies et pression de recouvrement.",
-    reductionsTitle: "Bourses et réductions",
-    reductionsSubtitle: "Bourses, remises officielles et avantages appliqués au dossier.",
+    réductionsTitle: "Bourses et réductions",
+    réductionsSubtitle: "Bourses, remises officielles et avantages appliqués au dossier.",
     agreementsTitle: "Accords spéciaux",
     agreementsSubtitle: "Accords propriétaire/direction, statuts et soldes restants.",
     paymentsTitle: "Paiements",
@@ -367,7 +367,7 @@ const pageCopy = {
     optionSpecialOwnerAgreement: "Bourse / accord manuel parent-école",
     scholarshipAgreementTitle: "Accord manuel parent-école",
     scholarshipAgreementHelp: "Cette 5e possibilité est déterminée manuellement par le financier. La différence entre le montant officiel et le montant accepté est classée comme bourse.",
-    officialReferenceAmount: "Montant officiel de référence",
+    officialRéférenceAmount: "Montant officiel de référence",
     agreedTuitionTotal: "Total accepté par l'école",
     scholarshipAmount: "Bourse / réduction accordée",
     scholarshipInstallmentsHelp: "Les échéances ci-dessous représentent le montant que le parent paiera réellement.",
@@ -398,16 +398,16 @@ const pageCopy = {
     loadFinanceError: "Unable to load finance data.",
     assignmentSuccess: "Official plan assigned successfully.",
     assignmentError: "Unable to assign the official plan.",
-    agreementValidationError: "Complete the title, total, and at least one valid installment for the special agreement.",
+    agreementValidationError: "Complete the title, total, and at least one valid installment for the spécial agreement.",
     agreementSuccess: "Special agreement saved successfully.",
-    agreementError: "Unable to create the special agreement.",
+    agreementError: "Unable to create the spécial agreement.",
     loading: "Loading parent financial tracking...",
     emptyEyebrow: "Parent finance",
     emptyTitle: "No parent available",
     emptyBody: "Add a parent to activate detailed financial tracking.",
     pageEyebrow: "Financial administration",
     pageTitle: "Detailed parent financial tracking",
-    pageSubtitle: "Module-based view: active plans, scholarships, historical debts, alerts, special agreements, and payments.",
+    pageSubtitle: "Module-based view: active plans, scholarships, historical debts, alerts, spécial agreements, and payments.",
     searchPlaceholder: "Search by parent, phone, email...",
     profileLoading: "Loading financial profile...",
     phoneMissing: "Phone not provided",
@@ -418,12 +418,12 @@ const pageCopy = {
     completion: "Completion {{rate}}%",
     paid: "Paid",
     debt: "Debt",
-    reductions: "Scholarships",
+    réductions: "Scholarships",
     carryOver: "Previous balance included",
     overdue: "Overdue installments",
     paidHelp: "Amount already collected on the tuition plan.",
     debtHelp: "Remaining amount due under the active plan and adjustments.",
-    reductionsHelp: "Scholarships, discounts, and reductions applied to the file.",
+    réductionsHelp: "Scholarships, discounts, and réductions applied to the file.",
     carryOverHelp: "Debt from a previous year brought into the current tracking view.",
     overdueHelp: "Installments in the payment plan that are not settled yet.",
     coveredMetric: "{{rate}}% covered",
@@ -432,18 +432,18 @@ const pageCopy = {
     studentsPlansTitle: "Children and plans",
     studentsPlansSubtitle: "Active plans, progress, balances, and overdue items by child.",
     historicalDebtsTitle: "Historical debts",
-    historicalDebtsSubtitle: "Detailed summary of the parent's debts: amounts, years, due dates, creation dates, settlements, and balances.",
+    historicalDebtsSubtitle: "Detailed summary of the parent's debts: amounts, years, due dates, création dates, settlements, and balances.",
     alertsTitle: "Alerts",
     alertsSubtitle: "Late-payment alerts, anomalies, and collection pressure.",
-    reductionsTitle: "Scholarships and reductions",
-    reductionsSubtitle: "Scholarships, official discounts, and benefits applied to the file.",
+    réductionsTitle: "Scholarships and réductions",
+    réductionsSubtitle: "Scholarships, official discounts, and benefits applied to the file.",
     agreementsTitle: "Special agreements",
     agreementsSubtitle: "Owner/management agreements, statuses, and remaining balances.",
     paymentsTitle: "Payments",
     paymentsSubtitle: "Payment history and receipts linked to the parent.",
     open: "Open",
     adminFileEyebrow: "Parent administrative file",
-    adminFileTitle: "Official plans and special agreements",
+    adminFileTitle: "Official plans and spécial agreements",
     adminFileSubtitle: "Sensitive actions remain attached to the selected parent and open in a dedicated window.",
     plans: "Plans",
     agreements: "Agreements",
@@ -451,7 +451,7 @@ const pageCopy = {
     assignPlanSubtitle: "Assign an official KCS plan to the whole parent account or to a specific child.",
     openWindow: "Open window",
     createAgreementTitle: "Create owner agreement",
-    createAgreementSubtitle: "Create a management agreement with installments, reductions, and private notes.",
+    createAgreementSubtitle: "Create a management agreement with installments, réductions, and private notes.",
     classMissing: "Class not provided",
     balance: "Balance",
     coverage: "Coverage",
@@ -494,7 +494,7 @@ const pageCopy = {
     noReductionApplied: "No reduction applied.",
     noReductionTracked: "No reduction tracked.",
     parentAccount: "Parent account",
-    noAgreement: "No special agreement.",
+    noAgreement: "No spécial agreement.",
     noHistoricalPayment: "No historical payment available.",
     noLinkedStudent: "No linked student",
     selectedParent: "Selected parent",
@@ -523,7 +523,7 @@ const pageCopy = {
     publicNotesPlaceholder: "Visible notes for the financial file",
     privateNotesPlaceholder: "Private owner / management notes",
     creating: "Creating...",
-    saveAgreement: "Save special agreement",
+    saveAgreement: "Save spécial agreement",
     studentsAssignedPlans: "Students and assigned plans",
     coverageText: "{{rate}}% covered",
     overdueInstallments: "{{count}} overdue installment(s)",
@@ -540,7 +540,7 @@ const pageCopy = {
     optionSpecialOwnerAgreement: "Scholarship / manual parent-school agreement",
     scholarshipAgreementTitle: "Manual parent-school agreement",
     scholarshipAgreementHelp: "This 5th option is set manually by finance. The difference between the official amount and the accepted amount is stored under Scholarship.",
-    officialReferenceAmount: "Official reference amount",
+    officialRéférenceAmount: "Official référence amount",
     agreedTuitionTotal: "Total accepted by the school",
     scholarshipAmount: "Scholarship / reduction granted",
     scholarshipInstallmentsHelp: "The installments below are the amount the parent will actually pay.",
@@ -805,7 +805,7 @@ export function FinanceParentAdminPage() {
   const summaryCards = snapshot ? [
     { label: copy.paid, value: money.format(snapshot.profile.totalPaid), detail: copy.paidHelp, color: "text-emerald-300", Icon: WalletCards },
     { label: copy.debt, value: money.format(snapshot.profile.totalDebt), detail: copy.debtHelp, color: "text-red-300", Icon: AlertTriangle },
-    { label: copy.reductions, value: money.format(snapshot.profile.totalReduction), detail: copy.reductionsHelp, color: "text-cyan-300", Icon: HandCoins },
+    { label: copy.réductions, value: money.format(snapshot.profile.totalReduction), detail: copy.réductionsHelp, color: "text-cyan-300", Icon: HandCoins },
     { label: copy.carryOver, value: money.format(snapshot.profile.carriedOverDebt), detail: copy.carryOverHelp, color: "text-amber-300", Icon: FileClock },
     { label: copy.overdue, value: String(snapshot.profile.overdueInstallments), detail: copy.overdueHelp, color: "text-orange-300", Icon: ShieldAlert }
   ] : [];
@@ -826,7 +826,7 @@ export function FinanceParentAdminPage() {
   const firstDueDate = debtDueDates.length ? new Date(Math.min(...debtDueDates.map((date) => date.getTime()))) : null;
   const lastDueDate = debtDueDates.length ? new Date(Math.max(...debtDueDates.map((date) => date.getTime()))) : null;
   const paymentCount = snapshot?.paymentHistory?.length ?? 0;
-  const visibleReductions = snapshot ? uniqueReductionRows(snapshot.reductions) : [];
+  const visibleReductions = snapshot ? uniqueReductionRows(snapshot.réductions) : [];
   const groupedReductions = groupReductionRows(visibleReductions);
   const scholarshipRows = visibleReductions.filter((reduction) =>
     reduction.scope === "MANUAL" ||
@@ -846,7 +846,7 @@ export function FinanceParentAdminPage() {
     { id: "students", title: copy.studentsPlansTitle, subtitle: copy.studentsPlansSubtitle, count: snapshot.students.length, metric: formatCopy(copy.coveredMetric, { rate: snapshot.profile.completionRate.toFixed(1) }), Icon: CalendarClock, toneClass: "border-brand-300/20 bg-brand-500/10 text-brand-100" },
     { id: "debts", title: copy.historicalDebtsTitle, subtitle: copy.historicalDebtsSubtitle, count: snapshot.debts.length, metric: money.format(historicalDebtTotal), Icon: FileClock, toneClass: "border-red-300/20 bg-red-500/10 text-red-100" },
     { id: "alerts", title: copy.alertsTitle, subtitle: copy.alertsSubtitle, count: snapshot.alerts.length, metric: formatCopy(copy.lateMetric, { count: snapshot.profile.overdueInstallments }), Icon: ShieldAlert, toneClass: "border-amber-300/20 bg-amber-500/10 text-amber-100" },
-    { id: "reductions", title: copy.reductionsTitle, subtitle: copy.reductionsSubtitle, count: groupedReductions.length || visibleReductions.length, metric: money.format(scholarshipTotal || snapshot.profile.totalReduction), Icon: HandCoins, toneClass: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100" },
+    { id: "réductions", title: copy.réductionsTitle, subtitle: copy.réductionsSubtitle, count: groupedReductions.length || visibleReductions.length, metric: money.format(scholarshipTotal || snapshot.profile.totalReduction), Icon: HandCoins, toneClass: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100" },
     { id: "agreements", title: copy.agreementsTitle, subtitle: copy.agreementsSubtitle, count: snapshot.agreements.length, metric: snapshot.agreements[0] ? money.format(snapshot.agreements[0].balanceDue) : copy.none, Icon: Save, toneClass: "border-emerald-300/20 bg-emerald-500/10 text-emerald-100" },
     { id: "payments", title: copy.paymentsTitle, subtitle: copy.paymentsSubtitle, count: paymentCount, metric: money.format(snapshot.profile.totalPaid), Icon: ReceiptText, toneClass: "border-violet-300/20 bg-violet-500/10 text-violet-100" }
   ] : [];
@@ -856,10 +856,10 @@ export function FinanceParentAdminPage() {
   const selectedAgreementStudents = agreementForm.studentId
     ? availableStudents.filter((student) => student.id === agreementForm.studentId)
     : availableStudents;
-  const suggestedOfficialReference = selectedAgreementStudents.reduce((sum, student) => sum + Number(student.annualFee || 0), 0);
-  const displayedOfficialReference = Number(agreementForm.customTotal || 0) || suggestedOfficialReference;
+  const suggestedOfficialRéférence = selectedAgreementStudents.reduce((sum, student) => sum + Number(student.annualFee || 0), 0);
+  const displayedOfficialRéférence = Number(agreementForm.customTotal || 0) || suggestedOfficialRéférence;
   const displayedScholarshipAmount = Number(agreementForm.reductionAmount || 0) ||
-    Math.max(displayedOfficialReference - agreementInstallmentsTotal, 0);
+    Math.max(displayedOfficialRéférence - agreementInstallmentsTotal, 0);
   const matchingPlanCount = useMemo(() => {
     if (!catalog) return 0;
     return catalog.plans.filter((plan) => paymentOptionChoices.some((option) => option.value === plan.paymentOptionType)).length;
@@ -916,7 +916,7 @@ export function FinanceParentAdminPage() {
     }
     const targetStudentId = isManualScholarshipPlan ? assignmentForm.studentId : agreementForm.studentId;
     const agreementTitle = agreementForm.title.trim() || copy.scholarshipAgreementTitle;
-    const referenceTotal = Number(agreementForm.customTotal || 0) || suggestedOfficialReference;
+    const référenceTotal = Number(agreementForm.customTotal || 0) || suggestedOfficialRéférence;
     const reductionAmount = Number(agreementForm.reductionAmount || 0);
     const installments = agreementForm.installments
       .filter((row) => row.label.trim() && row.dueDate.trim() && Number(row.amountDue) > 0)
@@ -936,7 +936,7 @@ export function FinanceParentAdminPage() {
       setError("Veuillez sélectionner un élève.");
       return;
     }
-    if (referenceTotal <= 0) {
+    if (référenceTotal <= 0) {
       setError("Le montant total doit être supérieur à zéro.");
       return;
     }
@@ -959,7 +959,7 @@ export function FinanceParentAdminPage() {
           parentId: selectedParent.id,
           studentId: targetStudentId,
           title: agreementTitle,
-          customTotal: referenceTotal,
+          customTotal: référenceTotal,
           reductionAmount,
           gradeGroup: agreementForm.gradeGroup,
           status: isManualScholarshipPlan ? "APPROVED" : agreementForm.status,
@@ -1368,7 +1368,7 @@ export function FinanceParentAdminPage() {
                     </div>
                   )}
 
-                  {activeModule === "reductions" && (
+                  {activeModule === "réductions" && (
                     <div className="space-y-4">
                       {groupedReductions.length === 0 && <p className="text-sm text-ink-dim">{copy.noReductionApplied}</p>}
                       {groupedReductions.map((group) => (
@@ -1787,7 +1787,7 @@ export function FinanceParentAdminPage() {
 
                 <div className="space-y-6">
                   <div className="card glass border border-white/10 shadow-lg">
-                    <h3 className="font-display text-xl font-bold text-white">{copy.reductionsTitle}</h3>
+                    <h3 className="font-display text-xl font-bold text-white">{copy.réductionsTitle}</h3>
                     <div className="mt-5 space-y-3">
                       {groupedReductions.length === 0 && <p className="text-sm text-ink-dim">{copy.noReductionTracked}</p>}
                       {groupedReductions.map((group) => (

@@ -98,6 +98,51 @@ type ParentFinanceSnapshot = {
   debts: ParentFinanceDebt[];
 };
 
+function toSafeNumber(value: unknown) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function normalizeParentFinanceSnapshot(snapshot: ParentFinanceSnapshot | null): ParentFinanceSnapshot | null {
+  if (!snapshot) return null;
+
+  const profile = snapshot.profile ?? ({} as ParentFinanceSnapshot["profile"]);
+  return {
+    academicYear: snapshot.academicYear ?? { id: "", name: "-", startDate: "", endDate: "" },
+    profile: {
+      totalPaid: toSafeNumber(profile.totalPaid),
+      totalDebt: toSafeNumber(profile.totalDebt),
+      totalReduction: toSafeNumber(profile.totalReduction),
+      carriedOverDebt: toSafeNumber(profile.carriedOverDebt),
+      overdueInstallments: toSafeNumber(profile.overdueInstallments),
+      pendingPaymentsTotal: toSafeNumber(profile.pendingPaymentsTotal),
+      failedPaymentsTotal: toSafeNumber(profile.failedPaymentsTotal),
+      paymentBehaviorScore: toSafeNumber(profile.paymentBehaviorScore),
+      lastPaymentAt: profile.lastPaymentAt ?? null,
+      childrenLinkedToAccount: toSafeNumber(profile.childrenLinkedToAccount),
+      expectedNetRevenue: toSafeNumber(profile.expectedNetRevenue),
+      completionRate: toSafeNumber(profile.completionRate),
+    },
+    students: Array.isArray(snapshot.students)
+      ? snapshot.students.map((student) => ({
+          ...student,
+          paid: toSafeNumber(student.paid),
+          balance: toSafeNumber(student.balance),
+          expectedTotal: toSafeNumber(student.expectedTotal),
+          overdueInstallments: toSafeNumber(student.overdueInstallments),
+          completionRate: toSafeNumber(student.completionRate),
+        }))
+      : [],
+    debts: Array.isArray(snapshot.debts)
+      ? snapshot.debts.map((debt) => ({
+          ...debt,
+          originalAmount: toSafeNumber(debt.originalAmount),
+          amountRemaining: toSafeNumber(debt.amountRemaining),
+        }))
+      : [],
+  };
+}
+
 type SchoolClass = { id: string; name: string };
 
 type TuitionPlan = {
@@ -1208,11 +1253,12 @@ function DetailModal({
   t: (k: string) => string;
 }) {
   const [pdfExporting, setPdfExporting] = useState(false);
+  const safeFinanceSnapshot = useMemo(() => normalizeParentFinanceSnapshot(financeSnapshot), [financeSnapshot]);
   const debtHistory = useMemo(() => {
-    if (!financeSnapshot) return [] as Array<{ year: string; amountRemaining: number; originalAmount: number; count: number }>;
+    if (!safeFinanceSnapshot) return [] as Array<{ year: string; amountRemaining: number; originalAmount: number; count: number }>;
 
     const grouped = new Map<string, { year: string; amountRemaining: number; originalAmount: number; count: number }>();
-    for (const debt of financeSnapshot.debts) {
+    for (const debt of safeFinanceSnapshot.debts) {
       const year = getDebtReferenceYear(debt);
       const current = grouped.get(year) || { year, amountRemaining: 0, originalAmount: 0, count: 0 };
       current.amountRemaining += debt.amountRemaining;
@@ -1222,10 +1268,10 @@ function DetailModal({
     }
 
     return Array.from(grouped.values()).sort((left, right) => right.year.localeCompare(left.year));
-  }, [financeSnapshot]);
+  }, [safeFinanceSnapshot]);
   const financeStudentsById = useMemo(
-    () => new Map((financeSnapshot?.students ?? []).map((student) => [student.id, student])),
-    [financeSnapshot]
+    () => new Map((safeFinanceSnapshot?.students ?? []).map((student) => [student.id, student])),
+    [safeFinanceSnapshot]
   );
 
   const exportDisabled = financeLoading || Boolean(financeError) || pdfExporting;
@@ -1244,7 +1290,7 @@ function DetailModal({
               type="button"
               onClick={() => {
                 setPdfExporting(true);
-                void exportParentReportPdf(parent, financeSnapshot)
+                void exportParentReportPdf(parent, safeFinanceSnapshot)
                   .finally(() => setPdfExporting(false));
               }}
               disabled={exportDisabled}
@@ -1255,7 +1301,7 @@ function DetailModal({
             </button>
             <button
               type="button"
-              onClick={() => printParentReport(parent, financeSnapshot)}
+              onClick={() => printParentReport(parent, safeFinanceSnapshot)}
               disabled={exportDisabled}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 text-xs font-semibold text-sky-100 transition-colors hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50"
               title="Imprimer le rapport"
@@ -1264,7 +1310,7 @@ function DetailModal({
             </button>
             <button
               type="button"
-              onClick={() => exportParentReportExcel(parent, financeSnapshot)}
+              onClick={() => exportParentReportExcel(parent, safeFinanceSnapshot)}
               disabled={exportDisabled}
               className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-3 text-xs font-semibold text-emerald-100 transition-colors hover:bg-emerald-500/20 disabled:cursor-not-allowed disabled:opacity-50"
               title="Exporter le rapport en Excel"
@@ -1369,7 +1415,7 @@ function DetailModal({
                   </p>
                 </div>
                 <span className="rounded-full border border-red-400/25 bg-red-500/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.14em] text-red-200">
-                  {financeSnapshot?.debts.length ?? 0} ligne(s)
+                  {safeFinanceSnapshot?.debts.length ?? 0} ligne(s)
                 </span>
               </div>
 
@@ -1381,24 +1427,24 @@ function DetailModal({
                 <div className="mt-5 rounded-xl border border-danger/40 bg-danger/10 px-4 py-5 text-sm text-danger">
                   {financeError}
                 </div>
-              ) : financeSnapshot ? (
+              ) : safeFinanceSnapshot ? (
                 <div className="mt-5 space-y-4">
                   <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
                       <p className="text-[11px] uppercase tracking-[0.14em] text-ink-dim">Dette totale</p>
-                      <p className="mt-2 text-xl font-black text-red-200">{formatMoney(financeSnapshot.profile.totalDebt)}</p>
+                      <p className="mt-2 text-xl font-black text-red-200">{formatMoney(safeFinanceSnapshot.profile.totalDebt)}</p>
                     </div>
                     <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
                       <p className="text-[11px] uppercase tracking-[0.14em] text-ink-dim">Dette reportée</p>
-                      <p className="mt-2 text-xl font-black text-amber-200">{formatMoney(financeSnapshot.profile.carriedOverDebt)}</p>
+                      <p className="mt-2 text-xl font-black text-amber-200">{formatMoney(safeFinanceSnapshot.profile.carriedOverDebt)}</p>
                     </div>
                     <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
                       <p className="text-[11px] uppercase tracking-[0.14em] text-ink-dim">Paiements cumulés</p>
-                      <p className="mt-2 text-xl font-black text-emerald-200">{formatMoney(financeSnapshot.profile.totalPaid)}</p>
+                      <p className="mt-2 text-xl font-black text-emerald-200">{formatMoney(safeFinanceSnapshot.profile.totalPaid)}</p>
                     </div>
                     <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
                       <p className="text-[11px] uppercase tracking-[0.14em] text-ink-dim">Échéances en retard</p>
-                      <p className="mt-2 text-xl font-black text-white">{financeSnapshot.profile.overdueInstallments}</p>
+                      <p className="mt-2 text-xl font-black text-white">{safeFinanceSnapshot.profile.overdueInstallments}</p>
                     </div>
                   </div>
 
@@ -1408,7 +1454,7 @@ function DetailModal({
                         <p className="text-sm font-bold text-white">Synthèse par année concernée</p>
                         <p className="mt-1 text-xs text-ink-dim">Les dettes reportées sont rattachées à leur année d'origine pour éviter toute confusion.</p>
                       </div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-300">{financeSnapshot.academicYear.name}</p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-300">{safeFinanceSnapshot.academicYear.name}</p>
                     </div>
                     <div className="mt-4 grid gap-3 md:grid-cols-2">
                       {debtHistory.length === 0 ? (
@@ -1433,9 +1479,9 @@ function DetailModal({
                   <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
                     <p className="text-sm font-bold text-white">Détail ligne par ligne</p>
                     <div className="mt-4 space-y-3">
-                      {financeSnapshot.debts.length === 0 ? (
+                      {safeFinanceSnapshot.debts.length === 0 ? (
                         <p className="text-sm text-ink-dim">Aucune ligne de dette enregistrée.</p>
-                      ) : financeSnapshot.debts.map((debt) => (
+                      ) : safeFinanceSnapshot.debts.map((debt) => (
                         <div key={debt.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
                           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                             <div className="min-w-0">
@@ -1479,9 +1525,9 @@ function DetailModal({
                   <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
                     <p className="text-sm font-bold text-white">État financier par enfant</p>
                     <div className="mt-4 space-y-3">
-                      {financeSnapshot.students.length === 0 ? (
+                      {safeFinanceSnapshot.students.length === 0 ? (
                         <p className="text-sm text-ink-dim">Aucun élève lié à ce parent.</p>
-                      ) : financeSnapshot.students.map((student) => (
+                      ) : safeFinanceSnapshot.students.map((student) => (
                         <div key={student.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-4">
                           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                             <div>
@@ -1568,7 +1614,7 @@ function DuplicateParentDialog({ message, onClose }: { message: string; onClose:
             !
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-200">Famille deja existante</p>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-200">Famille déjà existante</p>
             <h3 className="mt-2 font-display text-2xl font-bold text-white">Enregistrement refuse</h3>
             <p className="mt-3 text-sm leading-6 text-ink-dim">{message}</p>
           </div>
@@ -2441,6 +2487,7 @@ export function ParentsManagementPage() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [mutationNotice, setMutationNotice] = useState<string | null>(null);
 
   // modals
   const [showForm, setShowForm] = useState(false);
@@ -2558,7 +2605,15 @@ export function ParentsManagementPage() {
     try {
       setApiError(null);
       if (id) {
-        await api(`/api/parents/${id}`, { method: "PUT", body: JSON.stringify(body) });
+        const updated = await api<{ notificationStatus?: { dashboard?: string; email?: string; sms?: string; adminEmail?: string }; syncMode?: string }>(`/api/parents/${id}`, { method: "PUT", body: JSON.stringify(body) });
+        setMutationNotice([
+          `Le dossier parent de ${fullName} a été modifié avec succès.`,
+          updated.syncMode === "ORBIT_MIRROR" ? "La modification a été reprise depuis le registre partagé." : "EduPay a enregistré la modification localement.",
+          `Compte parent : ${updated.notificationStatus?.dashboard ?? "OPEN"}`,
+          `E-mail parent : ${updated.notificationStatus?.email ?? "SKIPPED"}`,
+          `SMS parent : ${updated.notificationStatus?.sms ?? "SKIPPED"}`,
+          `E-mail administrateur : ${updated.notificationStatus?.adminEmail ?? "SKIPPED"}`,
+        ].join("\n"));
       } else {
             const created = await api<
               Parent & {
@@ -2590,7 +2645,7 @@ export function ParentsManagementPage() {
     } catch (error) {
       const message = error instanceof Error ? error.message : "Erreur API";
       setApiError(message);
-      if (!id && /existe deja|already exists|PARENT_ALREADY_EXISTS|famille existe/i.test(message)) {
+      if (!id && /existe déjà|already exists|PARENT_ALREADY_EXISTS|famille existe/i.test(message)) {
         setDuplicateParentMessage(message);
       }
     }
@@ -2644,6 +2699,17 @@ export function ParentsManagementPage() {
   return (
     <div className="edupay-parent-admin space-y-6 pb-8">
       {/* Modals */}
+      {mutationNotice && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => setMutationNotice(null)}>
+          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm" />
+          <section className="relative w-full max-w-lg rounded-2xl border border-emerald-400/30 bg-slate-950 p-6 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-200">Modification synchronisée</p>
+            <h2 className="mt-2 font-display text-2xl font-bold text-white">Notification envoyée</h2>
+            <pre className="mt-4 whitespace-pre-wrap rounded-xl border border-white/10 bg-slate-900/70 p-4 text-sm text-emerald-50">{mutationNotice}</pre>
+            <button type="button" onClick={() => setMutationNotice(null)} className="mt-5 w-full rounded-xl bg-emerald-400 px-4 py-3 text-sm font-black text-slate-950">Compris</button>
+          </section>
+        </div>
+      )}
       {viewTarget && (
         <DetailModal
           parent={viewTarget}

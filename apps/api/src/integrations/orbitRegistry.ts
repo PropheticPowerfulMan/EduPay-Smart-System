@@ -500,6 +500,9 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
         continue;
       }
 
+      const studentAnnualFee = Number(student.annualFee || 0);
+      const annualFeeUpdate = studentAnnualFee > 0 ? { annualFee: studentAnnualFee } : {};
+
       if (student.externalStudentId) {
         await prisma.student.upsert({
           where: { schoolId_externalStudentId: { schoolId, externalStudentId: student.externalStudentId } },
@@ -507,7 +510,7 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
             fullName: student.fullName,
             parentId: savedParent.id,
             classId,
-            annualFee: student.annualFee,
+            ...annualFeeUpdate,
           },
           create: {
             schoolId,
@@ -515,7 +518,7 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
             classId,
             externalStudentId: student.externalStudentId,
             fullName: student.fullName,
-            annualFee: student.annualFee,
+            annualFee: studentAnnualFee,
           },
         });
         continue;
@@ -533,8 +536,9 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
         await prisma.student.update({
           where: { id: existingStudent.id },
           data: {
+            fullName: student.fullName,
             classId,
-            annualFee: student.annualFee,
+            ...annualFeeUpdate,
           },
         });
       } else {
@@ -544,7 +548,7 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
             parentId: savedParent.id,
             classId,
             fullName: student.fullName,
-            annualFee: student.annualFee,
+            annualFee: studentAnnualFee,
           },
         });
       }
@@ -640,10 +644,12 @@ export async function syncOrbitRegistryMirror(schoolId: string) {
         mustChangePassword: orbitParent?.mustChangePassword,
         students: parent.students.map((student) => ({
           id: student.id,
+          orbitId: orbitParent?.students.find((entry) => entry.externalStudentId === (student.externalStudentId || undefined) || entry.fullName === student.fullName)?.orbitId,
           displayId: student.externalStudentId || student.id,
           externalStudentId: student.externalStudentId || undefined,
           studentNumber: student.externalStudentId || undefined,
           accessCode: orbitParent?.students.find((entry) => entry.externalStudentId === (student.externalStudentId || undefined) || entry.fullName === student.fullName)?.accessCode,
+          mustChangePassword: orbitParent?.students.find((entry) => entry.externalStudentId === (student.externalStudentId || undefined) || entry.fullName === student.fullName)?.mustChangePassword,
           fullName: student.fullName,
           classId: student.classId,
           className: student.class.name,

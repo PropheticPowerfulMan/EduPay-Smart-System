@@ -67,16 +67,16 @@ function buildMarkdownReport(input: {
   }>;
 }) {
   const lines = [
-    "# Rapport de regeneration des recus EduPay",
+    "# Rapport de régénération des reçus EduPay",
     "",
-    `- Genere le: ${formatHumanDate(input.generatedAt)} UTC`,
+    `- Généré le : ${formatHumanDate(input.generatedAt)} UTC`,
     `- Coupure de regeneration: ${formatHumanDate(input.cutoff)} UTC`,
-    `- Nombre total de recus a regenerer: ${input.total}`,
+    `- Nombre total de reçus ? régénérer: ${input.total}`,
     ""
   ];
 
   if (input.bySchool.length > 0) {
-    lines.push("## Repartition par ecole", "");
+    lines.push("## Répartition par école", "");
     for (const school of input.bySchool) {
       lines.push(`- ${school.schoolName}: ${school.count}`);
     }
@@ -93,7 +93,7 @@ function buildMarkdownReport(input: {
     lines.push("| Aucun | - | - | - | - | - | - | - |");
   }
 
-  lines.push("", "## Note", "", "Tous les recus exportes avant la coupure ci-dessus embarquent potentiellement l'ancien lien QR et doivent etre regeneres apres deploiement du correctif.");
+  lines.push("", "## Note", "", "Tous les reçus exportés avant la coupure ci-dessus embarquent potentiellement l'ancien lien QR et doivent être régénérés après déploiement du correctif.");
   return lines.join("\n");
 }
 
@@ -189,7 +189,7 @@ async function main() {
 
 main()
   .catch((error) => {
-    console.error("Echec du rapport de regeneration des recus", error);
+    console.error("Échec du rapport de régénération des reçus", error);
     process.exitCode = 1;
   })
   .finally(async () => {

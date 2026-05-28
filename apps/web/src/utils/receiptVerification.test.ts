@@ -15,13 +15,13 @@ const sampleReceipt: ReceiptVerificationInput = {
 };
 
 describe("buildReceiptVerificationUrl", () => {
-  it("construit un lien stable sur l'origine locale sans réutiliser la route courante", () => {
+  it("construit un lien stable sur l'origine locale sans reutiliser la route courante", () => {
     const url = buildReceiptVerificationUrl(sampleReceipt, { origin: "http://localhost:5174" });
 
     expect(url).toMatch(/^http:\/\/localhost:5174\/EduPay-Smart-System\/#\/receipt\/verify\?tx=TX-1001&c=EDP-22FB-4D92&d=/);
   });
 
-  it("conserve une base déployée absolue quand elle est configurée", () => {
+  it("conserve une base deployee absolue quand elle est configuree", () => {
     const url = buildReceiptVerificationUrl(
       sampleReceipt,
       { origin: "http://localhost:5174" },
@@ -30,6 +30,7 @@ describe("buildReceiptVerificationUrl", () => {
 
     expect(url).toMatch(/^https:\/\/edupay.example.com\/app\/#\/receipt\/verify\?tx=TX-1001&c=EDP-22FB-4D92&d=/);
   });
+
   it("corrige une base publique configuree directement sur la page de verification", () => {
     const url = buildReceiptVerificationUrl(
       sampleReceipt,
@@ -42,9 +43,19 @@ describe("buildReceiptVerificationUrl", () => {
 });
 
 describe("buildReceiptVerificationQrUrl", () => {
-  it("génère un QR court avec seulement la transaction et le code", () => {
+  it("genere un QR complet avec les données signees du reçu", () => {
     const url = buildReceiptVerificationQrUrl(sampleReceipt, { origin: "http://localhost:5174" });
 
-    expect(url).toBe("http://localhost:5174/EduPay-Smart-System/#/receipt/verify?tx=TX-1001&c=EDP-22FB-4D92");
+    expect(url).toMatch(/^http:\/\/localhost:5174\/EduPay-Smart-System\/#\/receipt\/verify\?tx=TX-1001&c=EDP-22FB-4D92&d=/);
+  });
+
+  it("ignore l'ancien domaine Render non deploye quand EduPay tourne en local", () => {
+    const url = buildReceiptVerificationQrUrl(
+      sampleReceipt,
+      { origin: "http://localhost:5174" },
+      "https://edupay-web.onrender.com/EduPay-Smart-System/"
+    );
+
+    expect(url).toMatch(/^http:\/\/localhost:5174\/EduPay-Smart-System\/#\/receipt\/verify\?tx=TX-1001&c=EDP-22FB-4D92&d=/);
   });
 });

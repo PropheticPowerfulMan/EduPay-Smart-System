@@ -276,7 +276,7 @@ const dictionaries: Record<Lang, Dict> = {
     fontScientifique: "Scientific",
     fontTech: "Tech",
     navDashboard: "Financial overview",
-    navOperations: "Operations",
+    navOperations: "Opérations",
     navReports: "Reports",
     navPayments: "Payments",
     navMessages: "Messages",

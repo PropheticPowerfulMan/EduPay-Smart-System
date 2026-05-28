@@ -558,6 +558,7 @@ export function EmployeesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Employee | null>(null);
   const [form, setForm] = useState<EmployeeFormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [mutationNotice, setMutationNotice] = useState<string | null>(null);
   const [employeeFinanceLoading, setEmployeeFinanceLoading] = useState(false);
   const [employeeFinanceError, setEmployeeFinanceError] = useState<string | null>(null);
   const [employeeFinanceSnapshot, setEmployeeFinanceSnapshot] = useState<EmployeeFinanceSnapshot | null>(null);
@@ -660,7 +661,7 @@ export function EmployeesPage() {
     setSubmitting(true);
     setError(null);
     try {
-      await api(`/api/shared-directory/teachers/${encodeURIComponent(identifier)}`, {
+      const result = await api<{ notificationStatus?: { email?: string; sms?: string; adminEmail?: string } }>(`/api/shared-directory/teachers/${encodeURIComponent(identifier)}`, {
         method: "PUT",
         body: JSON.stringify({
           fullName: form.fullName.trim(),
@@ -675,6 +676,12 @@ export function EmployeesPage() {
           mustChangePassword: form.mustChangePassword,
         }),
       });
+      setMutationNotice([
+        "Les informations de l'employé ont été synchronisées dans le répertoire commun de l'écosystème.",
+        `Notification email employé : ${result.notificationStatus?.email ?? "non disponible"}.`,
+        `Notification SMS employé : ${result.notificationStatus?.sms ?? "non disponible"}.`,
+        `Notification administrateurs : ${result.notificationStatus?.adminEmail ?? "non disponible"}.`,
+      ].join("\n"));
       closeEditModal();
       await loadEmployees();
     } catch (err) {
@@ -707,6 +714,25 @@ export function EmployeesPage() {
 
   return (
     <div className="space-y-6 pb-8">
+      {mutationNotice ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl border border-emerald-400/30 bg-slate-950 p-5 text-white shadow-2xl">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-300">Modification synchronisée</p>
+            <h2 className="mt-2 font-display text-2xl font-bold">Notification envoyée</h2>
+            <pre className="mt-4 whitespace-pre-wrap rounded-xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-6 text-ink-dim">{mutationNotice}</pre>
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setMutationNotice(null)}
+                className="rounded-xl bg-emerald-500 px-4 py-2 text-sm font-bold text-white transition hover:bg-emerald-400"
+              >
+                Compris
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-start justify-between gap-4 animate-fadeInDown">
         <div className="min-w-0">
           <h1 className="font-display text-3xl font-bold text-white">Répertoire des employés</h1>

@@ -97,11 +97,11 @@ function formatEmailContent(text: string) {
 
 function inferAudience(subject: string, text: string) {
   const content = `${subject}\n${text}`.toLowerCase();
-  if (content.includes("parent") || content.includes("enfant") || content.includes("eleves concernes")) {
+  if (content.includes("parent") || content.includes("enfant") || content.includes("élèves concernés")) {
     return { label: "Espace parent", accent: BRAND_GOLD };
   }
-  if (content.includes("eleve") || content.includes("student")) {
-    return { label: "Espace eleve", accent: "#12aee8" };
+  if (content.includes("élève") || content.includes("student")) {
+    return { label: "Espace élève", accent: "#12aee8" };
   }
   if (content.includes("employ") || content.includes("enseign") || content.includes("staff")) {
     return { label: "Espace employe", accent: "#16a34a" };

@@ -154,7 +154,7 @@ type DemoStudentFinanceSnapshot = {
   balance: number;
   overdueInstallments: number;
   completionRate: number;
-  reductions: DemoReduction[];
+  réductions: DemoReduction[];
   agreements: DemoAgreement[];
   debts: DemoDebt[];
 };
@@ -181,7 +181,7 @@ const PAYMENT_OPTION_LABELS: Record<PaymentOptionType, string> = {
   TWO_INSTALLMENTS: "Two-installment payment",
   THREE_INSTALLMENTS: "Three-installment payment",
   STANDARD_MONTHLY: "Standard monthly payment",
-  SPECIAL_OWNER_AGREEMENT: "Parent-school special agreement",
+  SPECIAL_OWNER_AGREEMENT: "Parent-school spécial agreement",
   CUSTOM: "Custom"
 };
 
@@ -419,7 +419,7 @@ const STUDENT_CONFIGURATION: Record<string, StudentConfiguration> = {
   "STU-KCS-AMANI-MBUYI": {
     mode: "AGREEMENT",
     agreement: {
-      title: "Accord special KCS owner 2026-2027",
+      title: "Accord spécial KCS owner 2026-2027",
       customTotal: 4980,
       reductionAmount: 380,
       status: "APPROVED",
@@ -485,8 +485,8 @@ function buildOverdueAlertSeries(input: {
     {
       id: `demo-alert-overdue-1-${input.parentId}`,
       type: "OVERDUE_INSTALLMENT_REMINDER_1",
-      title: "Alerte 1 - echeance de tuition depassee",
-      message: `${firstInstallment.studentName} a depasse l'echeance \"${firstInstallment.label}\" du ${formatAlertDueDate(firstInstallment.dueDate)} selon le plan ${planLabel}. Solde en retard: ${formatAlertCurrency(firstInstallment.balance)}.`,
+      title: "Alerte 1 - échéance de tuition dépassée",
+      message: `${firstInstallment.studentName} a dépassé l'échéance \"${firstInstallment.label}\" du ${formatAlertDueDate(firstInstallment.dueDate)} selon le plan ${planLabel}. Solde en retard : ${formatAlertCurrency(firstInstallment.balance)}.`,
       severity: "MEDIUM",
       status: "OPEN",
       createdAt: new Date().toISOString()
@@ -495,7 +495,7 @@ function buildOverdueAlertSeries(input: {
       id: `demo-alert-overdue-2-${input.parentId}`,
       type: "OVERDUE_INSTALLMENT_REMINDER_2",
       title: "Alerte 2 - regularisation attendue immediatement",
-      message: `${input.overdueInstallments.length} echeance(s) sont en retard pour ${input.academicYearName}, avec jusqu'a ${maxDelayDays} jour(s) de depassement. Dette totale suivie: ${formatAlertCurrency(input.totalDebt)}.`,
+      message: `${input.overdueInstallments.length} échéance(s) sont en retard pour ${input.academicYearName}, avec jusqu’à ${maxDelayDays} jour(s) de dépassement. Dette totale suivie : ${formatAlertCurrency(input.totalDebt)}.`,
       severity: input.overdueInstallments.length >= 2 || maxDelayDays >= 14 ? "HIGH" : "MEDIUM",
       status: "OPEN",
       createdAt: new Date().toISOString()
@@ -504,7 +504,7 @@ function buildOverdueAlertSeries(input: {
       id: `demo-alert-overdue-3-${input.parentId}`,
       type: "OVERDUE_INSTALLMENT_REMINDER_3",
       title: "Alerte 3 - dossier remonte au financier",
-      message: `Le parent et le financier doivent traiter ce retard maintenant. Premiere echeance non reglee depuis ${firstDelayDays} jour(s), derniere echeance critique ${mostLateInstallment.label} pour ${mostLateInstallment.studentName}.`,
+      message: `Le parent et le financier doivent traiter ce retard maintenant. Première échéance non réglée depuis ${firstDelayDays} jour(s), dernière échéance critique ${mostLateInstallment.label} pour ${mostLateInstallment.studentName}.`,
       severity: "HIGH",
       status: "OPEN",
       createdAt: new Date().toISOString()
@@ -683,7 +683,7 @@ function buildOfficialStudentSnapshot(parent: DemoParent, student: DemoStudent, 
     balance: roundCurrency(installments.reduce((sum, installment) => sum + installment.balance, 0)),
     overdueInstallments: installments.filter((installment) => installment.isOverdue).length,
     completionRate: plan.finalAmount > 0 ? roundCurrency((installments.reduce((sum, installment) => sum + installment.amountPaid, 0) / plan.finalAmount) * 100) : 0,
-    reductions: plan.reductionAmount > 0
+    réductions: plan.reductionAmount > 0
       ? [{
           id: `demo-reduction-${student.id}`,
           source: "OFFICIAL_PLAN",
@@ -756,7 +756,7 @@ function buildAgreementStudentSnapshot(parent: DemoParent, student: DemoStudent,
     balance: roundCurrency(installments.reduce((sum, installment) => sum + installment.balance, 0)),
     overdueInstallments: installments.filter((installment) => installment.isOverdue).length,
     completionRate: agreement.customTotal > 0 ? roundCurrency((installments.reduce((sum, installment) => sum + installment.amountPaid, 0) / agreement.customTotal) * 100) : 0,
-    reductions: [{
+    réductions: [{
       id: `demo-agreement-reduction-${student.id}`,
       source: "AGREEMENT",
       title: `Bourse - ${agreement.title}`,
@@ -817,7 +817,7 @@ export function buildDemoParentFinanceProfile(parentId: string, parents: DemoPar
     })
     .filter((student): student is DemoStudentFinanceSnapshot => Boolean(student));
 
-  const reductions: DemoReduction[] = studentRows.flatMap((student) => student.reductions);
+  const réductions: DemoReduction[] = studentRows.flatMap((student) => student.réductions);
   const agreements: DemoAgreement[] = studentRows.flatMap((student) => student.agreements);
   const installments: DemoInstallment[] = studentRows
     .flatMap((student) => student.installments)
@@ -828,7 +828,7 @@ export function buildDemoParentFinanceProfile(parentId: string, parents: DemoPar
   const failedPaymentsTotal = roundCurrency(parentPayments.filter((payment) => payment.status === "FAILED").reduce((sum, payment) => sum + Number(payment.amount || 0), 0));
   const overdueInstallments = installments.filter((installment) => installment.isOverdue).length;
   const tuitionDebt = roundCurrency(studentRows.reduce((sum, student) => sum + student.balance, 0));
-  const totalReduction = roundCurrency(reductions.reduce((sum, reduction) => sum + Number(reduction.amount || 0), 0));
+  const totalReduction = roundCurrency(réductions.reduce((sum, reduction) => sum + Number(reduction.amount || 0), 0));
   const totalExpected = roundCurrency(studentRows.reduce((sum, student) => sum + student.expectedTotal, 0));
   const totalDebt = roundCurrency(tuitionDebt + carriedOverDebt);
   const paymentBehaviorScore = computeBehaviorScore(totalExpected || 1, totalPaid, overdueInstallments, delayedPayments, carriedOverDebt);
@@ -936,7 +936,7 @@ export function buildDemoParentFinanceProfile(parentId: string, parents: DemoPar
     },
     students: studentRows,
     installments,
-    reductions,
+    réductions,
     debts,
     agreements,
     alerts,
@@ -977,8 +977,8 @@ function groupCurrencyTotals<T extends string>(entries: Array<{ key: T; amount: 
 
 export function buildDemoReductionAnalytics(parents: DemoParent[], payments: DemoPayment[], periodType: ReportType = "CUMULATIVE") {
   const bounds = resolvePeriodBounds(periodType);
-  const reductions: DemoReduction[] = parents
-    .flatMap((parent) => buildDemoParentFinanceProfile(parent.id, parents, payments).reductions.map((reduction) => ({
+  const réductions: DemoReduction[] = parents
+    .flatMap((parent) => buildDemoParentFinanceProfile(parent.id, parents, payments).réductions.map((reduction) => ({
       ...reduction,
       parentName: parent.fullName
     })))
@@ -987,10 +987,10 @@ export function buildDemoReductionAnalytics(parents: DemoParent[], payments: Dem
       return effectiveDate >= bounds.start && effectiveDate <= bounds.end;
     });
 
-  const byScope = groupCurrencyTotals(reductions.map((reduction) => ({ key: String(reduction.scope ?? "UNKNOWN"), amount: Number(reduction.amount || 0) })));
-  const byGradeGroup = groupCurrencyTotals(reductions.map((reduction) => ({ key: String(reduction.gradeGroup ?? "CUSTOM"), amount: Number(reduction.amount || 0) })));
-  const byPaymentOption = groupCurrencyTotals(reductions.map((reduction) => ({ key: String(reduction.paymentOptionType ?? "CUSTOM"), amount: Number(reduction.amount || 0) })));
-  const scholarships = reductions.filter((reduction) =>
+  const byScope = groupCurrencyTotals(réductions.map((reduction) => ({ key: String(reduction.scope ?? "UNKNOWN"), amount: Number(reduction.amount || 0) })));
+  const byGradeGroup = groupCurrencyTotals(réductions.map((reduction) => ({ key: String(reduction.gradeGroup ?? "CUSTOM"), amount: Number(reduction.amount || 0) })));
+  const byPaymentOption = groupCurrencyTotals(réductions.map((reduction) => ({ key: String(reduction.paymentOptionType ?? "CUSTOM"), amount: Number(reduction.amount || 0) })));
+  const scholarships = réductions.filter((reduction) =>
     reduction.scope === "MANUAL" ||
     reduction.title.toLowerCase().includes("bourse") ||
     reduction.title.toLowerCase().includes("scholarship")
@@ -1000,17 +1000,17 @@ export function buildDemoReductionAnalytics(parents: DemoParent[], payments: Dem
     academicYear: ACADEMIC_YEAR.name,
     periodType,
     periodLabel: bounds.label,
-    totalReductions: roundCurrency(reductions.reduce((sum, reduction) => sum + Number(reduction.amount || 0), 0)),
-    reductionCount: reductions.length,
-    scholarshipTotal: roundCurrency(reductions.reduce((sum, reduction) => sum + Number(reduction.amount || 0), 0)),
-    scholarshipCount: reductions.length,
+    totalReductions: roundCurrency(réductions.reduce((sum, reduction) => sum + Number(reduction.amount || 0), 0)),
+    reductionCount: réductions.length,
+    scholarshipTotal: roundCurrency(réductions.reduce((sum, reduction) => sum + Number(reduction.amount || 0), 0)),
+    scholarshipCount: réductions.length,
     manualScholarshipTotal: roundCurrency(scholarships.reduce((sum, reduction) => sum + Number(reduction.amount || 0), 0)),
     manualScholarshipCount: scholarships.length,
     byScope: byScope.map((entry) => ({ scope: entry.key, amount: entry.amount })),
     byGradeGroup: byGradeGroup.map((entry) => ({ gradeGroup: entry.key, amount: entry.amount })),
     byPaymentOption: byPaymentOption.map((entry) => ({ paymentOptionType: entry.key, amount: entry.amount })),
     scholarships,
-    reductions
+    réductions
   };
 }
 
@@ -1038,15 +1038,15 @@ export function buildDemoFinanceOverview(parents: DemoParent[], payments: DemoPa
     .sort((left, right) => right.totalDebt - left.totalDebt)
     .slice(0, 10);
 
-  const classAnalyticsMap = new Map<string, { expected: number; collected: number; debt: number; reductions: number; students: number }>();
+  const classAnalyticsMap = new Map<string, { expected: number; collected: number; debt: number; réductions: number; students: number }>();
   for (const snapshot of parentSnapshots) {
     for (const student of snapshot.students) {
       const key = student.className ?? GRADE_GROUP_LABELS[student.gradeGroup as GradeGroup] ?? "Unknown";
-      const current = classAnalyticsMap.get(key) ?? { expected: 0, collected: 0, debt: 0, reductions: 0, students: 0 };
+      const current = classAnalyticsMap.get(key) ?? { expected: 0, collected: 0, debt: 0, réductions: 0, students: 0 };
       current.expected = roundCurrency(current.expected + Number(student.expectedTotal || 0));
       current.collected = roundCurrency(current.collected + Number(student.paid || 0));
       current.debt = roundCurrency(current.debt + Number(student.balance || 0));
-      current.reductions = roundCurrency(current.reductions + Number(student.reductionTotal || 0));
+      current.réductions = roundCurrency(current.réductions + Number(student.reductionTotal || 0));
       current.students += 1;
       classAnalyticsMap.set(key, current);
     }

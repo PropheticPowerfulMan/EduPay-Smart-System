@@ -3,6 +3,7 @@ import { z } from "zod";
 import { orbitRegistryIsEnabled, syncOrbitRegistryMirror, updateOrbitStudent } from "../../integrations/orbitRegistry";
 import { prisma } from "../../prisma";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
+import { notifyParentEntityChange } from "../notifications/entityChange";
 
 const createStudentSchema = z.object({
   parentId: z.string().min(1),
@@ -35,7 +36,7 @@ studentRouter.use(authGuard);
 studentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
   if (orbitRegistryIsEnabled()) {
     return res.status(409).json({
-      message: "La creation locale d'eleves est desactivee dans EduPay quand le registre Orbit est actif. Creez d'abord l'eleve dans SAVANEX."
+      message: "La création locale d'élèves est désactivée dans EduPay quand le registre Orbit est actif. Créez d'abord l'élève dans SAVANEX."
     });
   }
 
@@ -80,15 +81,22 @@ studentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenti
 
   const existing = await prisma.student.findFirst({
     where: { id: req.params.id, schoolId: req.user!.schoolId },
-    select: { id: true }
+    select: { id: true, externalStudentId: true }
   });
   if (!existing) return res.status(404).json({ message: "Eleve introuvable." });
 
   if (orbitRegistryIsEnabled()) {
     try {
+      const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);
+      const mirroredStudent = mirrored.parents
+        .flatMap((parent) => parent.students)
+        .find((student) => student.id === req.params.id
+          || student.orbitId === req.params.id
+          || student.externalStudentId === existing.externalStudentId
+          || student.displayId === existing.externalStudentId);
       const className = await prisma.class.findUnique({ where: { id: payload.classId }, select: { name: true } });
       const [firstName, ...lastNameParts] = payload.fullName.trim().split(/\s+/);
-      await updateOrbitStudent(req.params.id, {
+      await updateOrbitStudent(mirroredStudent?.orbitId || req.params.id, {
         fullName: payload.fullName,
         firstName: firstName || null,
         lastName: lastNameParts.join(" ") || null,
@@ -117,7 +125,19 @@ studentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authenti
     }
   });
 
-  return res.json(student);
+  const notificationStatus = await notifyParentEntityChange({
+    schoolId: req.user!.schoolId,
+    parentId: student.parentId,
+    subject: "Mise à jour du dossier élève EduPay",
+    body: [
+      `Le dossier de l'élève ${student.fullName} vient d'être modifié dans EduPay.`,
+      `Classe : ${student.class?.name ?? payload.classId}`,
+      `Frais annuels affichés : ${student.annualFee}`,
+      "La mise à jour est synchronisée avec le registre partagé de l'écosystème quand celui-ci est actif.",
+    ].join("\n"),
+  });
+
+  return res.json({ ...student, notificationStatus });
 });
 
 studentRouter.delete("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {

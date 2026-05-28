@@ -295,7 +295,7 @@ authRouter.post("/register", async (req, res) => {
     const parsed = registerSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({
-        message: "Donnees d'inscription invalides",
+        message: "Données d'inscription invalides",
         issues: parsed.error.flatten()
       });
     }
@@ -439,7 +439,7 @@ authRouter.post("/forgot-password", recoveryLimiter, async (req, res) => {
           "",
           `Code de reinitialisation: ${token}`,
           `Lien direct: ${buildPasswordResetLink(token)}`,
-          "Ce code expire dans 30 minutes et ne peut etre utilise qu'une seule fois.",
+          "Ce code expire dans 30 minutes et ne peut être utilisé qu'une seule fois.",
           "",
           "Si vous n'etes pas a l'origine de cette demande, ignorez ce message."
         ].join("\n")
@@ -477,16 +477,16 @@ authRouter.post("/reset-password", recoveryLimiter, async (req, res) => {
 
   await sendEmail({
     to: resetToken.user.email,
-    subject: "Mot de passe EduPay reinitialise",
+    subject: "Mot de passe EduPay réinitialisé",
     text: [
       `Bonjour ${resetToken.user.fullName},`,
       "",
-      "Votre mot de passe EduPay vient d'etre reinitialise.",
+      "Votre mot de passe EduPay vient d'être réinitialisé.",
       "Si vous n'avez pas effectue cette action, contactez immediatement l'administration."
     ].join("\n")
   }).catch((error) => console.error("Reset confirmation email failed", error));
 
-  return res.json({ message: "Mot de passe reinitialise. Vous pouvez vous connecter." });
+  return res.json({ message: "Mot de passe réinitialisé. Vous pouvez vous connecter." });
 });
 
 authRouter.post("/recover-admin-password", recoveryLimiter, async (req, res) => {
@@ -518,7 +518,7 @@ authRouter.post("/recover-admin-password", recoveryLimiter, async (req, res) => 
 
   await sendEmail({
     to: user.email,
-    subject: "Mot de passe administrateur EduPay reinitialise",
+    subject: "Mot de passe administrateur EduPay réinitialisé",
     text: [
       `Bonjour ${user.fullName},`,
       "",
@@ -527,7 +527,7 @@ authRouter.post("/recover-admin-password", recoveryLimiter, async (req, res) => 
     ].join("\n")
   }).catch((error) => console.error("Admin recovery email failed", error));
 
-  return res.json({ message: "Mot de passe administrateur reinitialise. Vous pouvez vous connecter." });
+  return res.json({ message: "Mot de passe administrateur réinitialisé. Vous pouvez vous connecter." });
 });
 
 authRouter.post("/change-password", authGuard, async (req: AuthenticatedRequest, res) => {

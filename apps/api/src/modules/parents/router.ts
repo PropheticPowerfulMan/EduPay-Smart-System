@@ -9,6 +9,7 @@ import { env } from "../../config/env";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
 import { sendEmail, sendSms } from "../../utils/messaging";
 import { createSpecialFinancialAgreement, getPaymentOptionLabel, upsertParentPlanAssignment } from "../finance/service";
+import { notifyParentEntityChange } from "../notifications/entityChange";
 
 type OwnerAgreementInstallmentMode = "ONE_TIME" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS";
 
@@ -125,7 +126,7 @@ function buildOwnerAgreementInstallments(customTotal: number, reductionAmount = 
 
   return [
     { label: "Engagement initial", dueDate: buildAcademicDueDate(8, 31), amountDue: first, notes: "Created during parent onboarding" },
-    { label: "Regularisation mi-annee", dueDate: buildAcademicDueDate(1, 31), amountDue: second, notes: "Created during parent onboarding" },
+    { label: "Régularisation mi-année", dueDate: buildAcademicDueDate(1, 31), amountDue: second, notes: "Created during parent onboarding" },
     { label: "Solde final", dueDate: buildAcademicDueDate(5, 31), amountDue: third, notes: "Created during parent onboarding" }
   ];
 }
@@ -711,7 +712,7 @@ parentRouter.put("/me/photo", authorize("PARENT"), async (req: AuthenticatedRequ
       demoParent.photoUrl = payload.photoUrl;
       return res.json({ photoUrl: payload.photoUrl });
     }
-    return res.status(503).json({ message: "Mise a jour photo temporairement indisponible." });
+    return res.status(503).json({ message: "Mise à jour photo temporairement indisponible." });
   }
 });
 
@@ -1068,6 +1069,7 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
   const payload = parentSchema.parse(req.body);
   const normalizedEmail = payload.email.trim().toLowerCase();
   const normalizedPhone = payload.phone.replace(/\s+/g, "");
+  let orbitUpdateSucceeded = false;
   try {
     const parentExists = await prisma.parent.findFirst({
       where: { id, schoolId: req.user!.schoolId },
@@ -1095,6 +1097,7 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
           });
 
           await syncOrbitRegistryMirror(req.user!.schoolId);
+          orbitUpdateSucceeded = true;
         } else {
           console.error("[PARENT_UPDATE_ORBIT] Orbit ID introuvable pour parent", id);
         }
@@ -1264,14 +1267,50 @@ parentRouter.put("/:id", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentic
       where: { id },
       include: parentInclude
     });
-    return res.json(enrichParent({ ...parent, nom: payload.nom, postnom: payload.postnom, prenom: payload.prenom }));
+    const notificationStatus = parent
+      ? await notifyParentEntityChange({
+        schoolId: req.user!.schoolId,
+        parentId: parent.id,
+        subject: "Mise à jour du dossier parent EduPay",
+        body: [
+          `Le dossier de ${payload.fullName} vient d'être modifié dans EduPay.`,
+          "Les informations synchronisées sont maintenant partagées avec les applications de l'écosystème.",
+          `Téléphone : ${normalizedPhone}`,
+          `E-mail : ${normalizedEmail}`,
+        ].join("\n"),
+      })
+      : undefined;
+    return res.json({ ...enrichParent({ ...parent, nom: payload.nom, postnom: payload.postnom, prenom: payload.prenom }), notificationStatus });
   } catch (error) {
     console.error("DB unavailable on parent update", error);
     if (error instanceof Error && error.message.includes("classes sont introuvables")) {
       return res.status(404).json({ message: error.message });
     }
+    if (orbitUpdateSucceeded) {
+      try {
+        const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);
+        const parent = mirrored.parents.find((entry) => matchesSharedParentIdentifier(entry, id))
+          ?? mirrored.parents.find((entry) => entry.fullName === payload.fullName || entry.email === normalizedEmail || entry.phone === normalizedPhone);
+        if (parent) {
+          const notificationStatus = await notifyParentEntityChange({
+            schoolId: req.user!.schoolId,
+            parentId: parent.id,
+            subject: "Mise à jour du dossier parent EduPay",
+            body: [
+              `Le dossier de ${payload.fullName} vient d'être modifié dans le registre partagé.`,
+              "EduPay a resynchronisé le miroir local et les autres applications peuvent reprendre ces informations.",
+              `Téléphone : ${normalizedPhone}`,
+              `E-mail : ${normalizedEmail}`,
+            ].join("\n"),
+          });
+          return res.json({ ...enrichParent({ ...parent, nom: payload.nom, postnom: payload.postnom, prenom: payload.prenom }), notificationStatus, syncMode: "ORBIT_MIRROR" });
+        }
+      } catch (mirrorError) {
+        console.error("[PARENT_UPDATE_ORBIT_FALLBACK] Mirror refresh failed", mirrorError);
+      }
+    }
     if (!demoDataFallbackEnabled()) {
-      return res.status(503).json({ message: "Mise a jour parent temporairement indisponible." });
+      return res.status(503).json({ message: "Mise à jour parent temporairement indisponible." });
     }
     const idx = demoParents.findIndex((p) => p.id === id);
     if (idx !== -1) {

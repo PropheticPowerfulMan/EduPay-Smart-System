@@ -332,6 +332,10 @@ function readCachedResponse<T>(path: string): T | null {
   }
 }
 
+export function getCachedApiResponse<T>(path: string): T | null {
+  return readCachedResponse<T>(path);
+}
+
 function writeCachedResponse(path: string, value: unknown) {
   try {
     localStorage.setItem(cacheKeyFor(path), JSON.stringify({ cachedAt: new Date().toISOString(), value }));
@@ -530,7 +534,7 @@ function buildOwnerAgreementInstallments(customTotal: number) {
   const third = Math.round((safeTotal - first - second) * 100) / 100;
   return [
     { label: "Engagement initial", dueDate: buildAcademicDueDate(8, 31), amountDue: first, notes: "Created during parent onboarding" },
-    { label: "Regularisation mi-annee", dueDate: buildAcademicDueDate(1, 31), amountDue: second, notes: "Created during parent onboarding" },
+    { label: "Régularisation mi-année", dueDate: buildAcademicDueDate(1, 31), amountDue: second, notes: "Created during parent onboarding" },
     { label: "Solde final", dueDate: buildAcademicDueDate(5, 31), amountDue: third, notes: "Created during parent onboarding" }
   ];
 }
@@ -731,7 +735,7 @@ function expenseOverview() {
     },
     {
       id: "budget-ops",
-      name: "Operations campus",
+      name: "Opérations campus",
       department: "Administration",
       plannedAmount: 2100,
       consumedAmount: 1875,
@@ -908,7 +912,7 @@ function buildDefaultExpenseCategories(): DemoExpenseCategory[] {
     {
       id: "cat-charges-67",
       name: "67 Charges financières",
-      slug: "charges-financieres-67",
+      slug: "charges-financières-67",
       type: "ADMINISTRATIVE",
       children: [
         ["cat-charges-67-67100-interets", "67100 Intérêts bancaires et sur opérations de trésorerie"]
@@ -1000,7 +1004,7 @@ function getDemoExpenseBudgets() {
   const budgets = readJson<DemoBudget[]>(DEMO_EXPENSE_BUDGETS_KEY, [
     {
       id: "budget-ops-1",
-      name: "Operations campus",
+      name: "Opérations campus",
       department: "Administration",
       plannedAmount: 2400,
       consumedAmount: 1280,
@@ -1008,7 +1012,7 @@ function getDemoExpenseBudgets() {
       utilization: 53.33,
       status: "ACTIVE",
       alertThreshold: 80,
-      notes: "Budget operationnel general",
+      notes: "Budget opérationnel général",
       categoryId: "cat-admin",
       category: { id: "cat-admin", name: "Administrative Expenses" },
       period: getDemoCurrentPeriod(),
@@ -1067,7 +1071,7 @@ function getDemoSalaryProfiles() {
       defaultDeduction: 5,
       advanceBalance: 0,
       debtRecoveryRate: 0,
-      notes: "Controle des operations",
+      notes: "Contrôle des opérations",
       isActive: true,
       createdAt: new Date().toISOString()
     }
@@ -1163,7 +1167,7 @@ function getDemoCashflowEntries() {
       amount: expense.amount,
       currency: expense.currency,
       method: expense.paymentMethod ?? null,
-      referenceDate: expense.expenseDate,
+      référenceDate: expense.expenseDate,
       notes: expense.comments ?? "",
       expense: { id: expense.id, title: expense.title, department: expense.department, status: expense.status },
       payrollRun: null,
@@ -1178,7 +1182,7 @@ function getDemoCashflowEntries() {
     amount: run.totalNet,
     currency: "USD",
     method: null,
-    referenceDate: run.processedAt ?? run.createdAt,
+    référenceDate: run.processedAt ?? run.createdAt,
     notes: run.notes ?? "",
     expense: null,
     payrollRun: { id: run.id, title: run.title, department: run.department, status: run.status },
@@ -1186,7 +1190,7 @@ function getDemoCashflowEntries() {
     createdAt: run.createdAt
   }));
 
-  return [...expenseEntries, ...payrollEntries].sort((left, right) => String(right.referenceDate).localeCompare(String(left.referenceDate)));
+  return [...expenseEntries, ...payrollEntries].sort((left, right) => String(right.référenceDate).localeCompare(String(left.référenceDate)));
 }
 
 function getDemoExpenseItems() {
@@ -1398,12 +1402,12 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const newPassword = String(body.newPassword ?? "");
     const configuredCode = String(import.meta.env.VITE_ADMIN_RECOVERY_CODE ?? "");
     if (!configuredCode || configuredCode.startsWith("CHANGE_ME")) {
-      throw new Error("La recuperation administrateur n'est pas configuree.");
+      throw new Error("La reçuperation administrateur n'est pas configuree.");
     }
     if (recoveryCode !== configuredCode || email !== "admin@school.com" || newPassword.length < 10) {
-      throw new Error("Informations de recuperation invalides.");
+      throw new Error("Informations de reçuperation invalides.");
     }
-    return { message: "Mot de passe administrateur reinitialise en mode local." } as T;
+    return { message: "Mot de passe administrateur réinitialisé en mode local." } as T;
   }
   if (normalizedPath === "/api/parents/me/photo" && method === "PUT") {
     const parentId = localStorage.getItem(PARENT_ID_STORAGE_KEY);
@@ -1417,11 +1421,11 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const hasDebtQuestion = query.includes("impay") || query.includes("non pay") || query.includes("unpaid");
     return {
       answer: hasDebtQuestion
-        ? "Mode local actif : les donnees disponibles indiquent de prioriser les familles avec le plus grand solde restant et de relancer les paiements en attente."
-        : "Mode local actif : le diagnostic utilise les donnees stockees dans ce navigateur pendant que l'API distante est indisponible.",
+        ? "Mode local actif : les données disponibles indiquent de prioriser les familles avec le plus grand solde restant et de relancer les paiements en attente."
+        : "Mode local actif : le diagnostic utilise les données stockées dans ce navigateur pendant que l'API distante est indisponible.",
       suggestions: hasDebtQuestion
-        ? ["Voir les parents en retard", "Verifier les paiements en attente", "Preparer un echeancier"]
-        : ["Analyser le tableau de bord", "Controler les paiements recents", "Generer un rapport"]
+        ? ["Voir les parents en retard", "Vérifier les paiements en attente", "Préparer un échéancier"]
+        : ["Analyser le tableau de bord", "Contrôler les paiements récents", "Générer un rapport"]
     } as T;
   }
   if (normalizedPath === "/api/classes") return demoClasses as T;
@@ -1434,7 +1438,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const parentId = localStorage.getItem(PARENT_ID_STORAGE_KEY);
     return financeProfile(parentId) as T;
   }
-  if (normalizedPath === "/api/finance/reductions") return financeReductions() as T;
+  if (normalizedPath === "/api/finance/réductions") return financeReductions() as T;
   if (normalizedPath === "/api/analytics/overdue-parents") return { overdueParents: 1 } as T;
   if (normalizedPath === "/api/analytics/payment-anomalies") return { anomalies: 0 } as T;
   if (normalizedPath === "/api/analytics/system-health") return { dbOk: true, lastBackup: new Date().toLocaleDateString("fr-FR") } as T;
@@ -1860,7 +1864,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
   if (normalizedPath === "/api/notifications/messages" && method === "POST") {
     const parentIds = Array.isArray(body.parentIds) ? body.parentIds.map((value) => String(value)) : [];
     const parents = getDemoParents().filter((parent) => parentIds.includes(parent.id));
-    if (parents.length === 0) throw new Error("Aucun parent valide n'a ete selectionne.");
+    if (parents.length === 0) throw new Error("Aucun parent valide n'a été sélectionné.");
 
     const subject = String(body.subject ?? "").trim();
     const bodyText = String(body.body ?? "").trim();
@@ -2142,10 +2146,10 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     );
     if (duplicateParent) {
       const reasons = [
-        duplicateParent.email.trim().toLowerCase() === normalizedEmail ? `email deja utilise (${duplicateParent.email})` : "",
-        duplicateParent.phone.replace(/\s+/g, "") === normalizedPhone ? `telephone deja utilise (${duplicateParent.phone})` : ""
+        duplicateParent.email.trim().toLowerCase() === normalizedEmail ? `email déjà utilisé (${duplicateParent.email})` : "",
+        duplicateParent.phone.replace(/\s+/g, "") === normalizedPhone ? `téléphone déjà utilisé (${duplicateParent.phone})` : ""
       ].filter(Boolean);
-      throw new Error(`Cette famille existe deja dans EduPay. Raison: ${reasons.join(", ") || "coordonnees parent deja utilisees"}.`);
+      throw new Error(`Cette famille existe déjà dans EduPay. Raison: ${reasons.join(", ") || "coordonnées parent déjà utilisées"}.`);
     }
     const id = buildUniqueDemoEntityId("PAR", parentFullName, existingParents.map((parent) => parent.id));
     const existingStudentIds = existingParents.flatMap((parent) => parent.students.map((student) => student.id));

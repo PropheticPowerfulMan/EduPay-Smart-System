@@ -17,7 +17,7 @@ import {
   X
 } from "lucide-react";
 import { useI18n } from "../i18n";
-import { api } from "../services/api";
+import { api, getCachedApiResponse } from "../services/api";
 import { useAuthStore } from "../store/auth";
 
 type FinanceSnapshot = {
@@ -450,7 +450,26 @@ export function FinanceParentPage() {
   useEffect(() => {
     let active = true;
     const loadParentFinance = (showLoader: boolean) => {
-      if (showLoader) setLoading(true);
+      let hasCachedSnapshot = false;
+      if (showLoader) {
+        const cachedFinance = getCachedApiResponse<FinanceSnapshot>("/api/finance/me/profile");
+        const cachedParentLight = getCachedApiResponse<ParentLight>("/api/parents/me");
+        if (cachedFinance) {
+          hasCachedSnapshot = true;
+          const nextPhotoUrl = cachedParentLight?.photoUrl || cachedFinance.parent.photoUrl || "";
+          setSnapshot({
+            ...cachedFinance,
+            parent: {
+              ...cachedFinance.parent,
+              photoUrl: nextPhotoUrl
+            }
+          });
+          setPhotoPreview(nextPhotoUrl || null);
+          setPhotoUrl(nextPhotoUrl || null);
+          setLoading(false);
+        }
+      }
+      if (showLoader && !hasCachedSnapshot) setLoading(true);
       Promise.all([
         api<FinanceSnapshot>("/api/finance/me/profile"),
         api<ParentLight>("/api/parents/me").catch(() => ({ photoUrl: "" }))
@@ -527,7 +546,7 @@ export function FinanceParentPage() {
         }
       } : current);
     } catch (error) {
-      setPhotoError(error instanceof Error ? error.message : "Impossible de mettre a jour la photo.");
+      setPhotoError(error instanceof Error ? error.message : "Impossible de mettre à jour la photo.");
     } finally {
       setPhotoSaving(false);
     }
@@ -550,7 +569,7 @@ export function FinanceParentPage() {
         <div className="glass max-w-lg rounded-2xl border border-amber-500/20 p-8 text-center shadow-xl">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-amber-300">{L("Espace parent financier", "Parent finance area")}</p>
           <h1 className="mt-3 font-display text-3xl font-bold text-white">{L("Profil financier indisponible", "Financial profile unavailable")}</h1>
-          <p className="mt-3 text-sm text-ink-dim">{loadError ?? "Le moteur financier ne repond pas pour le moment."}</p>
+          <p className="mt-3 text-sm text-ink-dim">{loadError ?? "Le moteur financier ne répond pas pour le moment."}</p>
         </div>
       </div>
     );
@@ -754,7 +773,7 @@ export function FinanceParentPage() {
                   <article key={student.id} className="rounded-2xl border border-brand-500/10 bg-slate-950/40 p-4">
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div>
-                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-300">{student.className ?? "Classe non renseignee"}</p>
+                        <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-300">{student.className ?? "Classe non renseignée"}</p>
                         <h3 className="mt-1 font-display text-2xl font-bold text-white">{student.fullName}</h3>
                         <p className="mt-2 text-sm text-ink-dim">{student.planName}</p>
                         <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -805,7 +824,7 @@ export function FinanceParentPage() {
                 <ParentInsightCard label="Reports historiques" value={money.format(previousDebtTotal)} detail="Dettes issues des annees precedentes." tone="text-orange-300" />
               </div>
               <div className="space-y-3">
-                {openInstallments.length === 0 && <p className="text-sm text-ink-dim">Aucune obligation ouverte dans les echeanciers actuels.</p>}
+                {openInstallments.length === 0 && <p className="text-sm text-ink-dim">Aucune obligation ouverte dans les échéanciers actuels.</p>}
                 {openInstallments.map((installment) => {
                   const delay = daysUntil(installment.dueDate);
                   return (
@@ -813,12 +832,12 @@ export function FinanceParentPage() {
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
                           <p className="font-semibold text-white">{installment.studentName} - {installment.label}</p>
-                          <p className="mt-1 text-sm text-ink-dim">{installment.planName} · {installment.className || "Classe non renseignee"}</p>
+                          <p className="mt-1 text-sm text-ink-dim">{installment.planName} · {installment.className || "Classe non renseignée"}</p>
                         </div>
                         <span className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${statusTone(installment.status)}`}>{installment.status}</span>
                       </div>
                       <div className="mt-4 grid gap-3 sm:grid-cols-4 text-sm">
-                        <div><p className="text-ink-dim">Echeance</p><p className="font-semibold text-white">{new Date(installment.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}</p></div>
+                        <div><p className="text-ink-dim">Échéance</p><p className="font-semibold text-white">{new Date(installment.dueDate).toLocaleDateString(lang === "fr" ? "fr-FR" : "en-US")}</p></div>
                         <div><p className="text-ink-dim">Jours</p><p className={delay < 0 ? "font-semibold text-red-300" : "font-semibold text-cyan-300"}>{delay < 0 ? `${Math.abs(delay)} jour(s) de retard` : `${delay} jour(s) restants`}</p></div>
                         <div><p className="text-ink-dim">Montant attendu</p><p className="font-mono font-semibold text-white">{moneyInstallment.format(installment.amountDue)}</p></div>
                         <div><p className="text-ink-dim">Solde</p><p className="font-mono font-semibold text-red-300">{moneyInstallment.format(installment.balance)}</p></div>
@@ -890,7 +909,7 @@ export function FinanceParentPage() {
                       <div className="min-w-0">
                         <p className="font-semibold text-white">{debt.title}</p>
                         <p className="mt-1 text-sm text-ink-dim">{debt.reason || "Dette suivie par le moteur financier."}</p>
-                        {isHistorical && <p className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-200">Dette d'annee anterieure / report historique</p>}
+                        {isHistorical && <p className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-200">Dette d'année antérieure / report historique</p>}
                       </div>
                       <span className={`w-fit rounded-full border px-3 py-1 text-xs font-semibold ${statusTone(debt.status)}`}>{debt.status}</span>
                     </div>
@@ -1038,7 +1057,7 @@ export function FinanceParentPage() {
               <article key={student.id} className="card glass border border-brand-500/10 shadow-lg">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-300">{student.className ?? "Classe non renseignee"}</p>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-brand-300">{student.className ?? "Classe non renseignée"}</p>
                     <h2 className="mt-1 font-display text-2xl font-bold text-white">{student.fullName}</h2>
                     <p className="mt-2 text-sm text-ink-dim">{student.planName}</p>
                     <div className="mt-3 flex flex-wrap gap-2 text-xs">
@@ -1212,7 +1231,7 @@ export function FinanceParentPage() {
               <ShieldCheck className="h-6 w-6 text-amber-300" />
             </div>
             <div className="mt-5 space-y-3">
-              {snapshot.agreements.length === 0 && <p className="text-sm text-ink-dim">Aucun accord special actif.</p>}
+              {snapshot.agreements.length === 0 && <p className="text-sm text-ink-dim">Aucun accord spécial actif.</p>}
               {snapshot.agreements.map((agreement) => (
                 <div key={agreement.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -1247,7 +1266,7 @@ export function FinanceParentPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="font-display text-2xl font-bold text-white">Payment history</h2>
-                <p className="mt-1 text-sm text-ink-dim">Historique des paiements, recus et enfants associes.</p>
+                <p className="mt-1 text-sm text-ink-dim">Historique des paiements, reçus et enfants associés.</p>
               </div>
               <ReceiptText className="h-6 w-6 text-emerald-300" />
             </div>
@@ -1282,12 +1301,12 @@ export function FinanceParentPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="font-display text-2xl font-bold text-white">Historical receipts</h2>
-                <p className="mt-1 text-sm text-ink-dim">Archive des recus financiers sur le long terme.</p>
+                <p className="mt-1 text-sm text-ink-dim">Archive des reçus financiers sur le long terme.</p>
               </div>
               <CalendarClock className="h-6 w-6 text-brand-200" />
             </div>
             <div className="mt-5 space-y-3">
-              {snapshot.historicalReceipts.length === 0 && <p className="text-sm text-ink-dim">Aucun recu archive.</p>}
+              {snapshot.historicalReceipts.length === 0 && <p className="text-sm text-ink-dim">Aucun reçu archivé.</p>}
               {snapshot.historicalReceipts.map((receipt) => (
                 <div key={receipt.id} className="rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 text-sm">
                   <div className="flex items-center justify-between gap-3">
