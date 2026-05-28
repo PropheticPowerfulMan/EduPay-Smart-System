@@ -115,7 +115,7 @@ function normalizeParentForUi(parent: Parent): Parent {
     preferredLanguage: parent.preferredLanguage === "en" ? "en" : "fr",
     createdAt: parent.createdAt || new Date(0).toISOString(),
     students: Array.isArray(parent.students)
-      ? parent.students.map((student) => ({
+      ? parent.students.filter(Boolean).map((student) => ({
           ...student,
           id: String(student.id ?? ""),
           displayId: student.displayId ? String(student.displayId) : undefined,
@@ -137,12 +137,19 @@ function toSafeNumber(value: unknown) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
-function normalizeParentFinanceSnapshot(snapshot: ParentFinanceSnapshot | null): ParentFinanceSnapshot | null {
-  if (!snapshot) return null;
+function normalizeParentFinanceSnapshot(snapshot: ParentFinanceSnapshot | null | unknown): ParentFinanceSnapshot | null {
+  if (!snapshot || typeof snapshot !== "object") return null;
 
-  const profile = snapshot.profile ?? ({} as ParentFinanceSnapshot["profile"]);
+  const rawSnapshot = snapshot as Partial<ParentFinanceSnapshot>;
+  const profile = rawSnapshot.profile ?? ({} as ParentFinanceSnapshot["profile"]);
+  const academicYear = rawSnapshot.academicYear ?? ({} as ParentFinanceSnapshot["academicYear"]);
   return {
-    academicYear: snapshot.academicYear ?? { id: "", name: "-", startDate: "", endDate: "" },
+    academicYear: {
+      id: String(academicYear.id ?? ""),
+      name: String(academicYear.name ?? "-"),
+      startDate: String(academicYear.startDate ?? ""),
+      endDate: String(academicYear.endDate ?? "")
+    },
     profile: {
       totalPaid: toSafeNumber(profile.totalPaid),
       totalDebt: toSafeNumber(profile.totalDebt),
@@ -157,9 +164,12 @@ function normalizeParentFinanceSnapshot(snapshot: ParentFinanceSnapshot | null):
       expectedNetRevenue: toSafeNumber(profile.expectedNetRevenue),
       completionRate: toSafeNumber(profile.completionRate),
     },
-    students: Array.isArray(snapshot.students)
-      ? snapshot.students.map((student) => ({
+    students: Array.isArray(rawSnapshot.students)
+      ? rawSnapshot.students.filter(Boolean).map((student, index) => ({
           ...student,
+          id: String(student.id ?? `finance-student-${index}`),
+          fullName: String(student.fullName ?? "Élève non renseigné"),
+          className: student.className ? String(student.className) : null,
           paid: toSafeNumber(student.paid),
           balance: toSafeNumber(student.balance),
           expectedTotal: toSafeNumber(student.expectedTotal),
@@ -167,9 +177,20 @@ function normalizeParentFinanceSnapshot(snapshot: ParentFinanceSnapshot | null):
           completionRate: toSafeNumber(student.completionRate),
         }))
       : [],
-    debts: Array.isArray(snapshot.debts)
-      ? snapshot.debts.map((debt) => ({
+    debts: Array.isArray(rawSnapshot.debts)
+      ? rawSnapshot.debts.filter(Boolean).map((debt, index) => ({
           ...debt,
+          id: String(debt.id ?? `finance-debt-${index}`),
+          title: String(debt.title ?? "Dette non renseignée"),
+          reason: debt.reason ? String(debt.reason) : null,
+          status: String(debt.status ?? "OPEN"),
+          academicYearId: String(debt.academicYearId ?? ""),
+          academicYearName: debt.academicYearName ? String(debt.academicYearName) : null,
+          carriedOverFromYearId: debt.carriedOverFromYearId ? String(debt.carriedOverFromYearId) : null,
+          carriedOverFromYearName: debt.carriedOverFromYearName ? String(debt.carriedOverFromYearName) : null,
+          dueDate: debt.dueDate ? String(debt.dueDate) : null,
+          settledAt: debt.settledAt ? String(debt.settledAt) : null,
+          createdAt: String(debt.createdAt ?? ""),
           originalAmount: toSafeNumber(debt.originalAmount),
           amountRemaining: toSafeNumber(debt.amountRemaining),
         }))
@@ -434,17 +455,17 @@ function formatMoney(amount: number) {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(toSafeNumber(amount));
 }
 
-function formatDateLabel(value?: string | null) {
+function formatDateLabel(value?: unknown) {
   if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
+  const parsed = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return String(value);
   return parsed.toLocaleDateString();
 }
 
-function formatDateTimeLabel(value?: string | null) {
+function formatDateTimeLabel(value?: unknown) {
   if (!value) return "-";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
+  const parsed = value instanceof Date ? value : new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) return String(value);
   return parsed.toLocaleString("fr-FR", {
     year: "numeric",
     month: "2-digit",
@@ -455,8 +476,9 @@ function formatDateTimeLabel(value?: string | null) {
   });
 }
 
-function getDebtStatusLabel(status: string) {
-  switch (status) {
+function getDebtStatusLabel(status: string | null | undefined) {
+  const safeStatus = status || "OPEN";
+  switch (safeStatus) {
     case "OPEN":
       return "Ouverte";
     case "PARTIALLY_PAID":
@@ -468,12 +490,12 @@ function getDebtStatusLabel(status: string) {
     case "WRITTEN_OFF":
       return "Radiée";
     default:
-      return status;
+      return safeStatus;
   }
 }
 
-function getDebtStatusTone(status: string) {
-  switch (status) {
+function getDebtStatusTone(status: string | null | undefined) {
+  switch (status || "OPEN") {
     case "CLEARED":
       return "border-emerald-500/30 bg-emerald-500/10 text-emerald-200";
     case "PARTIALLY_PAID":
@@ -486,16 +508,16 @@ function getDebtStatusTone(status: string) {
   }
 }
 
-function getDebtReferenceYear(debt: ParentFinanceDebt) {
-  return debt.carriedOverFromYearName
-    || debt.carriedOverFromYearId
-    || debt.academicYearName
-    || debt.academicYearId
+function getDebtReferenceYear(debt: ParentFinanceDebt | null | undefined) {
+  return debt?.carriedOverFromYearName
+    || debt?.carriedOverFromYearId
+    || debt?.academicYearName
+    || debt?.academicYearId
     || "Année non renseignée";
 }
 
-function escapeHtml(value: string) {
-  return value
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
