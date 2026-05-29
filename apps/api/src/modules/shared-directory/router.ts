@@ -160,6 +160,13 @@ function serializeSharedStudent(student: {
   };
 }
 
+function keepSavanexEmployeesWhenAvailable<T extends { externalIds?: Array<{ appSlug?: string | null }> }>(employees: T[]) {
+  const savanexEmployees = employees.filter((employee) =>
+    employee.externalIds?.some((externalId) => String(externalId.appSlug || "").toUpperCase() === "SAVANEX")
+  );
+  return savanexEmployees.length > 0 ? savanexEmployees : employees;
+}
+
 sharedDirectoryRouter.use(authGuard);
 
 sharedDirectoryRouter.get("/", async (req: AuthenticatedRequest, res) => {
@@ -197,10 +204,12 @@ sharedDirectoryRouter.get("/", async (req: AuthenticatedRequest, res) => {
     }));
     const students = parents.flatMap((parent) => parent.students);
 
+    const teachers = keepSavanexEmployeesWhenAvailable(mirrored.teachers);
+
     return res.json({
       source: "orbit",
       visibility: "shared-directory",
-      counts: mirrored.counts,
+      counts: { ...mirrored.counts, teachers: teachers.length },
       families: mirrored.parents.map((parent) => ({
         id: parent.id,
         displayId: parent.displayId || parent.id,
@@ -212,7 +221,7 @@ sharedDirectoryRouter.get("/", async (req: AuthenticatedRequest, res) => {
       })),
       parents,
       students,
-      teachers: mirrored.teachers,
+      teachers,
     });
   }
 
@@ -282,7 +291,7 @@ sharedDirectoryRouter.get("/teachers", async (req: AuthenticatedRequest, res) =>
   }
 
   const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);
-  return res.json(mirrored.teachers);
+  return res.json(keepSavanexEmployeesWhenAvailable(mirrored.teachers));
 });
 
 sharedDirectoryRouter.put("/teachers/:id", authorize(...employeeWriteRoles), async (req: AuthenticatedRequest, res) => {

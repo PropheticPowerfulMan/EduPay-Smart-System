@@ -147,6 +147,70 @@ function toSafeNumber(value: unknown) {
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
+function normalizeSearchText(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function expandClassSearchTerms(value: unknown) {
+  const normalized = normalizeSearchText(value);
+  if (!normalized) return [];
+
+  const terms = new Set([normalized, normalized.replace(/\s+/g, "")]);
+  const gradeMatch = normalized.match(/\bgrade\s*0?([1-9]|1[0-2])\s*([a-z])?\b/);
+  if (gradeMatch) {
+    const grade = gradeMatch[1];
+    const section = gradeMatch[2] || "";
+    terms.add(`grade ${grade}`);
+    terms.add(`grade${grade}`);
+    terms.add(`g${grade}`);
+    terms.add(`classe grade ${grade}`);
+    if (section) {
+      terms.add(`grade ${grade}${section}`);
+      terms.add(`grade${grade}${section}`);
+      terms.add(`g${grade}${section}`);
+    }
+  }
+
+  const kindergartenMatch = normalized.match(/\bk\s*([3-5])\s*([a-z])?\b/);
+  if (kindergartenMatch) {
+    const level = kindergartenMatch[1];
+    const section = kindergartenMatch[2] || "";
+    terms.add(`k${level}`);
+    terms.add(`k ${level}`);
+    terms.add(`kindergarten ${level}`);
+    terms.add(`maternelle k${level}`);
+    terms.add(`classe k${level}`);
+    if (section) {
+      terms.add(`k${level}${section}`);
+      terms.add(`k ${level} ${section}`);
+    }
+  }
+
+  return Array.from(terms);
+}
+
+function buildSearchIndex(values: unknown[]) {
+  const terms = new Set<string>();
+  values.forEach((value) => {
+    expandClassSearchTerms(value).forEach((term) => terms.add(term));
+  });
+  return Array.from(terms).join(" ");
+}
+
+function searchIndexMatches(index: string, rawQuery: string) {
+  const query = normalizeSearchText(rawQuery);
+  if (!query) return true;
+  const compactQuery = query.replace(/\s+/g, "");
+  if (index.includes(query) || index.includes(compactQuery)) return true;
+  return query.split(" ").filter(Boolean).every((part) => index.includes(part));
+}
+
 function normalizeParentFinanceSnapshot(snapshot: ParentFinanceSnapshot | null | unknown): ParentFinanceSnapshot | null {
   if (!snapshot || typeof snapshot !== "object") return null;
 
@@ -2686,30 +2750,34 @@ export function ParentsManagementPage() {
   }, [viewTarget]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = search.trim();
     if (!q) return parents;
 
     return parents.filter((parent) => {
       const parentStudents = Array.isArray(parent.students) ? parent.students : [];
-      const studentsHaystack = parentStudents
-        .flatMap((student) => [student.id, student.displayId, student.fullName, student.className, student.classId])
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-
-      const haystack = [
+      const searchIndex = buildSearchIndex([
         parent.fullName,
         parent.id,
         parent.displayId || "",
         parent.phone,
         parent.email,
         parent.physicalAddress || "",
-        studentsHaystack,
-      ]
-        .join(" ")
-        .toLowerCase();
+        parent.nom,
+        parent.postnom,
+        parent.prenom,
+        ...parentStudents.flatMap((student) => [
+          student.id,
+          student.displayId,
+          student.fullName,
+          student.className,
+          student.classId,
+          student.paymentOptionLabel,
+          student.paymentOptionType,
+          student.tuitionPlanName,
+        ]),
+      ]);
 
-      return haystack.includes(q);
+      return searchIndexMatches(searchIndex, q);
     });
   }, [parents, search]);
 

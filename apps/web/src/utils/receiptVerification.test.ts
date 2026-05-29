@@ -43,10 +43,11 @@ describe("buildReceiptVerificationUrl", () => {
 });
 
 describe("buildReceiptVerificationQrUrl", () => {
-  it("genere un QR complet avec les données signees du reçu", () => {
+  it("genere un QR court avec la transaction et le code de verification", () => {
     const url = buildReceiptVerificationQrUrl(sampleReceipt, { origin: "http://localhost:5174" });
 
-    expect(url).toMatch(/^http:\/\/localhost:5174\/EduPay-Smart-System\/#\/receipt\/verify\?tx=TX-1001&c=EDP-22FB-4D92&d=/);
+    expect(url).toBe("http://localhost:5174/EduPay-Smart-System/#/receipt/verify?tx=TX-1001&c=EDP-22FB-4D92");
+    expect(url).not.toContain("&d=");
   });
 
   it("ignore l'ancien domaine Render non deploye quand EduPay tourne en local", () => {
@@ -56,6 +57,6 @@ describe("buildReceiptVerificationQrUrl", () => {
       "https://edupay-web.onrender.com/EduPay-Smart-System/"
     );
 
-    expect(url).toMatch(/^http:\/\/localhost:5174\/EduPay-Smart-System\/#\/receipt\/verify\?tx=TX-1001&c=EDP-22FB-4D92&d=/);
+    expect(url).toBe("http://localhost:5174/EduPay-Smart-System/#/receipt/verify?tx=TX-1001&c=EDP-22FB-4D92");
   });
 });

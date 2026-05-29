@@ -126,6 +126,77 @@ function sortEmployeesByName(employees: Employee[]) {
   );
 }
 
+function normalizeSearchText(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function employeeSearchAliases(employee: Employee) {
+  const normalizedRole = normalizeSearchText([
+    employee.employeeType,
+    employee.department,
+    employee.jobTitle,
+    employee.subject,
+  ].join(" "));
+  const aliases = new Set<string>();
+
+  if (/\b(teacher|teaching|enseignant|professeur|academic|academique)\b/.test(normalizedRole)) {
+    ["professeur", "enseignant", "teacher", "teaching", "academique", "academic"].forEach((alias) => aliases.add(alias));
+  }
+  if (/\b(driver|chauffeur|transport|logistique|logistics|operations?)\b/.test(normalizedRole)) {
+    ["chauffeur", "driver", "transport", "logistique", "operations", "bureau transport"].forEach((alias) => aliases.add(alias));
+  }
+  if (/\b(accountant|finance|comptable|cashier|caissier)\b/.test(normalizedRole)) {
+    ["finance", "comptable", "accountant", "cashier", "caissier", "bureau finance"].forEach((alias) => aliases.add(alias));
+  }
+  if (/\b(admin|administration|registrar|secretariat|secretary)\b/.test(normalizedRole)) {
+    ["administration", "admin", "registrar", "secretariat", "bureau administratif"].forEach((alias) => aliases.add(alias));
+  }
+  if (/\b(security|securite|guard|garde)\b/.test(normalizedRole)) {
+    ["securite", "security", "garde", "guard"].forEach((alias) => aliases.add(alias));
+  }
+
+  return Array.from(aliases);
+}
+
+function buildEmployeeSearchIndex(employee: Employee) {
+  const values = [
+    employee.fullName,
+    employee.displayId,
+    employee.employeeId,
+    employee.id,
+    employee.email,
+    employee.phone,
+    employee.physicalAddress,
+    employee.department,
+    employee.jobTitle,
+    employee.employeeType,
+    employee.subject,
+    ...(employee.externalIds || []).flatMap((item) => [item.appSlug, item.externalId]),
+    ...employeeSearchAliases(employee),
+  ];
+
+  const terms = values
+    .map(normalizeSearchText)
+    .filter(Boolean)
+    .flatMap((value) => [value, value.replace(/\s+/g, "")]);
+
+  return Array.from(new Set(terms)).join(" ");
+}
+
+function searchIndexMatches(index: string, rawQuery: string) {
+  const query = normalizeSearchText(rawQuery);
+  if (!query) return true;
+  const compactQuery = query.replace(/\s+/g, "");
+  if (index.includes(query) || index.includes(compactQuery)) return true;
+  return query.split(" ").filter(Boolean).every((part) => index.includes(part));
+}
+
 function EyeIcon() {
   return (
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -623,20 +694,10 @@ export function EmployeesPage() {
   }, [selectedEmployee]);
 
   const filteredEmployees = useMemo(() => {
-    const term = search.trim().toLowerCase();
+    const term = search.trim();
     if (!term) return employees;
 
-    return employees.filter((employee) => [
-      employee.fullName,
-      employee.displayId,
-      employee.employeeId,
-      employee.email,
-      employee.phone,
-      employee.physicalAddress,
-      employee.department,
-      employee.jobTitle,
-      employee.subject,
-    ].some((value) => value?.toLowerCase().includes(term)));
+    return employees.filter((employee) => searchIndexMatches(buildEmployeeSearchIndex(employee), term));
   }, [employees, search]);
 
   const stats = useMemo(() => {
@@ -782,7 +843,7 @@ export function EmployeesPage() {
       <SearchField
         value={search}
         onChange={(event) => setSearch(event.target.value)}
-        placeholder="Rechercher un employé, un matricule, un département, un poste ou un contact..."
+        placeholder="Rechercher un employe, matricule, departement, bureau, poste, professeur, chauffeur ou contact..."
         wrapperClassName="animate-fadeInUp"
       />
 

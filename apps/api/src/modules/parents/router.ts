@@ -621,13 +621,20 @@ parentRouter.use(authGuard);
 // GET all parents
 parentRouter.get("/", authorize("ADMIN", "ACCOUNTANT"), async (req: AuthenticatedRequest, res) => {
   try {
-    const localParentsCount = await prisma.parent.count({ where: { schoolId: req.user!.schoolId } });
-    if (orbitRegistryIsEnabled() && (localParentsCount === 0 || req.query.syncOrbit === "1")) {
-      try {
-        await syncOrbitRegistryMirror(req.user!.schoolId);
-      } catch (syncError) {
-        console.error("[PARENT_LIST_ORBIT_SYNC] Local list preserved after Orbit sync failure", syncError);
-      }
+    if (orbitRegistryIsEnabled()) {
+      const mirrored = await syncOrbitRegistryMirror(req.user!.schoolId);
+      const mirroredParentIds = mirrored.parents.map((parent) => parent.id);
+      const localParents = mirroredParentIds.length
+        ? await prisma.parent.findMany({
+          where: { schoolId: req.user!.schoolId, id: { in: mirroredParentIds } },
+          include: parentInclude
+        })
+        : [];
+      const localParentById = new Map(localParents.map((parent) => [parent.id, parent]));
+      return res.json(mirroredParentIds.flatMap((id) => {
+        const parent = localParentById.get(id);
+        return parent ? [enrichParent(parent)] : [];
+      }));
     }
 
     const parents = await prisma.parent.findMany({

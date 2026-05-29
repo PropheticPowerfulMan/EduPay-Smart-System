@@ -211,7 +211,15 @@ export function buildReceiptVerificationQrUrl(
   locationLike: Pick<Location, "origin"> = window.location,
   configuredBaseUrlOverride?: string
 ) {
-  return buildReceiptVerificationUrl(input, locationLike, configuredBaseUrlOverride);
+  const security = buildReceiptSecurity(input);
+  const tx = encodeURIComponent(input.transactionNumber);
+  const code = encodeURIComponent(security.verificationCode);
+  const configuredBaseUrl = (configuredBaseUrlOverride
+    ?? import.meta.env.VITE_RECEIPT_VERIFICATION_BASE_URL
+    ?? import.meta.env.VITE_PUBLIC_APP_URL
+    ?? "").trim();
+  const baseUrl = resolveReceiptBaseUrl(configuredBaseUrl, locationLike);
+  return `${baseUrl}#/receipt/verify?tx=${tx}&c=${code}`;
 }
 
 export function parseReceiptVerificationToken(token: string | null) {
