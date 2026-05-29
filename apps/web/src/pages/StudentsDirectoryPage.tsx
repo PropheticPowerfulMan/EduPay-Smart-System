@@ -227,9 +227,39 @@ function getSchoolClassOptions(classes: SchoolClass[]) {
   }
 
   return [...byName.values()].sort((a, b) => {
-    const rank = (name: string) => name.startsWith("K") ? Number(name.slice(1)) : 10 + Number(name.slice(1));
+    const rank = (name: string) => {
+      if (name.startsWith("K")) return Number(name.slice(1));
+      const grade = name.match(/^Grade\s+([1-9]|1[0-2])$/);
+      return grade ? 10 + Number(grade[1]) : 100;
+    };
     return rank(a.name) - rank(b.name);
   });
+}
+
+function sortByFullName<T extends { fullName?: string; id?: string }>(items: T[] = []) {
+  return [...items].sort((a, b) =>
+    String(a.fullName || a.id || "").localeCompare(String(b.fullName || b.id || ""), "fr", { sensitivity: "base" })
+  );
+}
+
+function normalizeDirectoryForUi(directory: SharedDirectoryResponse): SharedDirectoryResponse {
+  const students = sortByFullName(directory.students ?? []);
+  const parents = sortByFullName(directory.parents ?? []).map((parent) => ({
+    ...parent,
+    students: sortByFullName(parent.students ?? [])
+  }));
+
+  return {
+    ...directory,
+    parents,
+    students,
+    counts: {
+      families: directory.counts?.families ?? parents.length,
+      parents: parents.length,
+      students: students.length,
+      teachers: directory.counts?.teachers ?? 0
+    }
+  };
 }
 
 function formatDateLabel(value?: string | null) {
@@ -1052,7 +1082,7 @@ export function StudentsDirectoryPage() {
     ]);
 
     if (directoryResult.status === "fulfilled") {
-      setDirectory(directoryResult.value);
+      setDirectory(normalizeDirectoryForUi(directoryResult.value));
     } else {
       setApiError(directoryResult.reason instanceof Error ? directoryResult.reason.message : "Impossible de charger l'annuaire des élèves.");
     }
@@ -1111,6 +1141,7 @@ export function StudentsDirectoryPage() {
         body: JSON.stringify({
           fullName: state.fullName,
           classId: state.classId,
+          className: getSchoolClassOptions(classes).find((item) => item.id === state.classId)?.name || "",
           parentId: state.parentId,
           annualFee: Number(state.annualFee)
         })

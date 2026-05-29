@@ -120,6 +120,12 @@ const EMPTY_FORM: EmployeeFormState = {
   mustChangePassword: false,
 };
 
+function sortEmployeesByName(employees: Employee[]) {
+  return [...employees].sort((a, b) =>
+    String(a.fullName || a.employeeId || a.id || "").localeCompare(String(b.fullName || b.employeeId || b.id || ""), "fr", { sensitivity: "base" })
+  );
+}
+
 function EyeIcon() {
   return (
     <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -569,7 +575,7 @@ export function EmployeesPage() {
     setError(null);
     try {
       const data = await api<Employee[]>("/api/shared-directory/teachers");
-      setEmployees(Array.isArray(data) ? data : []);
+      setEmployees(sortEmployeesByName(Array.isArray(data) ? data : []));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Impossible de charger les employés.");
     } finally {

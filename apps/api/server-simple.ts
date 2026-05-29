@@ -156,6 +156,12 @@ const mockStudents: any[] = [
   { id: "student-3", parentId: "PAR-2025-0002", classId: "section-grade-2", fullName: "Charlie Pierre", annualFee: 550, schoolId: "school-1" }
 ];
 
+const mockEmployees: any[] = [
+  { id: "EMP-KCS-001", orbitId: "EMP-KCS-001", displayId: "KCS-EMP-001", employeeId: "KCS-EMP-001", fullName: "Anita Mbuyi", email: "anita.mbuyi@school.com", phone: "+243 999 345 678", department: "Academique", jobTitle: "Enseignante", subject: "Mathematiques", employeeType: "TEACHING", physicalAddress: "Kinshasa", externalIds: [{ appSlug: "edupay", externalId: "EMP-KCS-001" }], createdAt: new Date().toISOString() },
+  { id: "EMP-KCS-002", orbitId: "EMP-KCS-002", displayId: "KCS-EMP-002", employeeId: "KCS-EMP-002", fullName: "Daniel Kayembe", email: "daniel.kayembe@school.com", phone: "+243 999 456 789", department: "Finances", jobTitle: "Comptable", subject: "", employeeType: "ADMINISTRATIVE", physicalAddress: "Kinshasa", externalIds: [{ appSlug: "edupay", externalId: "EMP-KCS-002" }], createdAt: new Date().toISOString() },
+  { id: "EMP-KCS-003", orbitId: "EMP-KCS-003", displayId: "KCS-EMP-003", employeeId: "KCS-EMP-003", fullName: "Nadine Ilunga", email: "nadine.ilunga@school.com", phone: "+243 999 567 890", department: "Administration", jobTitle: "Directrice", subject: "", employeeType: "ADMINISTRATIVE", physicalAddress: "Kinshasa", externalIds: [{ appSlug: "edupay", externalId: "EMP-KCS-003" }], createdAt: new Date().toISOString() }
+];
+
 const mockClasses = [
   ...Array.from({ length: 3 }, (_v, index) => {
     const name = `K${index + 3}`;
@@ -337,8 +343,17 @@ function parentWithStudents(parent: any) {
     .map((s) => ({
       ...s,
       className: (mockClasses.find((c) => c.id === s.classId) || {}).name || s.classId
-    }));
+    }))
+    .sort((a, b) => compareByName(a, b));
   return { ...parent, students };
+}
+
+function compareByName(a: any, b: any) {
+  return String(a.fullName || a.name || a.id || "").localeCompare(String(b.fullName || b.name || b.id || ""), "fr", { sensitivity: "base" });
+}
+
+function sortByName<T>(items: T[]) {
+  return [...items].sort((a: any, b: any) => compareByName(a, b));
 }
 
 function roundMoney(value: number) {
@@ -347,6 +362,48 @@ function roundMoney(value: number) {
 
 function classNameFor(classId: string) {
   return (mockClasses.find((c) => c.id === classId) || {}).name || classId || "Classe non renseignee";
+}
+
+function studentForDirectory(student: any) {
+  return {
+    ...student,
+    orbitId: student.orbitId || student.id,
+    displayId: student.displayId || student.id,
+    studentNumber: student.studentNumber || student.id,
+    externalStudentId: student.externalStudentId || student.id,
+    className: classNameFor(student.classId),
+    parentId: student.parentId,
+    annualFee: Number(student.annualFee) || 0,
+    annualFeeDisplay: Number(student.annualFee) || 0,
+    originalAnnualFee: Number(student.annualFee) || 0,
+    reductionTotal: Number(student.reductionTotal) || 0,
+    createdAt: student.createdAt || new Date().toISOString()
+  };
+}
+
+function buildSharedDirectory() {
+  const parents = sortByName(mockParents.map(parentWithStudents));
+  const students = sortByName(mockStudents.map(studentForDirectory));
+  const teachers = sortByName(mockEmployees);
+  return {
+    source: "edupay-demo",
+    visibility: "shared-directory",
+    counts: {
+      families: parents.length,
+      parents: parents.length,
+      students: students.length,
+      teachers: teachers.length
+    },
+    families: parents.map((parent) => ({
+      id: parent.id,
+      fullName: parent.fullName,
+      parentIds: [parent.id],
+      studentIds: parent.students.map((student: any) => student.id)
+    })),
+    parents,
+    students,
+    teachers
+  };
 }
 
 function gradeGroupFor(classId: string) {
@@ -507,7 +564,7 @@ function buildFinanceProfile(parentId: string) {
 
 app.get("/api/parents", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: any, res) => {
   const q = (req.query.search as string || "").toLowerCase();
-  let list = mockParents.map(parentWithStudents);
+  let list = sortByName(mockParents.map(parentWithStudents));
   if (q) {
     list = list.filter((p: any) =>
       p.fullName.toLowerCase().includes(q) ||
@@ -639,8 +696,18 @@ app.put("/api/parents/:id", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req:
     }
     // Add new students (those without an id)
     for (const s of reqStudents as any[]) {
-      if (s.id) continue; // existing, keep as-is
       if (!s.fullName) continue;
+      if (s.id) {
+        const existing = mockStudents.find((student) => student.id === s.id && student.parentId === req.params.id);
+        if (existing) {
+          existing.fullName = s.fullName;
+          existing.classId = s.classId || existing.classId || "";
+          existing.annualFee = Number(s.annualFee) || 0;
+          existing.paymentOptionType = s.paymentOptionType || existing.paymentOptionType;
+          existing.tuitionPlanName = s.tuitionPlanName || existing.tuitionPlanName;
+        }
+        continue;
+      }
       mockStudents.push({
         id: `student-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         parentId: req.params.id,
@@ -667,12 +734,84 @@ app.delete("/api/parents/:id", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (r
 
 // Routes: Students
 app.get("/api/students", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (_req: any, res) => {
-  return res.json(mockStudents);
+  return res.json(sortByName(mockStudents.map(studentForDirectory)));
+});
+
+app.put("/api/students/:id", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: any, res) => {
+  const student = mockStudents.find((item) => item.id === req.params.id || item.orbitId === req.params.id);
+  if (!student) return res.status(404).json({ message: "Student not found" });
+
+  const parent = mockParents.find((item) => item.id === req.body?.parentId);
+  if (req.body?.parentId && !parent) return res.status(404).json({ message: "Parent not found" });
+
+  const nextClassId = String(req.body?.classId ?? student.classId ?? "");
+  if (nextClassId && !mockClasses.some((item) => item.id === nextClassId)) {
+    return res.status(400).json({ message: "Classe introuvable" });
+  }
+
+  student.fullName = String(req.body?.fullName ?? student.fullName).trim() || student.fullName;
+  student.classId = nextClassId;
+  student.parentId = parent?.id || student.parentId;
+  student.annualFee = Number(req.body?.annualFee ?? student.annualFee) || 0;
+  student.updatedAt = new Date().toISOString();
+
+  return res.json({
+    ...studentForDirectory(student),
+    notificationStatus: {
+      dashboard: "UPDATED",
+      email: parent?.email ? "QUEUED" : "SKIPPED",
+      sms: parent?.phone ? "QUEUED" : "SKIPPED",
+      adminEmail: "QUEUED"
+    }
+  });
+});
+
+app.delete("/api/students/:id", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (req: any, res) => {
+  const idx = mockStudents.findIndex((item) => item.id === req.params.id || item.orbitId === req.params.id);
+  if (idx === -1) return res.status(404).json({ message: "Student not found" });
+  mockStudents.splice(idx, 1);
+  return res.status(204).send();
 });
 
 // Routes: Classes
 app.get("/api/classes", authGuard, (_req: any, res) => {
   return res.json(mockClasses);
+});
+
+// Routes: Shared directory
+app.get("/api/shared-directory", authGuard, requireRole("ADMIN", "ACCOUNTANT", "HR_MANAGER", "OWNER", "SUPER_ADMIN"), (_req: any, res) => {
+  return res.json(buildSharedDirectory());
+});
+
+app.get("/api/shared-directory/teachers", authGuard, requireRole("ADMIN", "ACCOUNTANT", "HR_MANAGER", "OWNER", "SUPER_ADMIN"), (_req: any, res) => {
+  return res.json(sortByName(mockEmployees));
+});
+
+app.put("/api/shared-directory/teachers/:id", authGuard, requireRole("ADMIN", "HR_MANAGER", "OWNER", "SUPER_ADMIN"), (req: any, res) => {
+  const employee = mockEmployees.find((item) => [item.id, item.orbitId, item.employeeId].includes(req.params.id));
+  if (!employee) return res.status(404).json({ message: "Employee not found" });
+  Object.assign(employee, {
+    fullName: String(req.body?.fullName ?? employee.fullName),
+    email: String(req.body?.email ?? employee.email ?? ""),
+    phone: String(req.body?.phone ?? employee.phone ?? ""),
+    physicalAddress: String(req.body?.physicalAddress ?? employee.physicalAddress ?? ""),
+    department: String(req.body?.department ?? employee.department ?? ""),
+    jobTitle: String(req.body?.jobTitle ?? employee.jobTitle ?? ""),
+    subject: String(req.body?.subject ?? employee.subject ?? ""),
+    employeeType: String(req.body?.employeeType ?? employee.employeeType ?? "TEACHING"),
+    updatedAt: new Date().toISOString()
+  });
+  return res.json({
+    ...employee,
+    notificationStatus: { email: employee.email ? "QUEUED" : "SKIPPED", sms: employee.phone ? "QUEUED" : "SKIPPED", adminEmail: "QUEUED" }
+  });
+});
+
+app.delete("/api/shared-directory/teachers/:id", authGuard, requireRole("ADMIN", "HR_MANAGER", "OWNER", "SUPER_ADMIN"), (req: any, res) => {
+  const idx = mockEmployees.findIndex((item) => [item.id, item.orbitId, item.employeeId].includes(req.params.id));
+  if (idx === -1) return res.status(404).json({ message: "Employee not found" });
+  mockEmployees.splice(idx, 1);
+  return res.status(204).send();
 });
 
 // Routes: Payments

@@ -127,9 +127,19 @@ function normalizeParentForUi(parent: Parent): Parent {
           paymentOptionType: student.paymentOptionType ? String(student.paymentOptionType) : undefined,
           paymentOptionLabel: student.paymentOptionLabel ? String(student.paymentOptionLabel) : undefined,
           tuitionPlanName: student.tuitionPlanName ? String(student.tuitionPlanName) : undefined,
-        }))
+        })).sort((a, b) => compareByFullName(a, b))
       : []
   };
+}
+
+function compareByFullName(a: { fullName?: string; id?: string }, b: { fullName?: string; id?: string }) {
+  return String(a.fullName || a.id || "").localeCompare(String(b.fullName || b.id || ""), "fr", { sensitivity: "base" });
+}
+
+function sortParentsForUi(parents: Parent[]) {
+  return [...parents]
+    .map((parent) => ({ ...parent, students: [...(parent.students ?? [])].sort(compareByFullName) }))
+    .sort(compareByFullName);
 }
 
 function toSafeNumber(value: unknown) {
@@ -2616,7 +2626,7 @@ export function ParentsManagementPage() {
     ]);
 
     if (parentsResult.status === "fulfilled") {
-      setParents(parentsResult.value.map(normalizeParentForUi));
+      setParents(sortParentsForUi(parentsResult.value.map(normalizeParentForUi)));
     } else {
       const message = parentsResult.reason instanceof Error ? parentsResult.reason.message : "Erreur API";
       nextApiError = message;
@@ -2711,7 +2721,7 @@ export function ParentsManagementPage() {
       if (id) {
         const updated = await api<Parent & { notificationStatus?: { dashboard?: string; email?: string; sms?: string; adminEmail?: string }; syncMode?: string }>(`/api/parents/${id}`, { method: "PUT", body: JSON.stringify(body) });
         const normalizedUpdated = normalizeParentForUi(updated);
-        setParents((current) => current.map((parent) => parent.id === id ? normalizedUpdated : parent));
+        setParents((current) => sortParentsForUi(current.map((parent) => parent.id === id ? normalizedUpdated : parent)));
         setViewTarget((current) => current?.id === id ? normalizedUpdated : current);
         setEditTarget((current) => current?.id === id ? normalizedUpdated : current);
         setMutationNotice([
