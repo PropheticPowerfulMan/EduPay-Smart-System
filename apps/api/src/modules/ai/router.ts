@@ -86,7 +86,7 @@ export function buildLocalAssistantFallback(query: string, context: any) {
 
     return {
       answer: targets.length
-        ? `Liste précise des élèves ${noPaymentOnly ? "sans paiement enregistré" : "avec solde restant"} selon les données EduPay chargées.`
+        ? `Liste precise des eleves ${noPaymentOnly ? "sans paiement enregistre" : "avec solde restant"} selon les donnees EduPay chargees.`
         : "Aucun élève correspondant n'apparaît dans les données EduPay chargées.",
       facts: [`${targets.length} élève(s) concerne(s).`, ...facts],
       tableRows,

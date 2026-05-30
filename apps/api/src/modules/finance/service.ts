@@ -2413,16 +2413,16 @@ function summarizeTuitionMessage(input: {
     .sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime())[0];
 
   return [
-    `Montant total reçu : ${formatAlertCurrency(input.totalReceived)}.`,
+    `Total amount received: ${formatAlertCurrency(input.totalReceived)}.`,
     byStudent.length
-      ? `Montants imputés : ${byStudent.map((row) => `${row.key} ${formatAlertCurrency(row.amount)}`).join("; ")}.`
-      : "Aucune imputation n'a été appliquée.",
+      ? `Allocated: ${byStudent.map((row) => `${row.key} ${formatAlertCurrency(row.amount)}`).join("; ")}.`
+      : "No allocation was applied.",
     unpaid.length
-      ? `Solde restant impayé : ${formatAlertCurrency(unpaid.reduce((sum, line) => sum + line.outstandingAfter, 0))}.`
-      : "Toutes les obligations ciblées sont entièrement réglées.",
-    next ? `Prochain paiement requis : ${next.studentName} - ${next.label}, ${formatAlertCurrency(next.outstandingAfter)} avant le ${dayjs(next.dueDate).format("DD/MM/YYYY")}.` : "Aucun prochain paiement n'est requis actuellement.",
-    overdue.length ? `Solde en retard : ${formatAlertCurrency(overdue.reduce((sum, line) => sum + line.outstandingAfter, 0))}.` : "Aucun solde en retard ne reste dans cet aperçu d'imputation.",
-    input.advanceBalance > 0 ? `Avance conservée : ${formatAlertCurrency(input.advanceBalance)}.` : ""
+      ? `Remaining unpaid: ${formatAlertCurrency(unpaid.reduce((sum, line) => sum + line.outstandingAfter, 0))}.`
+      : "All targeted obligations are fully paid.",
+    next ? `Next required payment: ${next.studentName} - ${next.label}, ${formatAlertCurrency(next.outstandingAfter)} due by ${dayjs(next.dueDate).format("DD/MM/YYYY")}.` : "No next payment is currently required.",
+    overdue.length ? `Overdue balance: ${formatAlertCurrency(overdue.reduce((sum, line) => sum + line.outstandingAfter, 0))}.` : "No overdue balance remains in this allocation preview.",
+    input.advanceBalance > 0 ? `Advance retained: ${formatAlertCurrency(input.advanceBalance)}.` : ""
   ].filter(Boolean).join(" ");
 }
 
@@ -2839,6 +2839,11 @@ function buildAllocationPreviewFromInstallments(input: {
   mode: "AUTO" | "MANUAL";
   manualAllocations?: Array<{ installmentId: string; amount: number }>;
 }) {
+  const getInstallmentSequence = (id: string) => {
+    const match = id.match(/-(\d+)$/);
+    return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+  };
+
   const today = dayjs().endOf("day");
   const candidates = input.installments.map((installment) => {
     const alreadyPaid = roundCurrency(Math.max(
@@ -2858,6 +2863,11 @@ function buildAllocationPreviewFromInstallments(input: {
       weight: dueBucket === "OVERDUE" ? 1 : dueBucket === "CURRENT" ? 2 : 3
     };
   }).filter((row) => row.outstandingBefore > 0);
+  const compareInstallmentOrder = (left: typeof candidates[number], right: typeof candidates[number]) => {
+    const sequenceDifference = getInstallmentSequence(left.installment.id) - getInstallmentSequence(right.installment.id);
+    if (sequenceDifference !== 0) return sequenceDifference;
+    return left.installment.dueDate.getTime() - right.installment.dueDate.getTime();
+  };
 
   const allocatedByInstallment = new Map<string, number>();
 
@@ -2877,11 +2887,11 @@ function buildAllocationPreviewFromInstallments(input: {
       if (remaining <= 0) break;
       const bucketRows = candidates
         .filter((row) => row.dueBucket === bucket && row.outstandingBefore > 0)
-        .sort((left, right) => left.installment.dueDate.getTime() - right.installment.dueDate.getTime());
+        .sort(compareInstallmentOrder);
       const dueDateGroups = bucketRows.reduce<Array<typeof bucketRows>>((groups, row) => {
         const lastGroup = groups[groups.length - 1];
-        const lastDueDate = lastGroup?.[0]?.installment.dueDate.getTime();
-        if (lastGroup && lastDueDate === row.installment.dueDate.getTime()) {
+        const lastSequence = lastGroup?.[0] ? getInstallmentSequence(lastGroup[0].installment.id) : null;
+        if (lastGroup && lastSequence === getInstallmentSequence(row.installment.id)) {
           lastGroup.push(row);
         } else {
           groups.push([row]);

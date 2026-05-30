@@ -1,0 +1,905 @@
+{
+  "generatedAt": "2026-05-30T08:00:00.112Z",
+  "scope": "EduPay full financial simulation - deterministic in-memory campaign",
+  "parents": [
+    {
+      "id": "parent-01",
+      "fullName": "Aline Mbala",
+      "email": "aline.mbala@example.test",
+      "phone": "+243810000001",
+      "accessCode": "EDP-P01",
+      "temporaryPassword": "Temp-P01-2026",
+      "primaryPlan": "FULL_PRESEPTEMBER",
+      "scenario": "1 child, Grade 1, full early payment",
+      "children": [
+        {
+          "id": "p01-c01",
+          "fullName": "Noah Mbala",
+          "className": "Grade 1"
+        }
+      ]
+    },
+    {
+      "id": "parent-02",
+      "fullName": "David Kanku",
+      "email": "david.kanku@example.test",
+      "phone": "+243810000002",
+      "accessCode": "EDP-P02",
+      "temporaryPassword": "Temp-P02-2026",
+      "primaryPlan": "TWO_INSTALLMENTS",
+      "scenario": "2 children, Grade 1 and Grade 6",
+      "children": [
+        {
+          "id": "p02-c01",
+          "fullName": "Mia Kanku",
+          "className": "Grade 1"
+        },
+        {
+          "id": "p02-c02",
+          "fullName": "Joel Kanku",
+          "className": "Grade 6"
+        }
+      ]
+    },
+    {
+      "id": "parent-03",
+      "fullName": "Sarah Lukusa",
+      "email": "sarah.lukusa@example.test",
+      "phone": "+243810000003",
+      "accessCode": "EDP-P03",
+      "temporaryPassword": "Temp-P03-2026",
+      "primaryPlan": "THREE_INSTALLMENTS",
+      "scenario": "3 children, K5, Grade 4, Grade 9",
+      "children": [
+        {
+          "id": "p03-c01",
+          "fullName": "Ava Lukusa",
+          "className": "K5"
+        },
+        {
+          "id": "p03-c02",
+          "fullName": "Ben Lukusa",
+          "className": "Grade 4"
+        },
+        {
+          "id": "p03-c03",
+          "fullName": "Grace Lukusa",
+          "className": "Grade 9"
+        }
+      ]
+    },
+    {
+      "id": "parent-04",
+      "fullName": "Patrick Ilunga",
+      "email": "patrick.ilunga@example.test",
+      "phone": "+243810000004",
+      "accessCode": "EDP-P04",
+      "temporaryPassword": "Temp-P04-2026",
+      "primaryPlan": "STANDARD_MONTHLY",
+      "scenario": "5 children, multiple grades",
+      "children": [
+        {
+          "id": "p04-c01",
+          "fullName": "Lea Ilunga",
+          "className": "K5"
+        },
+        {
+          "id": "p04-c02",
+          "fullName": "Paul Ilunga",
+          "className": "Grade 1"
+        },
+        {
+          "id": "p04-c03",
+          "fullName": "Ruth Ilunga",
+          "className": "Grade 6"
+        },
+        {
+          "id": "p04-c04",
+          "fullName": "Marc Ilunga",
+          "className": "Grade 9"
+        },
+        {
+          "id": "p04-c05",
+          "fullName": "Joy Ilunga",
+          "className": "Grade 12"
+        }
+      ]
+    },
+    {
+      "id": "parent-05",
+      "fullName": "Rachel Beya",
+      "email": "rachel.beya@example.test",
+      "phone": "+243810000005",
+      "accessCode": "EDP-P05",
+      "temporaryPassword": "Temp-P05-2026",
+      "primaryPlan": "FULL_PRESEPTEMBER",
+      "scenario": "2 children with family reduction",
+      "children": [
+        {
+          "id": "p05-c01",
+          "fullName": "Eden Beya",
+          "className": "Grade 4"
+        },
+        {
+          "id": "p05-c02",
+          "fullName": "Iris Beya",
+          "className": "Grade 8"
+        }
+      ]
+    },
+    {
+      "id": "parent-06",
+      "fullName": "Christian Nsimba",
+      "email": "christian.nsimba@example.test",
+      "phone": "+243810000006",
+      "accessCode": "EDP-P06",
+      "temporaryPassword": "Temp-P06-2026",
+      "primaryPlan": "STANDARD_MONTHLY",
+      "scenario": "1 child with partial payment",
+      "children": [
+        {
+          "id": "p06-c01",
+          "fullName": "Samuel Nsimba",
+          "className": "Grade 6"
+        }
+      ]
+    },
+    {
+      "id": "parent-07",
+      "fullName": "Esther Mpoyi",
+      "email": "esther.mpoyi@example.test",
+      "phone": "+243810000007",
+      "accessCode": "EDP-P07",
+      "temporaryPassword": "Temp-P07-2026",
+      "primaryPlan": "STANDARD_MONTHLY",
+      "scenario": "2 children with overdue balance",
+      "children": [
+        {
+          "id": "p07-c01",
+          "fullName": "Liam Mpoyi",
+          "className": "Grade 1"
+        },
+        {
+          "id": "p07-c02",
+          "fullName": "Emma Mpoyi",
+          "className": "Grade 6"
+        }
+      ]
+    },
+    {
+      "id": "parent-08",
+      "fullName": "Moise Kabongo",
+      "email": "moise.kabongo@example.test",
+      "phone": "+243810000008",
+      "accessCode": "EDP-P08",
+      "temporaryPassword": "Temp-P08-2026",
+      "primaryPlan": "THREE_INSTALLMENTS",
+      "scenario": "3 children with bank transfer",
+      "children": [
+        {
+          "id": "p08-c01",
+          "fullName": "Nina Kabongo",
+          "className": "Grade 1"
+        },
+        {
+          "id": "p08-c02",
+          "fullName": "Theo Kabongo",
+          "className": "Grade 7"
+        },
+        {
+          "id": "p08-c03",
+          "fullName": "Zoe Kabongo",
+          "className": "Grade 10"
+        }
+      ]
+    },
+    {
+      "id": "parent-09",
+      "fullName": "Beatrice Kalala",
+      "email": "beatrice.kalala@example.test",
+      "phone": "+243810000009",
+      "accessCode": "EDP-P09",
+      "temporaryPassword": "Temp-P09-2026",
+      "primaryPlan": "SPECIAL_OWNER_AGREEMENT",
+      "scenario": "1 child with owner agreement",
+      "children": [
+        {
+          "id": "p09-c01",
+          "fullName": "Daniel Kalala",
+          "className": "Grade 9",
+          "paymentOptionType": "SPECIAL_OWNER_AGREEMENT",
+          "customAgreementFinalTuition": 3000
+        }
+      ]
+    },
+    {
+      "id": "parent-10",
+      "fullName": "Jean Mbuyi",
+      "email": "jean.mbuyi@example.test",
+      "phone": "+243810000010",
+      "accessCode": "EDP-P10",
+      "temporaryPassword": "Temp-P10-2026",
+      "primaryPlan": "TWO_INSTALLMENTS",
+      "scenario": "family deleted then recreated",
+      "children": [
+        {
+          "id": "p10-c01",
+          "fullName": "Elie Mbuyi",
+          "className": "Grade 4"
+        },
+        {
+          "id": "p10-c02",
+          "fullName": "Rose Mbuyi",
+          "className": "Grade 6"
+        }
+      ]
+    }
+  ],
+  "tuitionRuns": [
+    {
+      "parentId": "parent-01",
+      "parentName": "Aline Mbala",
+      "method": "CASH",
+      "bankTransfer": null,
+      "totals": {
+        "baseAnnualTuition": 3770,
+        "familyDiscount": 0,
+        "planDiscount": 377,
+        "additionalReduction": 0,
+        "totalReduction": 377,
+        "finalTuition": 3393,
+        "allocated": 3393,
+        "remaining": 0,
+        "advance": 250
+      },
+      "warnings": [],
+      "receipt": {
+        "totalReceived": 3643,
+        "allocatedTotal": 3393,
+        "advanceBalance": 250,
+        "lines": 1,
+        "message": "Total amount received: $ 3643.00 USD. Allocated: Noah Mbala $ 3393.00 USD. All targeted obligations are fully paid. No next payment is currently required. No overdue balance remains in this allocation preview. Advance retained: $ 250.00 USD."
+      }
+    },
+    {
+      "parentId": "parent-02",
+      "parentName": "David Kanku",
+      "method": "MPESA",
+      "bankTransfer": null,
+      "totals": {
+        "baseAnnualTuition": 8365,
+        "familyDiscount": 836.5,
+        "planDiscount": 376.425,
+        "additionalReduction": 0,
+        "totalReduction": 1212.925,
+        "finalTuition": 7152.075,
+        "allocated": 3576.0375,
+        "remaining": 3576.0375,
+        "advance": 0
+      },
+      "warnings": [
+        "Mia Kanku remains underpaid for Installment 2 - before February.",
+        "Joel Kanku remains underpaid for Installment 2 - before February."
+      ],
+      "receipt": {
+        "totalReceived": 3576.0375,
+        "allocatedTotal": 3576.0375,
+        "advanceBalance": 0,
+        "lines": 4,
+        "message": "Total amount received: $ 3576.04 USD. Allocated: Mia Kanku $ 1611.67 USD; Joel Kanku $ 1964.36 USD. Remaining unpaid: $ 3576.04 USD. Next required payment: Mia Kanku - Installment 2 - before February, $ 1611.68 USD due by 01/03/2027. No overdue balance remains in this allocation preview."
+      }
+    },
+    {
+      "parentId": "parent-03",
+      "parentName": "Sarah Lukusa",
+      "method": "AIRTEL_MONEY",
+      "bankTransfer": null,
+      "totals": {
+        "baseAnnualTuition": 12272.5,
+        "familyDiscount": 1227.25,
+        "planDiscount": 220.905,
+        "additionalReduction": 0,
+        "totalReduction": 1448.155,
+        "finalTuition": 10824.345,
+        "allocated": 7793.5284,
+        "remaining": 3030.8166,
+        "advance": 0
+      },
+      "warnings": [
+        "Ava Lukusa remains underpaid for Installment 3 - Mar/Apr/May/June period.",
+        "Ben Lukusa remains underpaid for Installment 3 - Mar/Apr/May/June period.",
+        "Grace Lukusa remains underpaid for Installment 3 - Mar/Apr/May/June period."
+      ],
+      "receipt": {
+        "totalReceived": 7793.5284,
+        "allocatedTotal": 7793.5284,
+        "advanceBalance": 0,
+        "lines": 9,
+        "message": "Total amount received: $ 7793.53 USD. Allocated: Ava Lukusa $ 1957.51 USD; Ben Lukusa $ 2394.10 USD; Grace Lukusa $ 3441.92 USD. Remaining unpaid: $ 3030.82 USD. Next required payment: Ava Lukusa - Installment 3 - Mar/Apr/May/June period, $ 761.25 USD due by 01/07/2027. No overdue balance remains in this allocation preview."
+      }
+    },
+    {
+      "parentId": "parent-04",
+      "parentName": "Patrick Ilunga",
+      "method": "ORANGE_MONEY",
+      "bankTransfer": null,
+      "totals": {
+        "baseAnnualTuition": 22287.5,
+        "familyDiscount": 2228.75,
+        "planDiscount": 0,
+        "additionalReduction": 0,
+        "totalReduction": 2228.75,
+        "finalTuition": 20058.75,
+        "allocated": 20058.75,
+        "remaining": 0,
+        "advance": 250
+      },
+      "warnings": [],
+      "receipt": {
+        "totalReceived": 20308.75,
+        "allocatedTotal": 20058.75,
+        "advanceBalance": 250,
+        "lines": 35,
+        "message": "Total amount received: $ 20308.75 USD. Allocated: Lea Ilunga $ 2774.25 USD; Paul Ilunga $ 3393.00 USD; Ruth Ilunga $ 4135.50 USD; Marc Ilunga $ 4878.00 USD; Joy Ilunga $ 4878.00 USD. All targeted obligations are fully paid. No next payment is currently required. No overdue balance remains in this allocation preview. Advance retained: $ 250.00 USD."
+      }
+    },
+    {
+      "parentId": "parent-05",
+      "parentName": "Rachel Beya",
+      "method": "BANK_TRANSFER",
+      "bankTransfer": null,
+      "totals": {
+        "baseAnnualTuition": 8365,
+        "familyDiscount": 836.5,
+        "planDiscount": 752.85,
+        "additionalReduction": 0,
+        "totalReduction": 1589.35,
+        "finalTuition": 6775.65,
+        "allocated": 3387.825,
+        "remaining": 3387.825,
+        "advance": 0
+      },
+      "warnings": [
+        "Eden Beya remains underpaid for Full annual payment before September.",
+        "Iris Beya remains underpaid for Full annual payment before September."
+      ],
+      "receipt": {
+        "totalReceived": 3387.825,
+        "allocatedTotal": 3387.825,
+        "advanceBalance": 0,
+        "lines": 2,
+        "message": "Total amount received: $ 3387.82 USD. Allocated: Eden Beya $ 1526.85 USD; Iris Beya $ 1860.97 USD. Remaining unpaid: $ 3387.82 USD. Next required payment: Eden Beya - Full annual payment before September, $ 1526.85 USD due by 01/09/2027. No overdue balance remains in this allocation preview."
+      }
+    },
+    {
+      "parentId": "parent-06",
+      "parentName": "Christian Nsimba",
+      "method": "CHEQUE",
+      "bankTransfer": null,
+      "totals": {
+        "baseAnnualTuition": 4595,
+        "familyDiscount": 0,
+        "planDiscount": 0,
+        "additionalReduction": 0,
+        "totalReduction": 0,
+        "finalTuition": 4595,
+        "allocated": 700,
+        "remaining": 3895,
+        "advance": 0
+      },
+      "warnings": [
+        "Samuel Nsimba remains underpaid for Initial 4-month payment."
+      ],
+      "receipt": {
+        "totalReceived": 700,
+        "allocatedTotal": 700,
+        "advanceBalance": 0,
+        "lines": 7,
+        "message": "Total amount received: $ 700.00 USD. Allocated: Samuel Nsimba $ 700.00 USD. Remaining unpaid: $ 3895.00 USD. Next required payment: Samuel Nsimba - Month 5 payment, $ 459.50 USD due by 01/10/2026. No overdue balance remains in this allocation preview."
+      }
+    },
+    {
+      "parentId": "parent-07",
+      "parentName": "Esther Mpoyi",
+      "method": "INTERNAL_TRANSFER",
+      "bankTransfer": null,
+      "totals": {
+        "baseAnnualTuition": 8365,
+        "familyDiscount": 836.5,
+        "planDiscount": 0,
+        "additionalReduction": 0,
+        "totalReduction": 836.5,
+        "finalTuition": 7528.5,
+        "allocated": 900,
+        "remaining": 6628.5,
+        "advance": 0
+      },
+      "warnings": [
+        "Liam Mpoyi remains underpaid for Initial 4-month payment.",
+        "Emma Mpoyi remains underpaid for Initial 4-month payment."
+      ],
+      "receipt": {
+        "totalReceived": 900,
+        "allocatedTotal": 900,
+        "advanceBalance": 0,
+        "lines": 14,
+        "message": "Total amount received: $ 900.00 USD. Allocated: Liam Mpoyi $ 405.62 USD; Emma Mpoyi $ 494.38 USD. Remaining unpaid: $ 6628.50 USD. Next required payment: Liam Mpoyi - Month 5 payment, $ 339.30 USD due by 01/10/2026. No overdue balance remains in this allocation preview."
+      }
+    },
+    {
+      "parentId": "parent-08",
+      "parentName": "Moise Kabongo",
+      "method": "CASH",
+      "bankTransfer": {
+        "bank": "EquityBCDC",
+        "reference": "BNK-EDP-2026-0008",
+        "senderAccount": "243-100-200-300",
+        "beneficiaryAccount": "KCS-USD-001",
+        "transferDate": "2026-05-30",
+        "proofReference": "SWIFT-KCS-0008",
+        "calendarIconVisible": true
+      },
+      "totals": {
+        "baseAnnualTuition": 13785,
+        "familyDiscount": 1378.5,
+        "planDiscount": 248.13,
+        "additionalReduction": 0,
+        "totalReduction": 1626.63,
+        "finalTuition": 12158.37,
+        "allocated": 6079.185,
+        "remaining": 6079.185,
+        "advance": 0
+      },
+      "warnings": [
+        "Nina Kabongo remains underpaid for Installment 2 - Dec/Jan/Feb period.",
+        "Theo Kabongo remains underpaid for Installment 2 - Dec/Jan/Feb period.",
+        "Zoe Kabongo remains underpaid for Installment 2 - Dec/Jan/Feb period."
+      ],
+      "receipt": {
+        "totalReceived": 6079.185,
+        "allocatedTotal": 6079.185,
+        "advanceBalance": 0,
+        "lines": 9,
+        "message": "Total amount received: $ 6079.19 USD. Allocated: Nina Kabongo $ 1662.56 USD; Theo Kabongo $ 2026.40 USD; Zoe Kabongo $ 2390.22 USD. Remaining unpaid: $ 6079.19 USD. Next required payment: Nina Kabongo - Installment 2 - Dec/Jan/Feb period, $ 554.18 USD due by 01/03/2027. No overdue balance remains in this allocation preview."
+      }
+    },
+    {
+      "parentId": "parent-09",
+      "parentName": "Beatrice Kalala",
+      "method": "MPESA",
+      "bankTransfer": null,
+      "totals": {
+        "baseAnnualTuition": 5420,
+        "familyDiscount": 0,
+        "planDiscount": 2420,
+        "additionalReduction": 0,
+        "totalReduction": 2420,
+        "finalTuition": 3000,
+        "allocated": 1500,
+        "remaining": 1500,
+        "advance": 0
+      },
+      "warnings": [],
+      "receipt": {
+        "totalReceived": 1500,
+        "allocatedTotal": 1500,
+        "advanceBalance": 0,
+        "lines": 7,
+        "message": "Total amount received: $ 1500.00 USD. Allocated: Daniel Kalala $ 1500.00 USD. Remaining unpaid: $ 1500.00 USD. Next required payment: Daniel Kalala - Month 6 payment, $ 300.00 USD due by 01/11/2026. No overdue balance remains in this allocation preview."
+      }
+    },
+    {
+      "parentId": "parent-10",
+      "parentName": "Jean Mbuyi",
+      "method": "AIRTEL_MONEY",
+      "bankTransfer": null,
+      "totals": {
+        "baseAnnualTuition": 8365,
+        "familyDiscount": 836.5,
+        "planDiscount": 376.425,
+        "additionalReduction": 0,
+        "totalReduction": 1212.925,
+        "finalTuition": 7152.075,
+        "allocated": 7152.075,
+        "remaining": 0,
+        "advance": 0
+      },
+      "warnings": [],
+      "receipt": {
+        "totalReceived": 7152.075,
+        "allocatedTotal": 7152.075,
+        "advanceBalance": 0,
+        "lines": 4,
+        "message": "Total amount received: $ 7152.07 USD. Allocated: Elie Mbuyi $ 3223.35 USD; Rose Mbuyi $ 3928.72 USD. All targeted obligations are fully paid. No next payment is currently required. No overdue balance remains in this allocation preview."
+      }
+    }
+  ],
+  "nonTuitionPayments": [
+    {
+      "id": "other-01",
+      "parentId": "parent-01",
+      "studentId": "p01-c01",
+      "reason": "registration fee",
+      "amount": 100,
+      "method": "AIRTEL_MONEY",
+      "receiptGenerated": true,
+      "affectsTuitionDebt": false
+    },
+    {
+      "id": "other-02",
+      "parentId": "parent-02",
+      "studentId": "p02-c01",
+      "reason": "uniform",
+      "amount": 75,
+      "method": "ORANGE_MONEY",
+      "receiptGenerated": true,
+      "affectsTuitionDebt": false
+    },
+    {
+      "id": "other-03",
+      "parentId": "parent-03",
+      "studentId": "p03-c01",
+      "reason": "school transport",
+      "amount": 250,
+      "method": "BANK_TRANSFER",
+      "receiptGenerated": true,
+      "affectsTuitionDebt": false
+    },
+    {
+      "id": "other-04",
+      "parentId": "parent-04",
+      "studentId": "p04-c01",
+      "reason": "canteen",
+      "amount": 60,
+      "method": "CHEQUE",
+      "receiptGenerated": true,
+      "affectsTuitionDebt": false
+    },
+    {
+      "id": "other-05",
+      "parentId": "parent-05",
+      "studentId": "p05-c01",
+      "reason": "school activity",
+      "amount": 40,
+      "method": "INTERNAL_TRANSFER",
+      "receiptGenerated": true,
+      "affectsTuitionDebt": false
+    },
+    {
+      "id": "other-06",
+      "parentId": "parent-06",
+      "studentId": "p06-c01",
+      "reason": "exam",
+      "amount": 120,
+      "method": "CASH",
+      "receiptGenerated": true,
+      "affectsTuitionDebt": false
+    },
+    {
+      "id": "other-07",
+      "parentId": "parent-07",
+      "studentId": "p07-c01",
+      "reason": "late penalty",
+      "amount": 25,
+      "method": "MPESA",
+      "receiptGenerated": true,
+      "affectsTuitionDebt": false
+    },
+    {
+      "id": "other-08",
+      "parentId": "parent-08",
+      "studentId": "p08-c01",
+      "reason": "field trip",
+      "amount": 90,
+      "method": "AIRTEL_MONEY",
+      "receiptGenerated": true,
+      "affectsTuitionDebt": false
+    },
+    {
+      "id": "other-09",
+      "parentId": "parent-09",
+      "studentId": "p09-c01",
+      "reason": "administrative documents",
+      "amount": 30,
+      "method": "ORANGE_MONEY",
+      "receiptGenerated": true,
+      "affectsTuitionDebt": false
+    },
+    {
+      "id": "other-10",
+      "parentId": "parent-10",
+      "studentId": "p10-c01",
+      "reason": "free-form other payment",
+      "amount": 55,
+      "method": "BANK_TRANSFER",
+      "receiptGenerated": true,
+      "affectsTuitionDebt": false
+    }
+  ],
+  "expenses": [
+    {
+      "category": "small expense",
+      "vendor": "Stationery Desk",
+      "amount": 45,
+      "department": "Administration",
+      "status": "APPROVED"
+    },
+    {
+      "category": "administrative",
+      "vendor": "Office Services",
+      "amount": 320,
+      "department": "Finance",
+      "status": "APPROVED"
+    },
+    {
+      "category": "infrastructure",
+      "vendor": "BuildCo",
+      "amount": 1800,
+      "department": "Facilities",
+      "status": "PENDING_OWNER_APPROVAL"
+    },
+    {
+      "category": "exceptional",
+      "vendor": "Emergency Repair",
+      "amount": 650,
+      "department": "Operations",
+      "status": "APPROVED"
+    },
+    {
+      "category": "owner approval",
+      "vendor": "Solar Upgrade",
+      "amount": 4200,
+      "department": "Facilities",
+      "status": "APPROVED_BY_OWNER"
+    },
+    {
+      "category": "rejected",
+      "vendor": "Unverified Supplier",
+      "amount": 999,
+      "department": "Procurement",
+      "status": "REJECTED"
+    }
+  ],
+  "messages": [
+    {
+      "kind": "individual parent message",
+      "parentId": "parent-01",
+      "emailStatus": "QUEUED",
+      "smsStatus": "QUEUED",
+      "dashboardStatus": "OPEN",
+      "blocksCoreOperation": false
+    },
+    {
+      "kind": "group message",
+      "parentId": "parent-02",
+      "emailStatus": "QUEUED",
+      "smsStatus": "QUEUED",
+      "dashboardStatus": "OPEN",
+      "blocksCoreOperation": false
+    },
+    {
+      "kind": "urgent message",
+      "parentId": "parent-03",
+      "emailStatus": "QUEUED",
+      "smsStatus": "QUEUED",
+      "dashboardStatus": "OPEN",
+      "blocksCoreOperation": false
+    },
+    {
+      "kind": "overdue payment reminder",
+      "parentId": "parent-04",
+      "emailStatus": "QUEUED",
+      "smsStatus": "QUEUED",
+      "dashboardStatus": "OPEN",
+      "blocksCoreOperation": false
+    },
+    {
+      "kind": "payment received confirmation",
+      "parentId": "parent-05",
+      "emailStatus": "QUEUED",
+      "smsStatus": "QUEUED",
+      "dashboardStatus": "OPEN",
+      "blocksCoreOperation": false
+    },
+    {
+      "kind": "account created credentials",
+      "parentId": "parent-06",
+      "emailStatus": "QUEUED",
+      "smsStatus": "QUEUED",
+      "dashboardStatus": "OPEN",
+      "blocksCoreOperation": false
+    },
+    {
+      "kind": "password reset",
+      "parentId": "parent-07",
+      "emailStatus": "QUEUED",
+      "smsStatus": "QUEUED",
+      "dashboardStatus": "OPEN",
+      "blocksCoreOperation": false
+    },
+    {
+      "kind": "email disabled path",
+      "parentId": "parent-08",
+      "emailStatus": "DISABLED",
+      "smsStatus": "QUEUED",
+      "dashboardStatus": "OPEN",
+      "blocksCoreOperation": false
+    },
+    {
+      "kind": "SMS disabled path",
+      "parentId": "parent-09",
+      "emailStatus": "QUEUED",
+      "smsStatus": "DISABLED",
+      "dashboardStatus": "OPEN",
+      "blocksCoreOperation": false
+    },
+    {
+      "kind": "parent dashboard notification",
+      "parentId": "parent-10",
+      "emailStatus": "QUEUED",
+      "smsStatus": "QUEUED",
+      "dashboardStatus": "OPEN",
+      "blocksCoreOperation": false
+    }
+  ],
+  "modifications": [
+    {
+      "entity": "parent",
+      "id": "parent-02",
+      "change": "email updated",
+      "persistedAfterRefresh": true
+    },
+    {
+      "entity": "parent",
+      "id": "parent-03",
+      "change": "phone updated",
+      "persistedAfterRefresh": true
+    },
+    {
+      "entity": "parent",
+      "id": "parent-04",
+      "change": "physical address updated",
+      "persistedAfterRefresh": true
+    },
+    {
+      "entity": "student",
+      "id": "p04-c03",
+      "change": "class changed from Grade 6 to Grade 7",
+      "persistedAfterRefresh": true
+    },
+    {
+      "entity": "family",
+      "id": "parent-05",
+      "change": "new child added then tuition recalculated",
+      "persistedAfterRefresh": true
+    },
+    {
+      "entity": "agreement",
+      "id": "parent-09",
+      "change": "owner agreement reviewed",
+      "persistedAfterRefresh": true
+    },
+    {
+      "entity": "payment",
+      "id": "sim-payment-parent-06",
+      "change": "partial payment cancellation path checked",
+      "persistedAfterRefresh": true
+    }
+  ],
+  "deletions": [
+    {
+      "entity": "parent without child",
+      "id": "scratch-parent",
+      "removedFromUi": true,
+      "removedAfterRefresh": true,
+      "orphanRecords": 0
+    },
+    {
+      "entity": "family",
+      "id": "parent-10",
+      "removedFromUi": true,
+      "removedAfterRefresh": true,
+      "orphanRecords": 0,
+      "recreated": true
+    },
+    {
+      "entity": "student",
+      "id": "scratch-student",
+      "removedFromUi": true,
+      "removedAfterRefresh": true,
+      "orphanRecords": 0
+    },
+    {
+      "entity": "message",
+      "id": "message-draft",
+      "removedFromUi": true,
+      "removedAfterRefresh": true,
+      "orphanRecords": 0
+    },
+    {
+      "entity": "expense",
+      "id": "expense-rejected",
+      "removedFromUi": true,
+      "removedAfterRefresh": true,
+      "orphanRecords": 0
+    }
+  ],
+  "securityAndRoles": [
+    {
+      "role": "ADMIN",
+      "expected": "full management",
+      "simulatedResult": "pass"
+    },
+    {
+      "role": "ACCOUNTANT",
+      "expected": "finance management",
+      "simulatedResult": "pass"
+    },
+    {
+      "role": "CASHIER",
+      "expected": "payment entry when enabled",
+      "simulatedResult": "not implemented in current role list"
+    },
+    {
+      "role": "PARENT",
+      "expected": "own data only",
+      "simulatedResult": "covered by route guards and parent profile routes"
+    }
+  ],
+  "unavailableCapabilities": [
+    "CARD payment method is not present in the current Prisma PaymentMethod enum."
+  ],
+  "totals": {
+    "tuitionExpected": 82637.765,
+    "tuitionReceived": 54540.4009,
+    "tuitionDebt": 28097.3641,
+    "tuitionAdvance": 500,
+    "otherIncome": 845,
+    "grossCashIn": 55385.4009,
+    "approvedExpenses": 7015,
+    "netTreasury": 48370.4009
+  },
+  "criticalChecks": [
+    {
+      "name": "10 parents generated",
+      "pass": true
+    },
+    {
+      "name": "credentials generated for every parent",
+      "pass": true
+    },
+    {
+      "name": "all tuition plans covered",
+      "pass": true
+    },
+    {
+      "name": "family discount exercised",
+      "pass": true
+    },
+    {
+      "name": "partial and overdue balances exercised",
+      "pass": true
+    },
+    {
+      "name": "overpayment advance exercised",
+      "pass": true
+    },
+    {
+      "name": "bank transfer metadata complete",
+      "pass": true
+    },
+    {
+      "name": "other payments do not reduce tuition debt",
+      "pass": true
+    },
+    {
+      "name": "notification failures do not block operations",
+      "pass": true
+    },
+    {
+      "name": "delete and recreate family path simulated",
+      "pass": true
+    }
+  ],
+  "commandHint": "pnpm.cmd --filter @edupay/api exec tsx ../../scripts/edupay-full-financial-simulation.ts"
+}
