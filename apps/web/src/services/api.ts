@@ -32,7 +32,13 @@ const DEMO_EMPLOYEES_KEY = "edupay_demo_employees_v1";
 const API_RESPONSE_CACHE_PREFIX = "edupay_api_cache_v1:";
 const OFFLINE_MUTATION_QUEUE_KEY = "edupay_offline_mutation_queue_v1";
 const DEMO_FALLBACK_ENABLED = (import.meta.env.VITE_ENABLE_DEMO_FALLBACK ?? "").trim().toLowerCase() === "true";
-const STATIC_APP_FALLBACK_ENABLED = ["demo", "github-pages", "pages"].includes((import.meta.env.VITE_ENVIRONMENT ?? "").trim().toLowerCase());
+const RUNTIME_STATIC_APP_FALLBACK_ENABLED = typeof window !== "undefined" && (
+  window.location.hostname.endsWith(".github.io") ||
+  window.location.pathname.startsWith("/EduPay-Smart-System/")
+);
+const STATIC_APP_FALLBACK_ENABLED =
+  RUNTIME_STATIC_APP_FALLBACK_ENABLED ||
+  ["demo", "github-pages", "pages"].includes((import.meta.env.VITE_ENVIRONMENT ?? "").trim().toLowerCase());
 const PLACEHOLDER_API_URL = /MON-BACKEND|example\.com/i.test(API_BASE_URL);
 const PRODUCTION_MODE = import.meta.env.PROD && !STATIC_APP_FALLBACK_ENABLED && !DEMO_FALLBACK_ENABLED;
 const LOCAL_API_FALLBACK_ENABLED =
@@ -2230,8 +2236,8 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const normalizedEmail = String(body.email ?? "").trim().toLowerCase();
     const normalizedPhone = String(body.phone ?? "").replace(/\s+/g, "");
     const duplicateParent = existingParents.find((parent) =>
-      parent.email.trim().toLowerCase() === normalizedEmail
-      || parent.phone.replace(/\s+/g, "") === normalizedPhone
+      (normalizedEmail && parent.email.trim().toLowerCase() === normalizedEmail)
+      || (normalizedPhone && parent.phone.replace(/\s+/g, "") === normalizedPhone)
     );
     if (duplicateParent) {
       const reasons = [
@@ -2391,6 +2397,13 @@ function isLocalSessionToken(token: string | null) {
 function canFallbackToDemo(path: string, init?: RequestInit) {
   const method = (init?.method ?? "GET").toUpperCase();
   if (!path.startsWith("/api/")) return false;
+  if (path === "/api/parents" && ["GET", "POST"].includes(method)) return true;
+  if (/^\/api\/parents\/[^/]+$/.test(path) && ["GET", "PUT", "DELETE"].includes(method)) return true;
+  if (/^\/api\/parents\/[^/]+\/reset-password$/.test(path) && method === "POST") return true;
+  if (path === "/api/payments" && ["GET", "POST"].includes(method)) return true;
+  if (/^\/api\/payments\/[^/]+\/cancel$/.test(path) && method === "POST") return true;
+  if (/^\/api\/payments\/[^/]+\/receipt\/printed$/.test(path) && method === "POST") return true;
+  if (path === "/api/payments/settings/notifications" && ["GET", "PUT"].includes(method)) return true;
   return method === "GET" ||
     path === "/api/auth/login" ||
     path === "/api/auth/forgot-password" ||

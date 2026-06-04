@@ -1347,11 +1347,49 @@ const EMPTY_FORM: FormState = {
 const PAYMENT_NOTIFICATION_STORAGE_KEY = "edupay-payment-notifications-enabled";
 const PAYMENT_PARENT_NOTIFICATION_STORAGE_KEY = "edupay-parent-payment-notifications-v1";
 
-const STORAGE_KEY = "edupay_payments_v2";
+const STORAGE_KEY = "edupay_payments_v3";
+const LEGACY_STORAGE_KEYS = ["edupay_payments_v2"];
+
+function normalizeParentStudentOption(student: Partial<ParentStudentOption> | null | undefined, index: number): ParentStudentOption {
+  const id = String(student?.id || student?.externalStudentId || `student-${index + 1}`);
+  return {
+    id,
+    externalStudentId: student?.externalStudentId ? String(student.externalStudentId) : id,
+    fullName: String(student?.fullName || "Eleve non renseigne"),
+    classId: String(student?.classId || ""),
+    className: String(student?.className || student?.classId || ""),
+    annualFee: Number.isFinite(Number(student?.annualFee)) ? Number(student?.annualFee) : 0
+  };
+}
+
+function normalizeParentOption(parent: Partial<ParentOption> | null | undefined, index: number): ParentOption {
+  const id = String(parent?.id || `parent-${index + 1}`);
+  return {
+    id,
+    fullName: String(parent?.fullName || id),
+    phone: parent?.phone ? String(parent.phone) : "",
+    email: parent?.email ? String(parent.email) : "",
+    students: Array.isArray(parent?.students)
+      ? parent.students.map(normalizeParentStudentOption).filter((student) => student.id && student.fullName)
+      : []
+  };
+}
 
 function loadPayments(): PaymentRecord[] {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]"); }
-  catch { return []; }
+  try {
+    const current = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]") as PaymentRecord[];
+    if (Array.isArray(current) && current.length > 0) return current;
+
+    for (const legacyKey of LEGACY_STORAGE_KEYS) {
+      const legacy = JSON.parse(localStorage.getItem(legacyKey) ?? "[]") as PaymentRecord[];
+      if (Array.isArray(legacy) && legacy.length > 0) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+        return legacy;
+      }
+    }
+
+    return Array.isArray(current) ? current : [];
+  } catch { return []; }
 }
 function savePayments(ps: PaymentRecord[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(ps));
@@ -1810,7 +1848,12 @@ export function PaymentsPage() {
 
   useEffect(() => {
     api<ParentOption[]>("/api/parents")
-      .then((items) => setParents(items))
+      .then((items) => {
+        const normalizedParents = Array.isArray(items)
+          ? items.map(normalizeParentOption).sort((left, right) => left.fullName.localeCompare(right.fullName, "fr", { sensitivity: "base" }))
+          : [];
+        setParents(normalizedParents);
+      })
       .catch(() => setParents([]));
   }, []);
 
