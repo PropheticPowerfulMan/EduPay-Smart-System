@@ -54,10 +54,13 @@ function ForgotPasswordModal({ onClose, t, initialResetToken = "" }: { onClose: 
     setLoading(true);
     setError("");
     try {
-      const result = await api<{ message?: string }>("/api/auth/forgot-password", {
+      const result = await api<{ message?: string; resetToken?: string }>("/api/auth/forgot-password", {
         method: "POST",
         body: JSON.stringify({ identifier: identifier.trim() })
       });
+      if (result.resetToken) {
+        setResetToken(result.resetToken);
+      }
       setSuccessMessage(result.message || "Si ce compte existe, un code vient d'être envoyé.");
     } catch {
       // Even on error we show success to not leak account existence

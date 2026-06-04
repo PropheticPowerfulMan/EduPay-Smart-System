@@ -29,7 +29,11 @@ const forceFavicon = () => {
   document.head.appendChild(link);
 };
 
-if (import.meta.env.DEV && "serviceWorker" in navigator) {
+const shouldDisableServiceWorker =
+  import.meta.env.DEV ||
+  (import.meta.env.VITE_DISABLE_PWA ?? "").trim().toLowerCase() === "true";
+
+if (shouldDisableServiceWorker && "serviceWorker" in navigator) {
   navigator.serviceWorker.getRegistrations().then((registrations) => {
     registrations.forEach((registration) => {
       void registration.unregister();
@@ -37,7 +41,7 @@ if (import.meta.env.DEV && "serviceWorker" in navigator) {
   });
 }
 
-if (import.meta.env.PROD && "serviceWorker" in navigator) {
+if (!shouldDisableServiceWorker && import.meta.env.PROD && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`);
   });

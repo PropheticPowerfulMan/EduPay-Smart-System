@@ -436,6 +436,23 @@ function ParentFinanceDialog({
   );
 }
 
+function normalizeFinanceSnapshot(snapshot: FinanceSnapshot): FinanceSnapshot {
+  return {
+    ...snapshot,
+    students: (snapshot.students ?? []).map((student) => ({
+      ...student,
+      installments: student.installments ?? []
+    })),
+    reductions: snapshot.reductions ?? [],
+    debts: snapshot.debts ?? [],
+    agreements: snapshot.agreements ?? [],
+    alerts: snapshot.alerts ?? [],
+    paymentHistory: snapshot.paymentHistory ?? [],
+    historicalReceipts: snapshot.historicalReceipts ?? [],
+    notificationHistory: snapshot.notificationHistory ?? []
+  };
+}
+
 export function FinanceParentPage() {
   const { lang } = useI18n();
   const setPhotoUrl = useAuthStore((state) => state.setPhotoUrl);
@@ -457,13 +474,13 @@ export function FinanceParentPage() {
         if (cachedFinance) {
           hasCachedSnapshot = true;
           const nextPhotoUrl = cachedParentLight?.photoUrl || cachedFinance.parent.photoUrl || "";
-          setSnapshot({
+          setSnapshot(normalizeFinanceSnapshot({
             ...cachedFinance,
             parent: {
               ...cachedFinance.parent,
               photoUrl: nextPhotoUrl
             }
-          });
+          }));
           setPhotoPreview(nextPhotoUrl || null);
           setPhotoUrl(nextPhotoUrl || null);
           setLoading(false);
@@ -476,13 +493,13 @@ export function FinanceParentPage() {
       ])
         .then(([financeData, parentLight]) => {
         if (!active) return;
-        setSnapshot({
+        setSnapshot(normalizeFinanceSnapshot({
           ...financeData,
           parent: {
             ...financeData.parent,
             photoUrl: parentLight.photoUrl || financeData.parent.photoUrl || ""
           }
-        });
+        }));
         setPhotoPreview(parentLight.photoUrl || financeData.parent.photoUrl || null);
         setPhotoUrl(parentLight.photoUrl || financeData.parent.photoUrl || null);
         setLoadError(null);

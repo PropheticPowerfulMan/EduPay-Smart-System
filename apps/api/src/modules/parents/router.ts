@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import bcrypt from "bcrypt";
+import bcrypt from "bcryptjs";
 import { randomInt } from "crypto";
 import { AgreementStatus, PaymentOptionType } from "@prisma/client";
 import { createOrbitParent, deleteOrbitFamily, matchesSharedParentIdentifier, orbitRegistryIsEnabled, syncOrbitRegistryMirror, updateOrbitParent } from "../../integrations/orbitRegistry";

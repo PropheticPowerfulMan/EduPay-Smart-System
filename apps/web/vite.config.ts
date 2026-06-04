@@ -2,11 +2,13 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+const disablePwa = (process.env.VITE_DISABLE_PWA ?? "").trim().toLowerCase() === "true";
+
 export default defineConfig({
   base: "/EduPay-Smart-System/",
   plugins: [
     react(),
-    VitePWA({
+    !disablePwa && VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "logo-school.png", "kcs.jpg", "apple-touch-icon.png", "pwa-192x192.png", "pwa-512x512.png", "pwa-maskable-512x512.png"],
       manifest: {

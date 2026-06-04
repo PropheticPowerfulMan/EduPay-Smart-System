@@ -18,6 +18,9 @@ const DEMO_PAYMENTS_KEY = "edupay_payments_v3";
 const DEMO_NOTIFICATIONS_KEY = "edupay-payment-notifications-enabled";
 const DEMO_MANUAL_MESSAGES_KEY = "edupay_manual_messages_v1";
 const DEMO_PARENT_CREDENTIALS_KEY = "edupay_demo_parent_credentials_v1";
+const DEMO_ADMIN_PASSWORD_KEY = "edupay_demo_admin_password_v1";
+const DEMO_PARENT_PASSWORD_KEY = "edupay_demo_parent_password_v1";
+const DEMO_PASSWORD_RESET_TOKENS_KEY = "edupay_demo_password_reset_tokens_v1";
 const DEMO_FINANCE_OVERRIDES_KEY = "edupay_demo_finance_overrides_v1";
 const DEMO_EXPENSE_CATEGORIES_KEY = "edupay_demo_expense_categories_v1";
 const DEMO_EXPENSE_VENDORS_KEY = "edupay_demo_expense_vendors_v1";
@@ -38,6 +41,12 @@ const LOCAL_API_FALLBACK_ENABLED =
     STATIC_APP_FALLBACK_ENABLED ||
     PLACEHOLDER_API_URL
   );
+const LOCAL_AUTH_RECOVERY_FALLBACK_PATHS = new Set([
+  "/api/auth/login",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/api/auth/recover-admin-password"
+]);
 
 type DemoSpecialAgreement = {
   title?: string;
@@ -78,6 +87,7 @@ type DemoTuitionAllocationSummary = {
 type DemoPayment = { id: string; transactionNumber: string; parentId?: string; parentFullName: string; paymentSubjectName?: string; studentNames?: string[]; reason: string; method: string; amount: number; status: string; createdAt: string; date: string; tuitionAllocationSummary?: DemoTuitionAllocationSummary; bankTransferDetails?: { bankName: string; referenceNumber: string; transferDate: string; senderAccountNumber?: string; beneficiaryAccountNumber: string } | null };
 type DemoManualMessage = { id: string; parentId: string; parentName: string; parentPhone?: string; parentEmail?: string; type: "MANUAL_MESSAGE"; language: "fr" | "en"; channel: "DASHBOARD"; content: string; status: string; createdAt: string };
 type DemoParentCredential = { parentId: string; email: string; password: string };
+type DemoPasswordResetToken = { token: string; email: string; expiresAt: string; usedAt?: string };
 type DemoPaymentOptionType = "FULL_PRESEPTEMBER" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS" | "STANDARD_MONTHLY" | "SPECIAL_OWNER_AGREEMENT";
 type DemoFinanceOverride =
   | { mode: "OFFICIAL"; paymentOptionType: DemoPaymentOptionType }
@@ -479,6 +489,47 @@ function generateDemoTemporaryPassword() {
   }
 
   return `KCS-${String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0")}`;
+}
+
+function generateDemoPasswordResetToken() {
+  const values = new Uint32Array(4);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(values);
+    return Array.from(values).map((value) => value.toString(36).padStart(7, "0")).join("");
+  }
+
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 24)}`.padEnd(28, "0");
+}
+
+function getDemoPasswordResetTokens() {
+  const now = Date.now();
+  const tokens = readJson<DemoPasswordResetToken[]>(DEMO_PASSWORD_RESET_TOKENS_KEY, [])
+    .filter((token) => !token.usedAt && new Date(token.expiresAt).getTime() > now);
+  writeJson(DEMO_PASSWORD_RESET_TOKENS_KEY, tokens);
+  return tokens;
+}
+
+function saveDemoPasswordResetToken(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const token = generateDemoPasswordResetToken();
+  const tokens = getDemoPasswordResetTokens().filter((item) => item.email !== normalizedEmail);
+  writeJson(DEMO_PASSWORD_RESET_TOKENS_KEY, [
+    { token, email: normalizedEmail, expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() },
+    ...tokens
+  ]);
+  return token;
+}
+
+function resolveDemoResetEmail(identifier: string) {
+  const normalized = identifier.trim().toLowerCase();
+  const accessCode = identifier.trim().toUpperCase();
+  if (normalized === "admin@school.com") return "admin@school.com";
+  if (normalized === "parent@school.com") return "parent@school.com";
+  const credential = getDemoParentCredentials().find((item) =>
+    item.email.trim().toLowerCase() === normalized ||
+    getDemoParents().find((parent) => parent.id === item.parentId)?.id === accessCode
+  );
+  return credential?.email.trim().toLowerCase() || null;
 }
 
 function getDemoFinanceOverrides() {
@@ -1368,7 +1419,9 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
   if (normalizedPath === "/api/auth/login" && method === "POST") {
     const email = String(body.email ?? "").toLowerCase();
     const password = String(body.password ?? "");
-    if (email === "parent@school.com" && password === "password123") {
+    const adminPassword = localStorage.getItem(DEMO_ADMIN_PASSWORD_KEY) || "password123";
+    const parentPassword = localStorage.getItem(DEMO_PARENT_PASSWORD_KEY) || "password123";
+    if (email === "parent@school.com" && password === parentPassword) {
       const parent = getDemoParents().find((item) => item.id === "PAR-KCS-RACHEL-KABONGO");
       return { token: "demo-parent-token", role: "PARENT", fullName: "Rachel Kabongo", parentId: "PAR-KCS-RACHEL-KABONGO", photoUrl: parent?.photoUrl || "" } as T;
     }
@@ -1387,14 +1440,50 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       }
     }
 
-    if (email === "admin@school.com" && password === "password123") {
+    if (email === "admin@school.com" && password === adminPassword) {
       return { token: "local-admin-token", role: "ADMIN", fullName: "Administrateur" } as T;
     }
 
     throw new Error("Identifiants invalides.");
   }
 
-  if (normalizedPath === "/api/auth/forgot-password") return { message: "OK" } as T;
+  if (normalizedPath === "/api/auth/forgot-password" && method === "POST") {
+    const identifier = String(body.identifier ?? body.email ?? "");
+    const email = resolveDemoResetEmail(identifier);
+    const token = email ? saveDemoPasswordResetToken(email) : "";
+    return {
+      message: email
+        ? "Mode local: code de reinitialisation genere pour tester le flux."
+        : "Si ce compte existe, un code de reinitialisation vient d'etre envoye.",
+      resetToken: token || undefined
+    } as T;
+  }
+
+  if (normalizedPath === "/api/auth/reset-password" && method === "POST") {
+    const token = String(body.token ?? "").trim();
+    const newPassword = String(body.newPassword ?? "");
+    const resetToken = getDemoPasswordResetTokens().find((item) => item.token === token);
+    if (!resetToken || newPassword.length < 8) {
+      throw new Error("Code de reinitialisation invalide ou expire.");
+    }
+
+    if (resetToken.email === "admin@school.com") {
+      localStorage.setItem(DEMO_ADMIN_PASSWORD_KEY, newPassword);
+    } else if (resetToken.email === "parent@school.com") {
+      localStorage.setItem(DEMO_PARENT_PASSWORD_KEY, newPassword);
+    } else {
+      const credentials = getDemoParentCredentials().map((item) =>
+        item.email.trim().toLowerCase() === resetToken.email ? { ...item, password: newPassword } : item
+      );
+      writeJson(DEMO_PARENT_CREDENTIALS_KEY, credentials);
+    }
+
+    writeJson(DEMO_PASSWORD_RESET_TOKENS_KEY, getDemoPasswordResetTokens().map((item) =>
+      item.token === token ? { ...item, usedAt: new Date().toISOString() } : item
+    ));
+    return { message: "Mot de passe reinitialise. Vous pouvez vous connecter." } as T;
+  }
+
   if (normalizedPath === "/api/auth/change-password") return { message: "OK" } as T;
   if (normalizedPath === "/api/auth/recover-admin-password" && method === "POST") {
     const email = String(body.email ?? "").trim().toLowerCase();
@@ -2304,6 +2393,9 @@ function canFallbackToDemo(path: string, init?: RequestInit) {
   if (!path.startsWith("/api/")) return false;
   return method === "GET" ||
     path === "/api/auth/login" ||
+    path === "/api/auth/forgot-password" ||
+    path === "/api/auth/reset-password" ||
+    path === "/api/auth/recover-admin-password" ||
     path === "/api/auth/change-password" ||
     path === "/api/ai/assistant" ||
     path.startsWith("/api/finance") ||
@@ -2358,7 +2450,12 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
         message: "Action enregistree hors ligne. Elle sera synchronisee automatiquement au retour de la connexion."
       } as T;
     }
-    if (LOCAL_API_FALLBACK_ENABLED && canFallbackToDemo(path, init)) return demoApi<T>(path, init);
+    if (
+      (LOCAL_API_FALLBACK_ENABLED || (!PRODUCTION_MODE && LOCAL_AUTH_RECOVERY_FALLBACK_PATHS.has(path))) &&
+      canFallbackToDemo(path, init)
+    ) {
+      return demoApi<T>(path, init);
+    }
     throw new Error("Impossible de joindre l'API. Verifiez que le backend est demarre.");
   }
 

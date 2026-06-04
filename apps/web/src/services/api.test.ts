@@ -38,4 +38,28 @@ describe("EduPay offline mutation queue", () => {
     expect(result).toMatchObject({ attempted: 1, sent: 1, remaining: 0 });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+
+  it("supports the local forgot-password reset flow end to end", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("offline"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const forgot = await api<{ message: string; resetToken?: string }>("/api/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ identifier: "admin@school.com" })
+    });
+
+    expect(forgot.resetToken).toBeTruthy();
+
+    await api<{ message: string }>("/api/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ token: forgot.resetToken, newPassword: "newPassword123" })
+    });
+
+    const login = await api<{ token: string; role: string }>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "admin@school.com", password: "newPassword123" })
+    });
+
+    expect(login).toMatchObject({ token: "local-admin-token", role: "ADMIN" });
+  });
 });
