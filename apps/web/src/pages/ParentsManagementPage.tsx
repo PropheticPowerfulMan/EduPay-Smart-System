@@ -39,6 +39,44 @@ type Parent = {
   createdAt: string;
 };
 
+type SharedDirectoryResponse = {
+  source?: string;
+  visibility?: string;
+  counts?: { families?: number; parents?: number; students?: number; teachers?: number };
+  parents?: Array<{
+    id: string;
+    displayId?: string;
+    fullName?: string;
+    firstName?: string;
+    middleName?: string | null;
+    lastName?: string;
+    phone?: string | null;
+    email?: string | null;
+    physicalAddress?: string | null;
+    students?: Array<Partial<Student> & {
+      id: string;
+      displayId?: string;
+      fullName?: string;
+      classId?: string;
+      className?: string;
+      annualFee?: number;
+      annualFeeDisplay?: number;
+      createdAt?: string;
+      paymentOptionType?: string | null;
+      tuitionPlanName?: string;
+    }>;
+  }>;
+  students?: Array<Partial<Student> & {
+    id: string;
+    parentId?: string;
+    fullName?: string;
+    classId?: string;
+    className?: string;
+    annualFee?: number;
+    annualFeeDisplay?: number;
+  }>;
+};
+
 type ParentCredentials = {
   parentId: string;
   parentName: string;
@@ -142,9 +180,88 @@ function sortParentsForUi(parents: Parent[]) {
     .sort(compareByFullName);
 }
 
+function splitNameParts(fullName: string) {
+  const parts = fullName.trim().split(/\s+/).filter(Boolean);
+  return {
+    nom: parts[0] ?? "",
+    postnom: parts.length > 2 ? parts.slice(1, -1).join(" ") : "",
+    prenom: parts.length > 1 ? parts[parts.length - 1] : "",
+  };
+}
+
+function normalizeSharedDirectoryForParents(directory: SharedDirectoryResponse): Parent[] {
+  const studentsByParent = new Map<string, Student[]>();
+  for (const student of directory.students ?? []) {
+    const parentId = String(student.parentId ?? "");
+    if (!parentId) continue;
+    const row: Student = {
+      id: String(student.id),
+      displayId: student.displayId ? String(student.displayId) : undefined,
+      fullName: String(student.fullName ?? ""),
+      gender: (student.gender as Student["gender"]) ?? "",
+      classId: String(student.classId ?? ""),
+      className: String(student.className ?? student.classId ?? ""),
+      annualFee: toSafeNumber(student.annualFeeDisplay ?? student.annualFee),
+      createdAt: student.createdAt ? String(student.createdAt) : new Date(0).toISOString(),
+      paymentOptionType: student.paymentOptionType ? String(student.paymentOptionType) : undefined,
+      tuitionPlanName: student.tuitionPlanName ? String(student.tuitionPlanName) : undefined,
+    };
+    studentsByParent.set(parentId, [...(studentsByParent.get(parentId) ?? []), row]);
+  }
+
+  return sortParentsForUi((directory.parents ?? []).map((parent) => {
+    const fullName = String(parent.fullName ?? [parent.firstName, parent.middleName, parent.lastName].filter(Boolean).join(" ") ?? "");
+    const parts = splitNameParts(fullName);
+    const directStudents = Array.isArray(parent.students) && parent.students.length > 0
+      ? parent.students.map((student) => ({
+          id: String(student.id),
+          displayId: student.displayId ? String(student.displayId) : undefined,
+          fullName: String(student.fullName ?? ""),
+          gender: (student.gender as Student["gender"]) ?? "",
+          classId: String(student.classId ?? ""),
+          className: String(student.className ?? student.classId ?? ""),
+          annualFee: toSafeNumber(student.annualFeeDisplay ?? student.annualFee),
+          createdAt: student.createdAt ? String(student.createdAt) : new Date(0).toISOString(),
+          paymentOptionType: student.paymentOptionType ? String(student.paymentOptionType) : undefined,
+          tuitionPlanName: student.tuitionPlanName ? String(student.tuitionPlanName) : undefined,
+        }))
+      : studentsByParent.get(String(parent.id)) ?? [];
+
+    return normalizeParentForUi({
+      id: String(parent.id),
+      displayId: parent.displayId ? String(parent.displayId) : undefined,
+      nom: parent.lastName ? String(parent.lastName) : parts.nom,
+      postnom: parts.postnom,
+      prenom: parent.firstName ? String(parent.firstName) : parts.prenom,
+      fullName,
+      phone: String(parent.phone ?? ""),
+      email: String(parent.email ?? ""),
+      physicalAddress: parent.physicalAddress ? String(parent.physicalAddress) : "",
+      students: directStudents,
+      createdAt: new Date(0).toISOString(),
+    });
+  }));
+}
+
 function toSafeNumber(value: unknown) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(`${label} timeout`)), timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
 }
 
 function normalizeSearchText(value: unknown) {
@@ -2683,16 +2800,23 @@ export function ParentsManagementPage() {
     setLoading(true);
     setApiError(null);
     let nextApiError: string | null = null;
-    const [parentsResult, classesResult, catalogResult] = await Promise.allSettled([
+    const [directoryResult, parentsResult, classesResult, catalogResult] = await Promise.allSettled([
+      withTimeout(api<SharedDirectoryResponse>("/api/shared-directory"), 4500, "shared-directory"),
       api<Parent[]>("/api/parents"),
       api<SchoolClass[]>("/api/classes"),
       api<FinanceCatalog>("/api/finance/catalog")
     ]);
 
-    if (parentsResult.status === "fulfilled") {
+    if (directoryResult.status === "fulfilled") {
+      setParents(normalizeSharedDirectoryForParents(directoryResult.value));
+    } else if (parentsResult.status === "fulfilled") {
       setParents(sortParentsForUi(parentsResult.value.map(normalizeParentForUi)));
     } else {
-      const message = parentsResult.reason instanceof Error ? parentsResult.reason.message : "Erreur API";
+      const message = directoryResult.reason instanceof Error
+        ? directoryResult.reason.message
+        : parentsResult.reason instanceof Error
+          ? parentsResult.reason.message
+          : "Erreur API";
       nextApiError = message;
     }
 

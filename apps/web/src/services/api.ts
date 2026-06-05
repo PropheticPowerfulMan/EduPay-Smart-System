@@ -13,8 +13,8 @@ const ROLE_STORAGE_KEY = "edupay_role";
 const NAME_STORAGE_KEY = "edupay_name";
 const PARENT_ID_STORAGE_KEY = "edupay_parent_id";
 const SESSION_ACTIVE_KEY = "edupay_session_active";
-const DEMO_PARENTS_KEY = "edupay_demo_parents_v2";
-const DEMO_PAYMENTS_KEY = "edupay_payments_v3";
+const DEMO_PARENTS_KEY = "edupay_demo_parents_v3";
+const DEMO_PAYMENTS_KEY = "edupay_payments_v4";
 const DEMO_NOTIFICATIONS_KEY = "edupay-payment-notifications-enabled";
 const DEMO_MANUAL_MESSAGES_KEY = "edupay_manual_messages_v1";
 const DEMO_PARENT_CREDENTIALS_KEY = "edupay_demo_parent_credentials_v1";
@@ -26,9 +26,9 @@ const DEMO_EXPENSE_CATEGORIES_KEY = "edupay_demo_expense_categories_v1";
 const DEMO_EXPENSE_VENDORS_KEY = "edupay_demo_expense_vendors_v1";
 const DEMO_EXPENSE_BUDGETS_KEY = "edupay_demo_expense_budgets_v1";
 const DEMO_EXPENSE_ITEMS_KEY = "edupay_demo_expense_items_v1";
-const DEMO_SALARY_PROFILES_KEY = "edupay_demo_salary_profiles_v1";
+const DEMO_SALARY_PROFILES_KEY = "edupay_demo_salary_profiles_v2";
 const DEMO_PAYROLL_RUNS_KEY = "edupay_demo_payroll_runs_v1";
-const DEMO_EMPLOYEES_KEY = "edupay_demo_employees_v1";
+const DEMO_EMPLOYEES_KEY = "edupay_demo_employees_v2";
 const API_RESPONSE_CACHE_PREFIX = "edupay_api_cache_v1:";
 const OFFLINE_MUTATION_QUEUE_KEY = "edupay_offline_mutation_queue_v1";
 const DEMO_FALLBACK_ENABLED = (import.meta.env.VITE_ENABLE_DEMO_FALLBACK ?? "").trim().toLowerCase() === "true";
@@ -262,43 +262,86 @@ const demoClasses = [
   ...Array.from({ length: 12 }, (_v, index) => ({ id: `section-grade-${index + 1}`, name: `Grade ${index + 1}` }))
 ];
 
-const seedParents: DemoParent[] = [
-  {
-    id: "PAR-KCS-RACHEL-KABONGO",
-    nom: "Kabongo",
-    postnom: "",
-    prenom: "Rachel",
-    fullName: "Rachel Kabongo",
-    phone: "+243 812 450 221",
-    email: "rachel.kabongo@kcs.local",
-    physicalAddress: "Avenue Kasa-Vubu, Gombe, Kinshasa",
-    createdAt: new Date().toISOString(),
-    students: [
-      { id: "STU-KCS-ELISE-KABONGO", fullName: "Elise Kabongo", gender: "F", classId: "section-grade-11", className: "Grade 11A", annualFee: 2200, createdAt: "2026-01-12T08:15:00.000Z" },
-      { id: "STU-KCS-DAVID-KABONGO", fullName: "David Kabongo", gender: "M", classId: "section-grade-8", className: "Grade 8B", annualFee: 1800, createdAt: "2026-01-12T08:18:00.000Z" }
-    ]
-  },
-  {
-    id: "PAR-KCS-MIREILLE-MBUYI",
-    nom: "Mbuyi",
-    postnom: "",
-    prenom: "Mireille",
-    fullName: "Mireille Mbuyi",
-    phone: "+243 899 120 882",
-    email: "mireille.mbuyi@kcs.local",
-    physicalAddress: "Quartier Ma Campagne, Ngaliema, Kinshasa",
-    createdAt: new Date().toISOString(),
-    students: [
-      { id: "STU-KCS-AMANI-MBUYI", fullName: "Amani Mbuyi", gender: "O", classId: "section-grade-10", className: "Grade 10A", annualFee: 2400, createdAt: "2026-02-03T09:42:00.000Z" }
-    ]
-  }
-];
+const OFFICIAL_DEMO_COUNTS = { parents: 29, students: 44, employees: 10 };
+const parentSeedNames = [
+  ["Kabongo", "Rachel"], ["Mbuyi", "Mireille"], ["Lukusa", "Cedric"], ["Ilunga", "Nadine"], ["Tshibangu", "Patrick"],
+  ["Mavungu", "Aline"], ["Kalala", "Samuel"], ["Moke", "Sarah"], ["Banza", "Grace"], ["Kanku", "David"],
+  ["Mukendi", "Chantal"], ["Tshomba", "Daniel"], ["Mbala", "Esther"], ["Kasongo", "Joel"], ["Ngoy", "Carine"],
+  ["Kitenge", "Fabrice"], ["Mulumba", "Ruth"], ["Nkulu", "Benedicte"], ["Beya", "Jonathan"], ["Lunda", "Prisca"],
+  ["Tshimanga", "Arnaud"], ["Kayembe", "Rose"], ["Mutombo", "Lionel"], ["Kabasele", "Diane"], ["Nsimba", "Marc"],
+  ["Mpoyi", "Sandrine"], ["Lwamba", "Eric"], ["Makiese", "Gloria"], ["Kalonji", "Herve"]
+] as const;
+const studentGivenNames = [
+  "Elise", "David", "Amani", "Noah", "Naomi", "Ethan", "Sarah", "Joshua", "Deborah", "Samuel", "Rebecca",
+  "Nathan", "Esther", "Daniel", "Merveille", "Joanna", "Grace", "Aaron", "Rachelle", "Jonathan", "Prisca",
+  "Emmanuel", "Christelle", "Benjamin", "Ruth", "Joel", "Benedicte", "Isaac", "Naomie", "Joseph", "Judith",
+  "Caleb", "Hadassa", "Ezekiel", "Miriam", "Levi", "Rachel", "Elie", "Abigail", "Matthieu", "Anne", "Simeon",
+  "Tabitha", "Timothee"
+] as const;
 
-const seedPayments: DemoPayment[] = [
-  { id: "pay-1", transactionNumber: "TXN-20260420-10001", parentId: "PAR-KCS-RACHEL-KABONGO", parentFullName: "Rachel Kabongo", reason: "Frais scolaires - Elise Kabongo", method: "CASH", amount: 1600, status: "COMPLETED", createdAt: new Date().toISOString(), date: new Date().toLocaleString("fr-FR") },
-  { id: "pay-2", transactionNumber: "TXN-20260421-10002", parentId: "PAR-KCS-RACHEL-KABONGO", parentFullName: "Rachel Kabongo", reason: "Frais scolaires - David Kabongo", method: "MPESA", amount: 980, status: "COMPLETED", createdAt: new Date().toISOString(), date: new Date().toLocaleString("fr-FR") },
-  { id: "pay-3", transactionNumber: "TXN-20260422-10003", parentId: "PAR-KCS-MIREILLE-MBUYI", parentFullName: "Mireille Mbuyi", reason: "Frais scolaires - Amani Mbuyi", method: "MPESA", amount: 800, status: "PENDING", createdAt: new Date().toISOString(), date: new Date().toLocaleString("fr-FR") }
-];
+function demoClassForStudent(index: number) {
+  const classEntry = demoClasses[index % demoClasses.length];
+  return { classId: classEntry.id, className: classEntry.name };
+}
+
+function buildUnifiedDemoParents(): DemoParent[] {
+  let studentIndex = 0;
+  return parentSeedNames.map(([nom, prenom], parentIndex) => {
+    const studentCount = parentIndex < 15 ? 2 : 1;
+    const students = Array.from({ length: studentCount }, () => {
+      const current = studentIndex;
+      studentIndex += 1;
+      const { classId, className } = demoClassForStudent(current);
+      return {
+        id: `STU-KCS-${String(current + 1).padStart(3, "0")}`,
+        fullName: `${studentGivenNames[current]} ${nom}`,
+        gender: current % 2 === 0 ? "F" : "M",
+        classId,
+        className,
+        annualFee: 1800 + ((current % 6) * 120),
+        createdAt: `2026-01-${String((current % 24) + 2).padStart(2, "0")}T08:00:00.000Z`
+      } satisfies DemoStudent;
+    });
+
+    return {
+      id: `PAR-KCS-${String(parentIndex + 1).padStart(3, "0")}`,
+      nom,
+      postnom: "",
+      prenom,
+      fullName: `${prenom} ${nom}`,
+      phone: `+243 812 45${String(parentIndex + 1).padStart(4, "0")}`,
+      email: `${prenom.toLowerCase()}.${nom.toLowerCase()}@kcs.local`,
+      physicalAddress: `Commune ${["Gombe", "Ngaliema", "Limete", "Lemba", "Kintambo"][parentIndex % 5]}, Kinshasa`,
+      createdAt: `2026-01-${String((parentIndex % 24) + 2).padStart(2, "0")}T07:30:00.000Z`,
+      students
+    };
+  });
+}
+
+const seedParents: DemoParent[] = buildUnifiedDemoParents();
+
+function buildUnifiedDemoPayments(parents: DemoParent[]): DemoPayment[] {
+  return parents.slice(0, 12).map((parent, index) => {
+    const student = parent.students[0];
+    const completed = index % 4 !== 3;
+    return {
+      id: `pay-${String(index + 1).padStart(3, "0")}`,
+      transactionNumber: `TXN-202604${String(index + 10).padStart(2, "0")}-${String(10001 + index)}`,
+      parentId: parent.id,
+      parentFullName: parent.fullName,
+      paymentSubjectName: student?.fullName,
+      studentNames: parent.students.map((item) => item.fullName),
+      reason: `Frais scolaires - ${student?.fullName ?? parent.fullName}`,
+      method: ["CASH", "MPESA", "AIRTEL_MONEY"][index % 3],
+      amount: completed ? Math.round(parent.students.reduce((sum, item) => sum + item.annualFee, 0) * (0.35 + (index % 3) * 0.12)) : 0,
+      status: completed ? "COMPLETED" : "PENDING",
+      createdAt: `2026-04-${String(index + 10).padStart(2, "0")}T10:00:00.000Z`,
+      date: `2026-04-${String(index + 10).padStart(2, "0")}`
+    };
+  });
+}
+
+const seedPayments: DemoPayment[] = buildUnifiedDemoPayments(seedParents);
 
 function clearLocalSession() {
   sessionStorage.removeItem(SESSION_ACTIVE_KEY);
@@ -458,7 +501,13 @@ function buildUniqueDemoEntityId(prefix: "PAR" | "STU", fullName: string, existi
 }
 
 function getDemoParents() {
-  const parents = readJson<DemoParent[]>(DEMO_PARENTS_KEY, seedParents).map((parent) => ({
+  const storedParents = readJson<DemoParent[]>(DEMO_PARENTS_KEY, seedParents);
+  const storedStudentCount = storedParents.reduce((sum, parent) => sum + (parent.students?.length ?? 0), 0);
+  const sourceParents =
+    storedParents.length < OFFICIAL_DEMO_COUNTS.parents || storedStudentCount < OFFICIAL_DEMO_COUNTS.students
+      ? seedParents
+      : storedParents;
+  const parents = sourceParents.map((parent) => ({
     ...parent,
     students: parent.students.map((student) => ({
       ...student,
@@ -1096,6 +1145,37 @@ function getDemoExpenseBudgets() {
   return budgets;
 }
 
+function buildUnifiedDemoSalaryProfiles(): DemoSalaryProfile[] {
+  return [
+    ["EMP-001", "Mireille Ilunga", "Academique", "Teacher", 420],
+    ["EMP-002", "Patrick Nsenga", "Administration", "Accountant", 360],
+    ["EMP-003", "Anita Mbuyi", "Academique", "Teacher", 430],
+    ["EMP-004", "Daniel Kayembe", "Finances", "Finance Officer", 390],
+    ["EMP-005", "Nadine Ilunga", "Administration", "Director", 650],
+    ["EMP-006", "Cedric Lukusa", "Academique", "Teacher", 410],
+    ["EMP-007", "Grace Banza", "Vie scolaire", "Student Life Officer", 340],
+    ["EMP-008", "Joel Kasongo", "Operations", "Logistics Officer", 330],
+    ["EMP-009", "Carine Ngoy", "Academique", "Teacher", 405],
+    ["EMP-010", "Herve Kalonji", "Technologie", "IT Officer", 380]
+  ].map(([employeeCode, fullName, department, position, baseSalary], index) => ({
+    id: `salary-${String(index + 1).padStart(3, "0")}`,
+    employeeCode: String(employeeCode),
+    fullName: String(fullName),
+    department: String(department),
+    position: String(position),
+    baseSalary: Number(baseSalary),
+    currency: "USD",
+    frequency: "MONTHLY",
+    defaultBonus: index % 2 === 0 ? 25 : 15,
+    defaultDeduction: index % 3 === 0 ? 10 : 5,
+    advanceBalance: 0,
+    debtRecoveryRate: 0,
+    notes: "Population demo unifiee KCS",
+    isActive: true,
+    createdAt: `2026-01-${String(index + 2).padStart(2, "0")}T07:00:00.000Z`
+  }));
+}
+
 function getDemoSalaryProfiles() {
   const profiles = readJson<DemoSalaryProfile[]>(DEMO_SALARY_PROFILES_KEY, [
     {
@@ -1133,12 +1213,15 @@ function getDemoSalaryProfiles() {
       createdAt: new Date().toISOString()
     }
   ]);
-  writeJson(DEMO_SALARY_PROFILES_KEY, profiles);
-  return profiles;
+  const reconciledProfiles = profiles.filter((profile) => profile.isActive !== false).length < OFFICIAL_DEMO_COUNTS.employees
+    ? buildUnifiedDemoSalaryProfiles()
+    : profiles;
+  writeJson(DEMO_SALARY_PROFILES_KEY, reconciledProfiles);
+  return reconciledProfiles;
 }
 
 function getDemoEmployees() {
-  const employees = readJson<DemoEmployee[]>(DEMO_EMPLOYEES_KEY, getDemoSalaryProfiles().map((profile) => ({
+  const seedEmployees = getDemoSalaryProfiles().map((profile) => ({
     id: profile.id,
     orbitId: profile.id,
     displayId: profile.employeeCode,
@@ -1155,9 +1238,11 @@ function getDemoEmployees() {
     mustChangePassword: false,
     organizationId: "demo-school",
     externalIds: [{ appSlug: "SAVANEX", externalId: profile.employeeCode }],
-  })));
-  writeJson(DEMO_EMPLOYEES_KEY, employees);
-  return employees;
+  }));
+  const employees = readJson<DemoEmployee[]>(DEMO_EMPLOYEES_KEY, seedEmployees);
+  const reconciledEmployees = employees.length < OFFICIAL_DEMO_COUNTS.employees ? seedEmployees : employees;
+  writeJson(DEMO_EMPLOYEES_KEY, reconciledEmployees);
+  return reconciledEmployees;
 }
 
 function saveDemoEmployees(employees: DemoEmployee[]) {

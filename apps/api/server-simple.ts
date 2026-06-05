@@ -82,17 +82,77 @@ const mockUsers = [
     email: "parent@school.com",
     password: "password123",
     role: "PARENT",
-    fullName: "Marie Dupont",
+    fullName: "Rachel Kabongo",
     schoolId: "school-1"
   }
 ];
 
-const mockParents: any[] = [
-  { id: "PAR-2025-0001", nom: "Dupont", postnom: "", prenom: "Marie", fullName: "Dupont Marie", phone: "+243 999 123 456", email: "marie@example.com", schoolId: "school-1", userId: "user-2", preferredLanguage: "fr", createdAt: new Date().toISOString() },
-  { id: "PAR-2025-0002", nom: "Pierre", postnom: "Kalamba", prenom: "Jean", fullName: "Pierre Kalamba Jean", phone: "+243 999 234 567", email: "jean@example.com", schoolId: "school-1", userId: null, preferredLanguage: "fr", createdAt: new Date().toISOString() }
+const OFFICIAL_DEMO_COUNTS = { parents: 29, students: 44, employees: 10 };
+const unifiedParentNames = [
+  ["Kabongo", "Rachel"], ["Mbuyi", "Mireille"], ["Lukusa", "Cedric"], ["Ilunga", "Nadine"], ["Tshibangu", "Patrick"],
+  ["Mavungu", "Aline"], ["Kalala", "Samuel"], ["Moke", "Sarah"], ["Banza", "Grace"], ["Kanku", "David"],
+  ["Mukendi", "Chantal"], ["Tshomba", "Daniel"], ["Mbala", "Esther"], ["Kasongo", "Joel"], ["Ngoy", "Carine"],
+  ["Kitenge", "Fabrice"], ["Mulumba", "Ruth"], ["Nkulu", "Benedicte"], ["Beya", "Jonathan"], ["Lunda", "Prisca"],
+  ["Tshimanga", "Arnaud"], ["Kayembe", "Rose"], ["Mutombo", "Lionel"], ["Kabasele", "Diane"], ["Nsimba", "Marc"],
+  ["Mpoyi", "Sandrine"], ["Lwamba", "Eric"], ["Makiese", "Gloria"], ["Kalonji", "Herve"]
+];
+const unifiedStudentGivenNames = [
+  "Elise", "David", "Amani", "Noah", "Naomi", "Ethan", "Sarah", "Joshua", "Deborah", "Samuel", "Rebecca",
+  "Nathan", "Esther", "Daniel", "Merveille", "Joanna", "Grace", "Aaron", "Rachelle", "Jonathan", "Prisca",
+  "Emmanuel", "Christelle", "Benjamin", "Ruth", "Joel", "Benedicte", "Isaac", "Naomie", "Joseph", "Judith",
+  "Caleb", "Hadassa", "Ezekiel", "Miriam", "Levi", "Rachel", "Elie", "Abigail", "Matthieu", "Anne", "Simeon",
+  "Tabitha", "Timothee"
 ];
 
-let parentCounter = 2;
+function classIdForStudent(index: number) {
+  if (index < 3) return `section-k${index + 3}`;
+  return `section-grade-${((index - 3) % 12) + 1}`;
+}
+
+function buildUnifiedDemoDirectory() {
+  const students: any[] = [];
+  let studentIndex = 0;
+  const parents = unifiedParentNames.map(([nom, prenom], parentIndex) => {
+    const parentId = `PAR-KCS-${String(parentIndex + 1).padStart(3, "0")}`;
+    const studentCount = parentIndex < 15 ? 2 : 1;
+    Array.from({ length: studentCount }).forEach(() => {
+      const current = studentIndex;
+      studentIndex += 1;
+      students.push({
+        id: `STU-KCS-${String(current + 1).padStart(3, "0")}`,
+        orbitId: `STU-KCS-${String(current + 1).padStart(3, "0")}`,
+        displayId: `KCS-STU-${String(current + 1).padStart(3, "0")}`,
+        studentNumber: `KCS-STU-${String(current + 1).padStart(3, "0")}`,
+        parentId,
+        classId: classIdForStudent(current),
+        fullName: `${unifiedStudentGivenNames[current]} ${nom}`,
+        annualFee: 1800 + ((current % 6) * 120),
+        schoolId: "school-1",
+        createdAt: `2026-01-${String((current % 24) + 2).padStart(2, "0")}T08:00:00.000Z`
+      });
+    });
+    return {
+      id: parentId,
+      nom,
+      postnom: "",
+      prenom,
+      fullName: `${prenom} ${nom}`,
+      phone: `+243 812 45${String(parentIndex + 1).padStart(4, "0")}`,
+      email: `${String(prenom).toLowerCase()}.${String(nom).toLowerCase()}@kcs.local`,
+      schoolId: "school-1",
+      userId: parentIndex === 0 ? "user-2" : null,
+      preferredLanguage: "fr",
+      physicalAddress: `Kinshasa - ${["Gombe", "Ngaliema", "Limete", "Lemba", "Kintambo"][parentIndex % 5]}`,
+      createdAt: `2026-01-${String((parentIndex % 24) + 2).padStart(2, "0")}T07:30:00.000Z`
+    };
+  });
+  return { parents, students };
+}
+
+const unifiedDemoDirectory = buildUnifiedDemoDirectory();
+const mockParents: any[] = unifiedDemoDirectory.parents;
+
+let parentCounter = OFFICIAL_DEMO_COUNTS.parents;
 
 function generateParentId() {
   parentCounter++;
@@ -150,17 +210,35 @@ async function sendParentWelcomeNotifications(parent: any, password: string, ema
   return status;
 }
 
-const mockStudents: any[] = [
-  { id: "student-1", parentId: "PAR-2025-0001", classId: "section-grade-1", fullName: "Alice Dupont", annualFee: 500, schoolId: "school-1" },
-  { id: "student-2", parentId: "PAR-2025-0001", classId: "section-grade-1", fullName: "Bob Dupont", annualFee: 500, schoolId: "school-1" },
-  { id: "student-3", parentId: "PAR-2025-0002", classId: "section-grade-2", fullName: "Charlie Pierre", annualFee: 550, schoolId: "school-1" }
-];
+const mockStudents: any[] = unifiedDemoDirectory.students;
 
 const mockEmployees: any[] = [
-  { id: "EMP-KCS-001", orbitId: "EMP-KCS-001", displayId: "KCS-EMP-001", employeeId: "KCS-EMP-001", fullName: "Anita Mbuyi", email: "anita.mbuyi@school.com", phone: "+243 999 345 678", department: "Academique", jobTitle: "Enseignante", subject: "Mathematiques", employeeType: "TEACHING", physicalAddress: "Kinshasa", externalIds: [{ appSlug: "edupay", externalId: "EMP-KCS-001" }], createdAt: new Date().toISOString() },
-  { id: "EMP-KCS-002", orbitId: "EMP-KCS-002", displayId: "KCS-EMP-002", employeeId: "KCS-EMP-002", fullName: "Daniel Kayembe", email: "daniel.kayembe@school.com", phone: "+243 999 456 789", department: "Finances", jobTitle: "Comptable", subject: "", employeeType: "ADMINISTRATIVE", physicalAddress: "Kinshasa", externalIds: [{ appSlug: "edupay", externalId: "EMP-KCS-002" }], createdAt: new Date().toISOString() },
-  { id: "EMP-KCS-003", orbitId: "EMP-KCS-003", displayId: "KCS-EMP-003", employeeId: "KCS-EMP-003", fullName: "Nadine Ilunga", email: "nadine.ilunga@school.com", phone: "+243 999 567 890", department: "Administration", jobTitle: "Directrice", subject: "", employeeType: "ADMINISTRATIVE", physicalAddress: "Kinshasa", externalIds: [{ appSlug: "edupay", externalId: "EMP-KCS-003" }], createdAt: new Date().toISOString() }
-];
+  ["EMP-KCS-001", "Mireille Ilunga", "Academique", "Teacher", "General", "TEACHING"],
+  ["EMP-KCS-002", "Patrick Nsenga", "Administration", "Accountant", "", "ADMINISTRATIVE"],
+  ["EMP-KCS-003", "Anita Mbuyi", "Academique", "Teacher", "Mathematiques", "TEACHING"],
+  ["EMP-KCS-004", "Daniel Kayembe", "Finances", "Finance Officer", "", "ADMINISTRATIVE"],
+  ["EMP-KCS-005", "Nadine Ilunga", "Administration", "Director", "", "ADMINISTRATIVE"],
+  ["EMP-KCS-006", "Cedric Lukusa", "Academique", "Teacher", "Sciences", "TEACHING"],
+  ["EMP-KCS-007", "Grace Banza", "Vie scolaire", "Student Life Officer", "", "ADMINISTRATIVE"],
+  ["EMP-KCS-008", "Joel Kasongo", "Operations", "Logistics Officer", "", "STAFF"],
+  ["EMP-KCS-009", "Carine Ngoy", "Academique", "Teacher", "Francais", "TEACHING"],
+  ["EMP-KCS-010", "Herve Kalonji", "Technologie", "IT Officer", "", "STAFF"]
+].map(([id, fullName, department, jobTitle, subject, employeeType], index) => ({
+  id,
+  orbitId: id,
+  displayId: `KCS-EMP-${String(index + 1).padStart(3, "0")}`,
+  employeeId: `KCS-EMP-${String(index + 1).padStart(3, "0")}`,
+  fullName,
+  email: `${String(fullName).toLowerCase().replace(/\s+/g, ".")}@kcs.local`,
+  phone: `+243 899 56${String(index + 1).padStart(4, "0")}`,
+  department,
+  jobTitle,
+  subject,
+  employeeType,
+  physicalAddress: "Kinshasa",
+  externalIds: [{ appSlug: "edupay", externalId: id }, { appSlug: "savanex", externalId: id }],
+  createdAt: `2026-01-${String(index + 2).padStart(2, "0")}T07:00:00.000Z`
+}));
 
 const mockClasses = [
   ...Array.from({ length: 3 }, (_v, index) => {
@@ -173,21 +251,23 @@ const mockClasses = [
   })
 ];
 
-const mockPayments: any[] = [
-  {
-    id: "payment-1",
-    transactionNumber: "TX-1000000-1234",
-    parentId: "PAR-2025-0001",
-    reason: "Monthly tuition",
-    amount: 25000,
-    amountInWords: "vingt-cinq mille dollars americains",
-    method: "CASH",
-    status: "COMPLETED",
-    createdAt: new Date(),
+const mockPayments: any[] = mockParents.slice(0, 12).map((parent, index) => {
+  const relatedStudents = mockStudents.filter((student) => student.parentId === parent.id);
+  const completed = index % 4 !== 3;
+  return {
+    id: `payment-${String(index + 1).padStart(3, "0")}`,
+    transactionNumber: `TXN-202604${String(index + 10).padStart(2, "0")}-${10001 + index}`,
+    parentId: parent.id,
+    reason: `Frais scolaires - ${relatedStudents[0]?.fullName || parent.fullName}`,
+    amount: completed ? Math.round(relatedStudents.reduce((sum, student) => sum + Number(student.annualFee || 0), 0) * (0.35 + (index % 3) * 0.12)) : 0,
+    amountInWords: "montant demo",
+    method: ["CASH", "MPESA", "AIRTEL_MONEY"][index % 3],
+    status: completed ? "COMPLETED" : "PENDING",
+    createdAt: new Date(`2026-04-${String(index + 10).padStart(2, "0")}T10:00:00.000Z`),
     schoolId: "school-1",
-    students: ["student-1", "student-2"]
-  }
-];
+    students: relatedStudents.map((student) => student.id)
+  };
+});
 
 const mockFinanceAgreements: any[] = [];
 
@@ -942,9 +1022,16 @@ app.post("/api/finance/agreements", authGuard, requireRole("ADMIN", "ACCOUNTANT"
 // Routes: Analytics
 app.get("/api/analytics/overview", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (_req: any, res) => {
   const totalRevenue = mockPayments.reduce((s, p) => s + (p.status === "COMPLETED" ? p.amount : 0), 0);
-  const monthlyRevenue = totalRevenue * 0.3;
-  const paymentSuccessRate = 85;
-  const outstandingDebt = 450000;
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const monthlyRevenue = mockPayments.reduce(
+    (sum, payment) => sum + (payment.status === "COMPLETED" && String(payment.createdAt || payment.date || "").slice(0, 7) === currentMonth ? payment.amount : 0),
+    0
+  );
+  const paymentSuccessRate = mockPayments.length
+    ? Math.round((mockPayments.filter((payment) => payment.status === "COMPLETED").length / mockPayments.length) * 100)
+    : 0;
+  const expectedRevenue = mockStudents.reduce((sum, student) => sum + Number(student.annualFee || 0), 0);
+  const outstandingDebt = Math.max(expectedRevenue - totalRevenue, 0);
   return res.json({ totalRevenue, monthlyRevenue, paymentSuccessRate, outstandingDebt });
 });
 
@@ -958,10 +1045,13 @@ app.post("/api/ai/assistant", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (re
 });
 
 app.get("/api/ai/insights", authGuard, requireRole("ADMIN", "ACCOUNTANT"), (_req: any, res) => {
+  const completedRevenue = mockPayments.reduce((sum, payment) => sum + (payment.status === "COMPLETED" ? Number(payment.amount || 0) : 0), 0);
+  const expectedRevenue = mockStudents.reduce((sum, student) => sum + Number(student.annualFee || 0), 0);
+  const unpaidRate = expectedRevenue > 0 ? Math.max(expectedRevenue - completedRevenue, 0) / expectedRevenue : 0;
   return res.json({
-    anomalies: [{ class: "Grade 3", unpaid_rate: 0.40 }],
-    suggestions: ["Send reminder to 25 parents", "Review payment plan"],
-    summary: "High unpaid rates detected in Grade 3"
+    anomalies: unpaidRate > 0 ? [{ scope: "all-classes", unpaid_rate: unpaidRate }] : [],
+    suggestions: unpaidRate > 0 ? ["Send reminders to parents with remaining balances", "Review payment plan"] : ["No unpaid anomaly detected in demo data"],
+    summary: unpaidRate > 0 ? "Unpaid balances detected from the loaded EduPay demo data" : "No unpaid balances detected from the loaded EduPay demo data"
   });
 });
 

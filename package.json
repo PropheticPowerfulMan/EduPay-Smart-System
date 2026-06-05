@@ -8,7 +8,8 @@
     "dev": "pnpm --filter \"@edupay/web\" --filter \"@edupay/api\" --parallel dev",
     "dev:demo": "pnpm --filter \"@edupay/web\" --filter \"@edupay/api\" --parallel dev:demo",
     "session:save": "powershell -ExecutionPolicy Bypass -File scripts/save-session.ps1",
-    "build": "pnpm -r build",
+    "check:entity-counts": "node ../scripts/guard-ecosystem-entity-counts.mjs",
+    "build": "pnpm run check:entity-counts && pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint"
   },

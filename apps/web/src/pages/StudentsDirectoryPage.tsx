@@ -242,6 +242,22 @@ function sortByFullName<T extends { fullName?: string; id?: string }>(items: T[]
   );
 }
 
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(`${label} timeout`)), timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
 function normalizeDirectoryForUi(directory: SharedDirectoryResponse): SharedDirectoryResponse {
   const students = sortByFullName(directory.students ?? []);
   const parents = sortByFullName(directory.parents ?? []).map((parent) => ({
@@ -255,8 +271,8 @@ function normalizeDirectoryForUi(directory: SharedDirectoryResponse): SharedDire
     students,
     counts: {
       families: directory.counts?.families ?? parents.length,
-      parents: parents.length,
-      students: students.length,
+      parents: directory.counts?.parents ?? parents.length,
+      students: directory.counts?.students ?? students.length,
       teachers: directory.counts?.teachers ?? 0
     }
   };
@@ -1077,7 +1093,7 @@ export function StudentsDirectoryPage() {
     setApiError(null);
 
     const [directoryResult, classesResult] = await Promise.allSettled([
-      api<SharedDirectoryResponse>("/api/shared-directory"),
+      withTimeout(api<SharedDirectoryResponse>("/api/shared-directory"), 4500, "shared-directory"),
       api<SchoolClass[]>("/api/classes")
     ]);
 

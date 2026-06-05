@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import numpy as np
-import pandas as pd
 from sklearn.linear_model import LinearRegression
 
 app = FastAPI(title="EduPay AI Service", version="1.0.0")
@@ -54,25 +53,16 @@ def forecast_revenue():
 
 @app.get("/insights")
 def insights():
-    df = pd.DataFrame(
-        [
-            {"class": "Grade 1", "unpaid_rate": 0.18},
-            {"class": "Grade 2", "unpaid_rate": 0.27},
-            {"class": "Grade 3", "unpaid_rate": 0.40},
-        ]
-    )
-    high = df[df["unpaid_rate"] > 0.3]
-
     suggestions = [
-        "Send reminder to 25 parents",
-        "Review Grade 3 payment plan",
-        "Escalate high-risk accounts to accountant",
+        "Use the EduPay dashboard loaded data for parent counts",
+        "Review families with remaining balances",
+        "Escalate only cases confirmed by the shared directory",
     ]
 
     return {
-        "anomalies": high.to_dict(orient="records"),
+        "anomalies": [],
         "suggestions": suggestions,
-        "summary": "Grade 3 has elevated unpaid fees and requires immediate follow-up."
+        "summary": "No entity count is inferred by the standalone AI service without connected EduPay data."
     }
 
 
@@ -81,13 +71,13 @@ def assistant_query(payload: AssistantQuery):
     q = payload.query.lower()
 
     if "didn't pay" in q or "did not pay" in q or "n'ont pas paye" in q:
-        answer = "25 parents have not paid this month."
-        suggestions = ["Send soft reminders now", "Escalate 7 high-risk parents in 72h"]
+        answer = "The standalone AI service cannot count unpaid parents without the live EduPay dataset. Use the EduPay assistant or dashboard context for the exact count."
+        suggestions = ["Open EduPay finance dashboard", "Filter parents with remaining balances"]
     elif "total revenue" in q or "revenu total" in q:
-        answer = "Total revenue for the current term is 142,500."
+        answer = "The standalone AI service cannot compute total revenue without the live EduPay payment dataset."
         suggestions = ["Compare with last term", "Forecast next month"]
     elif "highest debt" in q or "plus forte dette" in q:
-        answer = "Grade 3 currently has the highest debt."
+        answer = "The class with the highest debt must be calculated from the loaded EduPay student and payment records."
         suggestions = ["Notify class lead", "Propose staggered payment options"]
     else:
         answer = "Query understood. Detailed analytics are available in dashboard insights."

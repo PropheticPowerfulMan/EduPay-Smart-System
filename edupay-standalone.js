@@ -1,18 +1,82 @@
 ﻿const http = require('http');
 const url = require('url');
 
-// Mock data
-let payments = [
-  { id: 'p1', txNumber: 'TX-1000000-1234', parent: 'Marie Dupont', student: 'Alice Dupont', amount: 25000, reason: 'Monthly tuition', date: '2026-04-20', status: 'COMPLETED' },
-  { id: 'p2', txNumber: 'TX-1000001-5678', parent: 'Jean Pierre', student: 'Charlie Pierre', amount: 30000, reason: 'Annual fee', date: '2026-04-19', status: 'PENDING' }
-];
+// Mock data aligned with the shared KCS demo directory.
+function buildUnifiedDemoParents() {
+  const parentNames = [
+    ['Kabongo', 'Rachel'], ['Mbuyi', 'Mireille'], ['Lukusa', 'Cedric'], ['Ilunga', 'Nadine'], ['Tshibangu', 'Patrick'],
+    ['Mavungu', 'Aline'], ['Kalala', 'Samuel'], ['Moke', 'Sarah'], ['Banza', 'Grace'], ['Kanku', 'David'],
+    ['Mukendi', 'Chantal'], ['Tshomba', 'Daniel'], ['Mbala', 'Esther'], ['Kasongo', 'Joel'], ['Ngoy', 'Carine'],
+    ['Kitenge', 'Fabrice'], ['Mulumba', 'Ruth'], ['Nkulu', 'Benedicte'], ['Beya', 'Jonathan'], ['Lunda', 'Prisca'],
+    ['Tshimanga', 'Arnaud'], ['Kayembe', 'Rose'], ['Mutombo', 'Lionel'], ['Kabasele', 'Diane'], ['Nsimba', 'Marc'],
+    ['Mpoyi', 'Sandrine'], ['Lwamba', 'Eric'], ['Makiese', 'Gloria'], ['Kalonji', 'Herve']
+  ];
+  const studentNames = ['Elise', 'David', 'Amani', 'Noah', 'Naomi', 'Ethan', 'Sarah', 'Joshua', 'Deborah', 'Samuel', 'Rebecca', 'Nathan', 'Esther', 'Daniel', 'Merveille', 'Joanna', 'Grace', 'Aaron', 'Rachelle', 'Jonathan', 'Prisca', 'Emmanuel', 'Christelle', 'Benjamin', 'Ruth', 'Joel', 'Benedicte', 'Isaac', 'Naomie', 'Joseph', 'Judith', 'Caleb', 'Hadassa', 'Ezekiel', 'Miriam', 'Levi', 'Rachel', 'Elie', 'Abigail', 'Matthieu', 'Anne', 'Simeon', 'Tabitha', 'Timothee'];
+  let studentIndex = 0;
+  return parentNames.map((entry, parentIndex) => {
+    const studentCount = parentIndex < 15 ? 2 : 1;
+    const students = Array.from({ length: studentCount }, () => `${studentNames[studentIndex++]} ${entry[0]}`);
+    const annualFee = students.length * (1800 + ((parentIndex % 6) * 120));
+    return {
+      id: `PAR-KCS-${String(parentIndex + 1).padStart(3, '0')}`,
+      name: `${entry[1]} ${entry[0]}`,
+      phone: `+243 812 45${String(parentIndex + 1).padStart(4, '0')}`,
+      email: `${entry[1].toLowerCase()}.${entry[0].toLowerCase()}@kcs.local`,
+      students,
+      annualFee,
+      paid: parentIndex < 12 ? Math.round(annualFee * (0.35 + (parentIndex % 3) * 0.12)) : 0
+    };
+  });
+}
 
-let parents = [
-  { id: '1', name: 'Marie Dupont', phone: '+243 999 123 456', email: 'marie@example.com', students: ['Alice Dupont', 'Bob Dupont'], annualFee: 50000, paid: 25000 },
-  { id: '2', name: 'Jean Pierre', phone: '+243 999 234 567', email: 'jean@example.com', students: ['Charlie Pierre'], annualFee: 55000, paid: 0 }
-];
+let parents = buildUnifiedDemoParents();
+
+let payments = parents.slice(0, 12).map((parent, index) => {
+  const completed = index % 4 !== 3;
+  return {
+    id: `p${index + 1}`,
+    txNumber: `TXN-202604${String(index + 10).padStart(2, '0')}-${10001 + index}`,
+    parent: parent.name,
+    student: parent.students[0],
+    amount: completed ? parent.paid : 0,
+    reason: 'Frais scolaires',
+    date: `2026-04-${String(index + 10).padStart(2, '0')}`,
+    status: completed ? 'COMPLETED' : 'PENDING'
+  };
+});
 
 let currentUser = null;
+
+function formatMoney(value) {
+  return Number(value || 0).toLocaleString('fr-FR');
+}
+
+function getParentFinancials(parent, paymentRows = payments) {
+  const expected = Number(parent.annualFee || 0);
+  const paid = paymentRows
+    .filter((payment) => payment.parent === parent.name && payment.status === 'COMPLETED')
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  return { expected, paid, debt: Math.max(expected - paid, 0) };
+}
+
+function computeEduPayMetrics(parentRows = parents, paymentRows = payments) {
+  const parentMetrics = parentRows.map((parent) => ({ parent, ...getParentFinancials(parent, paymentRows) }));
+  const totalExpected = parentMetrics.reduce((sum, row) => sum + row.expected, 0);
+  const totalRevenue = paymentRows
+    .filter((payment) => payment.status === 'COMPLETED')
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const monthlyRevenue = paymentRows
+    .filter((payment) => payment.status === 'COMPLETED' && String(payment.date || '').slice(0, 7) === currentMonth)
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const completedPayments = paymentRows.filter((payment) => payment.status === 'COMPLETED').length;
+  const successRate = paymentRows.length ? Math.round((completedPayments / paymentRows.length) * 100) : 0;
+  const debt = Math.max(totalExpected - totalRevenue, 0);
+  const unpaidParents = parentMetrics.filter((row) => row.debt > 0);
+  return { totalRevenue, monthlyRevenue, completedPayments, successRate, debt, unpaidParents };
+}
+
+const initialMetrics = computeEduPayMetrics();
 
 const htmlPage = `
 <!DOCTYPE html>
@@ -125,19 +189,19 @@ const htmlPage = `
     <div class="grid">
       <div class="card ok">
         <h3>Revenu Total</h3>
-        <div class="value">240,000 FC</div>
+        <div class="value" id="kpiTotalRevenue">${formatMoney(initialMetrics.totalRevenue)} FC</div>
       </div>
       <div class="card ok">
         <h3>Revenu Mensuel</h3>
-        <div class="value">72,000 FC</div>
+        <div class="value" id="kpiMonthlyRevenue">${formatMoney(initialMetrics.monthlyRevenue)} FC</div>
       </div>
       <div class="card warn">
         <h3>Taux de SuccÃ¨s</h3>
-        <div class="value">87%</div>
+        <div class="value" id="kpiSuccessRate">${initialMetrics.successRate}%</div>
       </div>
       <div class="card danger">
         <h3>Dette en Cours</h3>
-        <div class="value">445,000 FC</div>
+        <div class="value" id="kpiDebt">${formatMoney(initialMetrics.debt)} FC</div>
       </div>
     </div>
     
@@ -258,6 +322,52 @@ const htmlPage = `
 
 <script>
 let loggedIn = false;
+let clientPayments = ${JSON.stringify(payments)};
+let clientParents = ${JSON.stringify(parents)};
+
+function formatClientMoney(value) {
+  return Number(value || 0).toLocaleString('fr-FR');
+}
+
+function computeClientMetrics() {
+  const parentMetrics = clientParents.map((parent) => {
+    const paid = clientPayments
+      .filter((payment) => payment.parent === parent.name && payment.status === 'COMPLETED')
+      .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    const expected = Number(parent.annualFee || 0);
+    return { parent, expected, paid, debt: Math.max(expected - paid, 0) };
+  });
+  const totalRevenue = clientPayments
+    .filter((payment) => payment.status === 'COMPLETED')
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const monthlyRevenue = clientPayments
+    .filter((payment) => payment.status === 'COMPLETED' && String(payment.date || '').slice(0, 7) === currentMonth)
+    .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const completedPayments = clientPayments.filter((payment) => payment.status === 'COMPLETED').length;
+  const successRate = clientPayments.length ? Math.round((completedPayments / clientPayments.length) * 100) : 0;
+  const debt = parentMetrics.reduce((sum, row) => sum + row.debt, 0);
+  const unpaidParents = parentMetrics.filter((row) => row.debt > 0);
+  const classDebts = new Map();
+  for (const row of parentMetrics) {
+    for (const student of row.parent.students) {
+      const className = student.className || 'Non assignee';
+      const current = classDebts.get(className) || { className, debt: 0 };
+      current.debt += row.parent.students.length ? row.debt / row.parent.students.length : 0;
+      classDebts.set(className, current);
+    }
+  }
+  const highestDebtClass = Array.from(classDebts.values()).sort((a, b) => b.debt - a.debt)[0] || null;
+  return { totalRevenue, monthlyRevenue, completedPayments, successRate, debt, unpaidParents, highestDebtClass };
+}
+
+function refreshClientMetrics() {
+  const metrics = computeClientMetrics();
+  document.getElementById('kpiTotalRevenue').textContent = formatClientMoney(metrics.totalRevenue) + ' FC';
+  document.getElementById('kpiMonthlyRevenue').textContent = formatClientMoney(metrics.monthlyRevenue) + ' FC';
+  document.getElementById('kpiSuccessRate').textContent = metrics.successRate + '%';
+  document.getElementById('kpiDebt').textContent = formatClientMoney(metrics.debt) + ' FC';
+}
 
 function login() {
   const email = document.getElementById('loginEmail').value;
@@ -301,7 +411,7 @@ function addPayment() {
     return;
   }
   
-  const parent = parents.find(p => p.id === parentId);
+  const parent = clientParents.find(p => p.id === parentId);
   const payment = {
     id: 'p' + Date.now(),
     txNumber: 'TX-' + Date.now(),
@@ -313,8 +423,9 @@ function addPayment() {
     status: 'COMPLETED'
   };
   
-  payments.unshift(payment);
+  clientPayments.unshift(payment);
   parent.paid += amount;
+  refreshClientMetrics();
   
   alert('âœ“ Paiement enregistrÃ© avec succÃ¨s!');
   document.getElementById('paymentParent').value = '';
@@ -324,18 +435,21 @@ function addPayment() {
 
 function askAI() {
   const query = document.getElementById('aiQuery').value.toLowerCase();
+  const metrics = computeClientMetrics();
   let answer = '';
   let suggestions = [];
   
   if (query.includes('pay') || query.includes('not paid')) {
-    answer = '8 parents n\\'ont pas payÃ© ce mois-ci. Parmi eux, 3 ont un statut de risque Ã©levÃ© et 5 de risque moyen.';
-    suggestions = ['Envoyer un rappel doux Ã  5 parents', 'Escalader 3 comptes haut risque en 72h'];
+    answer = metrics.unpaidParents.length + ' parent(s) ont encore un solde a regler ce mois-ci. Solde total: ' + formatClientMoney(metrics.debt) + ' FC.';
+    suggestions = ['Relancer les parents avec solde restant', 'Verifier les paiements en attente avant escalation'];
   } else if (query.includes('revenu') || query.includes('revenue')) {
-    answer = 'Le revenu total du mois actuel est 240,000 FC. ComparÃ© au mois dernier: +12%. PrÃ©vision pour le mois suivant: 268,000 FC.';
+    answer = 'Le revenu total calcule depuis EduPay est ' + formatClientMoney(metrics.totalRevenue) + ' FC. Paiements completes: ' + metrics.completedPayments + '/' + clientPayments.length + '.';
     suggestions = ['Comparer avec le trimestre dernier', 'Analyser par classe'];
   } else if (query.includes('dette') || query.includes('debt') || query.includes('classe')) {
-    answer = 'La Classe Grade 3 a la plus forte dette avec 445,000 FC (40% impayÃ©). Classe Grade 1: 125,000 FC (18% impayÃ©).';
-    suggestions = ['Contacter le parent responsable de Grade 3', 'Proposer un plan de paiement Ã©chelonnÃ©'];
+    answer = metrics.highestDebtClass
+      ? 'La classe avec la plus forte dette est ' + metrics.highestDebtClass.className + ' avec ' + formatClientMoney(Math.round(metrics.highestDebtClass.debt)) + ' FC.'
+      : 'Aucune dette par classe dans les donnees EduPay chargees.';
+    suggestions = ['Contacter les parents concernes', 'Proposer un plan de paiement echelonne'];
   } else {
     answer = 'RequÃªte comprise. Consultez le dashboard pour les analyses dÃ©taillÃ©es.';
     suggestions = ['Essayer une autre question', 'Voir les statistiques complÃ¨tes'];
