@@ -512,9 +512,6 @@ function paymentShareForStudent(payment: any, student: any, siblings: any[]) {
     const selectedCount = Math.max(studentIds.length, 1);
     return Number(payment.amount || 0) / selectedCount;
   }
-  if (payment.parentId === student.parentId && studentIds.length === 0) {
-    return Number(payment.amount || 0) / Math.max(siblings.length, 1);
-  }
   return 0;
 }
 
@@ -914,6 +911,15 @@ app.post("/api/payments", authGuard, requireRole("ADMIN", "ACCOUNTANT"), async (
   const { parentId, parentFullName, studentIds, reason, amount, method, status, transactionNumber, notifyParent } = req.body;
   const parent = mockParents.find((p) => p.id === parentId || p.fullName === parentFullName);
   const resolvedParentId = parentId || parent?.id;
+  const selectedStudentIds = Array.from(new Set(Array.isArray(studentIds) ? studentIds.filter(Boolean) : []));
+  const parentStudents = mockStudents.filter((student) => student.parentId === resolvedParentId);
+  const invalidStudentIds = selectedStudentIds.filter((studentId) => !parentStudents.some((student) => student.id === studentId));
+  if (parentStudents.length > 0 && selectedStudentIds.length === 0) {
+    return res.status(400).json({ message: "Selectionnez au moins un eleve pour ce paiement de scolarite." });
+  }
+  if (invalidStudentIds.length > 0) {
+    return res.status(400).json({ message: "Un ou plusieurs eleves selectionnes ne sont pas rattaches a ce parent." });
+  }
   const payment = {
     id: `payment-${Date.now()}`,
     transactionNumber: transactionNumber || `TX-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
@@ -926,11 +932,11 @@ app.post("/api/payments", authGuard, requireRole("ADMIN", "ACCOUNTANT"), async (
     status: status || "COMPLETED",
     createdAt: new Date(),
     schoolId: "school-1",
-    students: studentIds
+    students: selectedStudentIds
   };
   mockPayments.push(payment);
   const shouldNotify = notifyParent ?? paymentNotificationsEnabled;
-  const relatedStudents = mockStudents.filter((s) => Array.isArray(studentIds) ? studentIds.includes(s.id) : s.parentId === resolvedParentId);
+  const relatedStudents = mockStudents.filter((s) => selectedStudentIds.includes(s.id));
   const notificationStatus = shouldNotify
     ? await sendDemoPaymentNotifications(payment, parent, relatedStudents)
     : { email: "DISABLED", sms: "DISABLED" };

@@ -2941,7 +2941,7 @@ export function ParentsManagementPage() {
                 parentId: created.id,
                 parentName: created.fullName || fullName,
                 email: created.email || body.email,
-                accessCode: created.accessCode || "NON_RETOURNE_PAR_API",
+                accessCode: created.accessCode || created.id,
                 temporaryPassword: created.temporaryPassword,
                 notificationStatus: created.notificationStatus
               });

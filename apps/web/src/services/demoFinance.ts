@@ -20,6 +20,9 @@ type DemoPayment = {
   transactionNumber: string;
   parentId?: string;
   parentFullName: string;
+  paymentSubjectName?: string;
+  studentIds?: string[];
+  studentNames?: string[];
   reason: string;
   method: string;
   amount: number;
@@ -577,10 +580,15 @@ function getCatalogPlans() {
 }
 
 function matchStudentPayments(student: DemoStudent, parentPayments: DemoPayment[]) {
-  const matches = parentPayments.filter((payment) => payment.reason.toLowerCase().includes(student.fullName.toLowerCase()));
-  if (matches.length > 0) return matches;
-  if (parentPayments.length === 1) return parentPayments;
-  return [];
+  return parentPayments.filter((payment) => {
+    if (Array.isArray(payment.studentIds)) {
+      return payment.studentIds.includes(student.id);
+    }
+    if (Array.isArray(payment.studentNames) && payment.studentNames.length > 0) {
+      return payment.studentNames.some((name) => name.trim().toLowerCase() === student.fullName.trim().toLowerCase());
+    }
+    return payment.reason.toLowerCase().includes(student.fullName.toLowerCase());
+  });
 }
 
 function deriveInstallmentStatus(amountDue: number, amountPaid: number, dueDate: string): InstallmentStatus {
@@ -954,7 +962,13 @@ export function buildDemoParentFinanceProfile(parentId: string, parents: DemoPar
         receiptId: `demo-receipt-${payment.id}`,
         receiptNumber: `R-${payment.transactionNumber}`,
         students: parent.students
-          .filter((student) => payment.reason.toLowerCase().includes(student.fullName.toLowerCase()))
+          .filter((student) => {
+            if (Array.isArray(payment.studentIds)) return payment.studentIds.includes(student.id);
+            if (Array.isArray(payment.studentNames) && payment.studentNames.length > 0) {
+              return payment.studentNames.some((name) => name.trim().toLowerCase() === student.fullName.trim().toLowerCase());
+            }
+            return payment.reason.toLowerCase().includes(student.fullName.toLowerCase());
+          })
           .map((student) => ({ id: student.id, fullName: student.fullName }))
       })),
     historicalReceipts: parentPayments.map((payment) => ({

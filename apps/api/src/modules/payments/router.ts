@@ -631,6 +631,23 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
     if (!parentId) {
       throw new Error("Parent introuvable pour ce paiement");
     }
+    if (payload.paymentCategory === "TUITION") {
+      const parentStudents = await prisma.student.findMany({
+        where: { parentId, schoolId: req.user!.schoolId },
+        select: { id: true }
+      });
+      const parentStudentIds = new Set(parentStudents.map((student) => student.id));
+      const requestedStudentIds = Array.from(new Set(payload.studentIds.filter(Boolean)));
+      const invalidStudentIds = requestedStudentIds.filter((studentId) => !parentStudentIds.has(studentId));
+
+      if (parentStudents.length > 0 && requestedStudentIds.length === 0) {
+        return res.status(400).json({ message: "Selectionnez au moins un eleve pour ce paiement de scolarite." });
+      }
+      if (invalidStudentIds.length > 0) {
+        return res.status(400).json({ message: "Un ou plusieurs eleves selectionnes ne sont pas rattaches a ce parent." });
+      }
+      payload.studentIds = requestedStudentIds;
+    }
 
     const payment = await prisma.payment.create({
       data: {

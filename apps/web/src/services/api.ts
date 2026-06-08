@@ -62,7 +62,7 @@ type DemoSpecialAgreement = {
   installmentMode?: "ONE_TIME" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS";
 };
 type DemoStudent = { id: string; fullName: string; gender?: "F" | "M" | "O" | ""; classId: string; className: string; annualFee: number; createdAt?: string; payments?: DemoPayment[]; paymentOptionType?: DemoPaymentOptionType; specialAgreement?: DemoSpecialAgreement };
-type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; physicalAddress?: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
+type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; physicalAddress?: string; photoUrl?: string; accessCode?: string; students: DemoStudent[]; createdAt: string };
 type DemoTuitionAllocationLine = {
   installmentId: string;
   studentId: string;
@@ -90,7 +90,7 @@ type DemoTuitionAllocationSummary = {
     lines: Array<{ label: string; dueBucket: string; outstandingBefore: number; allocated: number; outstandingAfter: number }>;
   }>;
 };
-type DemoPayment = { id: string; transactionNumber: string; parentId?: string; parentFullName: string; paymentSubjectName?: string; studentNames?: string[]; reason: string; method: string; amount: number; status: string; createdAt: string; date: string; tuitionAllocationSummary?: DemoTuitionAllocationSummary; bankTransferDetails?: { bankName: string; referenceNumber: string; transferDate: string; senderAccountNumber?: string; beneficiaryAccountNumber: string } | null };
+type DemoPayment = { id: string; transactionNumber: string; parentId?: string; parentFullName: string; paymentSubjectName?: string; studentIds?: string[]; studentNames?: string[]; reason: string; method: string; amount: number; status: string; createdAt: string; date: string; tuitionAllocationSummary?: DemoTuitionAllocationSummary; bankTransferDetails?: { bankName: string; referenceNumber: string; transferDate: string; senderAccountNumber?: string; beneficiaryAccountNumber: string } | null };
 type DemoManualMessage = { id: string; parentId: string; parentName: string; parentPhone?: string; parentEmail?: string; type: "MANUAL_MESSAGE"; language: "fr" | "en"; channel: "DASHBOARD"; content: string; status: string; createdAt: string };
 type DemoParentCredential = { parentId: string; email: string; password: string };
 type DemoPasswordResetToken = { token: string; email: string; expiresAt: string; usedAt?: string };
@@ -1789,6 +1789,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
   if (normalizedPath === "/api/finance/tuition-engine/preview-allocation" && method === "POST") {
     const parentId = String(body.parentId ?? "");
     const parent = getDemoParents().find((item) => item.id === parentId);
+    const requestedStudentIds = Array.from(new Set(Array.isArray(body.studentIds) ? (body.studentIds as string[]).filter(Boolean) : []));
     const amount = roundAmount(Number(body.amount ?? 0));
     const paymentOptionType = String(body.paymentOptionType ?? "STANDARD_MONTHLY") as DemoPaymentOptionType;
     const allocationMode = String(body.allocationMode ?? "AUTO") === "MANUAL" ? "MANUAL" : "AUTO";
@@ -1800,7 +1801,13 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       : [];
     const familyRate = (parent?.students.length ?? 0) >= 2 ? 10 : 0;
     const planRate = paymentOptionType === "FULL_PRESEPTEMBER" ? 10 : paymentOptionType === "TWO_INSTALLMENTS" ? 5 : paymentOptionType === "THREE_INSTALLMENTS" ? 2 : 0;
-    const calculations = (parent?.students ?? []).map((student) => {
+    const targetStudents = requestedStudentIds.length > 0
+      ? (parent?.students ?? []).filter((student) => requestedStudentIds.includes(student.id))
+      : (parent?.students ?? []);
+    if (parent && parent.students.length > 0 && targetStudents.length === 0) {
+      throw new Error("Selectionnez au moins un eleve pour previsualiser ce paiement.");
+    }
+    const calculations = targetStudents.map((student) => {
       const baseAnnualTuition = getDemoBaseAnnualTuition(student.className, student.annualFee);
       const familyDiscountAmount = roundAmount(baseAnnualTuition * familyRate / 100);
       const familyAdjustedTuition = roundAmount(baseAnnualTuition - familyDiscountAmount);
@@ -1914,6 +1921,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       parentId: String(body.parentId ?? ""),
       parentFullName: String((preview as any).parent?.fullName ?? "Parent"),
       paymentSubjectName: Array.isArray((preview as any).calculations) ? (preview as any).calculations.map((row: any) => String(row.studentName ?? "")).filter(Boolean).join(" / ") : "Tuition",
+      studentIds: Array.isArray(body.studentIds) ? (body.studentIds as string[]).filter(Boolean) : [],
       studentNames: Array.isArray((preview as any).calculations) ? (preview as any).calculations.map((row: any) => String(row.studentName ?? "")).filter(Boolean) : [],
       reason: "Tuition payment",
       amount: Number(body.amount ?? 0),
@@ -2130,10 +2138,13 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const parent = parentId
       ? getDemoParents().find((item) => item.id === parentId)
       : getDemoParents().find((item) => item.fullName === String(body.parentFullName ?? ""));
-    const studentIds = Array.isArray(body.studentIds) ? (body.studentIds as string[]) : [];
+    const studentIds = Array.from(new Set(Array.isArray(body.studentIds) ? (body.studentIds as string[]).filter(Boolean) : []));
     const studentNames = parent
       ? parent.students.filter((student) => studentIds.includes(student.id)).map((student) => student.fullName)
       : [];
+    if (String(body.paymentCategory ?? "TUITION") === "TUITION" && parent && parent.students.length > 0 && studentIds.length === 0) {
+      throw new Error("Selectionnez au moins un eleve pour enregistrer ce paiement de scolarite.");
+    }
     const bankTransferDetails: Record<string, unknown> | null = typeof body.bankTransferDetails === "object" && body.bankTransferDetails !== null
       ? (body.bankTransferDetails as Record<string, unknown>)
       : null;
@@ -2143,6 +2154,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       parentId: parent?.id || parentId || undefined,
       parentFullName: parent?.fullName || String(body.parentFullName ?? "Parent"),
       paymentSubjectName: String(body.studentDisplayName ?? "").trim() || studentNames.join(" / ") || parent?.fullName || String(body.parentFullName ?? "Parent"),
+      studentIds,
       studentNames,
       reason: String(body.reason ?? "Paiement"),
       method: String(body.method ?? "CASH"),
@@ -2333,6 +2345,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     }
     const id = buildUniqueDemoEntityId("PAR", parentFullName, existingParents.map((parent) => parent.id));
     const existingStudentIds = existingParents.flatMap((parent) => parent.students.map((student) => student.id));
+    const accessCode = `ACC-${id.replace(/^PAR-/, "").slice(0, 12)}`;
     const parent: DemoParent = {
       id,
       nom: String(body.nom ?? ""),
@@ -2343,6 +2356,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       email: String(body.email ?? ""),
       physicalAddress: String(body.physicalAddress ?? ""),
       photoUrl: String(body.photoUrl ?? ""),
+      accessCode,
       createdAt: new Date().toISOString(),
       students: Array.isArray(body.students)
         ? (body.students as Array<DemoStudent>).map((student) => ({
@@ -2376,6 +2390,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     writeJson(DEMO_PARENTS_KEY, [parent, ...existingParents]);
     return {
       ...parent,
+      accessCode,
       temporaryPassword,
       notificationStatus: {
         email: notifyEmail && parent.email ? "SIMULATED" : "SKIPPED",

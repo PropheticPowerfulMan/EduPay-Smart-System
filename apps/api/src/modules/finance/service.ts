@@ -2622,7 +2622,11 @@ export async function ensureParentTuitionEnginePlan(input: {
       }
     });
 
-    const calculations = parent.students.map((student) => {
+    const targetStudents = requestedStudentIds.length > 0
+      ? parent.students.filter((student) => requestedStudentIds.includes(student.id))
+      : parent.students;
+
+    const calculations = targetStudents.map((student) => {
       const existingAssignment = existingAssignmentByStudent.get(student.id) ?? existingGenericAssignment;
       const paymentOptionType = existingAssignment?.paymentOptionType ?? input.paymentOptionType;
       const gradeGroup = resolveGradeGroup({
