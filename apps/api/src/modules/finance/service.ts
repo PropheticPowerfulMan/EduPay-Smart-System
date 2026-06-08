@@ -382,7 +382,43 @@ function parseAcademicYearStart(name: string) {
   return match ? Number(match[1]) : new Date().getMonth() >= 8 ? new Date().getFullYear() : new Date().getFullYear() - 1;
 }
 
+function resolveOfficialDeadlineMonth(periodKey: string) {
+  const normalized = periodKey.trim().toLowerCase();
+  const deadlineByPeriod: Record<string, number> = {
+    "before-september": 9,
+    "initial-four-months": 9,
+    initial: 9,
+    "before-february": 2,
+    "dec-jan-feb": 12,
+    "mar-jun": 3,
+    "mar-apr-may-jun": 3,
+    january: 1,
+    february: 2,
+    march: 3,
+    april: 4,
+    "may-june": 5,
+    "month-5": 1,
+    "month-6": 2,
+    "month-7": 3,
+    "month-8": 4,
+    "month-9": 5,
+    "month-10": 6
+  };
+  return deadlineByPeriod[normalized] ?? null;
+}
+
+function buildFirstDayDeadline(academicYearName: string, deadlineMonth: number) {
+  const startYear = parseAcademicYearStart(academicYearName);
+  const deadlineYear = deadlineMonth >= 9 ? startYear : startYear + 1;
+  return new Date(Date.UTC(deadlineYear, deadlineMonth - 1, 1, 0, 0, 0, 0));
+}
+
 function buildDueDate(academicYearName: string, schedule: ScheduleTemplate) {
+  const officialDeadlineMonth = resolveOfficialDeadlineMonth(schedule.periodKey);
+  if (officialDeadlineMonth) {
+    return buildFirstDayDeadline(academicYearName, officialDeadlineMonth);
+  }
+
   // Si le mois est de septembre (8) à juin (6), l’année scolaire commence en septembre N et finit en juin N+1
   const startYear = parseAcademicYearStart(academicYearName);
   let year = startYear;

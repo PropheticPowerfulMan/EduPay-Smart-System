@@ -238,6 +238,44 @@ describe("EduPay Tuition Payment Engine", () => {
     expect(messages.smsBody).toContain("remaining $ 27993.75 USD");
   });
 
+  it("uses first-day deadlines for every official tuition plan period", () => {
+    const standard = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,
+      amount: 0,
+      children: [{ id: "deadline-standard", fullName: "Deadline Standard", className: "Grade 9" }]
+    });
+    expect(standard.calculations[0].schedule.map((item) => item.dueDate.toISOString().slice(0, 10))).toEqual([
+      "2026-09-01",
+      "2027-01-01",
+      "2027-02-01",
+      "2027-03-01",
+      "2027-04-01",
+      "2027-05-01",
+      "2027-06-01"
+    ]);
+
+    const twoInstallments = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.TWO_INSTALLMENTS,
+      amount: 0,
+      children: [{ id: "deadline-two", fullName: "Deadline Two", className: "Grade 9" }]
+    });
+    expect(twoInstallments.calculations[0].schedule.map((item) => item.dueDate.toISOString().slice(0, 10))).toEqual([
+      "2026-09-01",
+      "2027-02-01"
+    ]);
+
+    const threeInstallments = simulateTuitionEngineScenario({
+      paymentOptionType: PaymentOptionType.THREE_INSTALLMENTS,
+      amount: 0,
+      children: [{ id: "deadline-three", fullName: "Deadline Three", className: "Grade 9" }]
+    });
+    expect(threeInstallments.calculations[0].schedule.map((item) => item.dueDate.toISOString().slice(0, 10))).toEqual([
+      "2026-09-01",
+      "2026-12-01",
+      "2027-03-01"
+    ]);
+  });
+
   it("allocates first to open scheduled obligations and keeps overpayment as advance", () => {
     const result = simulateTuitionEngineScenario({
       paymentOptionType: PaymentOptionType.FULL_PRESEPTEMBER,

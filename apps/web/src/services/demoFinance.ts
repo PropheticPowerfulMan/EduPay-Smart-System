@@ -528,7 +528,35 @@ function resolveGradeGroup(className?: string | null) {
   return "CUSTOM" as GradeGroup;
 }
 
-function buildDueDate(dueMonth: number, dueDay: number) {
+function resolveOfficialDeadlineMonth(periodKey?: string) {
+  const normalized = String(periodKey ?? "").trim().toLowerCase();
+  const deadlineByPeriod: Record<string, number> = {
+    "before-september": 9,
+    "before-february": 2,
+    "dec-jan-feb": 12,
+    "mar-jun": 3,
+    "mar-apr-may-jun": 3,
+    january: 1,
+    february: 2,
+    march: 3,
+    april: 4,
+    "may-june": 5
+  };
+  return deadlineByPeriod[normalized] ?? null;
+}
+
+function buildFirstDayDeadline(deadlineMonth: number) {
+  const startYear = 2026;
+  const year = deadlineMonth >= 9 ? startYear : startYear + 1;
+  return new Date(Date.UTC(year, deadlineMonth - 1, 1, 0, 0, 0, 0)).toISOString();
+}
+
+function buildDueDate(dueMonth: number, dueDay: number, periodKey?: string) {
+  const officialDeadlineMonth = resolveOfficialDeadlineMonth(periodKey);
+  if (officialDeadlineMonth) {
+    return buildFirstDayDeadline(officialDeadlineMonth);
+  }
+
   const startYear = 2026;
   const year = dueMonth >= 8 ? startYear : startYear + 1;
   return new Date(Date.UTC(year, dueMonth - 1, dueDay, 23, 59, 59, 999)).toISOString();
@@ -565,7 +593,7 @@ function serializeCatalogPlan(gradeGroup: GradeGroup, plan: OfficialPlanTemplate
       label: row.label,
       periodKey: row.periodKey,
       amount: roundCurrency(row.amount),
-      dueDate: buildDueDate(row.dueMonth, row.dueDay),
+      dueDate: buildDueDate(row.dueMonth, row.dueDay, row.periodKey),
       dueMonth: row.dueMonth,
       dueDay: row.dueDay,
       windowLabel: row.windowLabel ?? null
@@ -646,7 +674,7 @@ function buildOfficialStudentSnapshot(parent: DemoParent, student: DemoStudent, 
   const studentPayments = matchStudentPayments(student, payments);
   let remainingCompleted = roundCurrency(studentPayments.filter((payment) => payment.status === "COMPLETED").reduce((sum, payment) => sum + Number(payment.amount || 0), 0));
   const installments: DemoInstallment[] = plan.schedule.map((row, index) => {
-    const dueDate = buildDueDate(row.dueMonth, row.dueDay);
+    const dueDate = buildDueDate(row.dueMonth, row.dueDay, row.periodKey);
     const amountDue = roundCurrency(row.amount);
     const amountPaid = roundCurrency(Math.min(amountDue, remainingCompleted));
     remainingCompleted = roundCurrency(Math.max(0, remainingCompleted - amountPaid));

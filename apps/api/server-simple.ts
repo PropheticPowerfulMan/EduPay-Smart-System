@@ -207,6 +207,12 @@ async function sendParentWelcomeNotifications(parent: any, password: string, ema
     status.sms = await sendSms({ to: parent.phone, text: messages.smsBody });
   }
 
+  mockNotificationLogs.unshift(
+    { id: `notification-${Date.now()}-welcome-dashboard`, parentId: parent.id, type: "WELCOME", channel: "DASHBOARD", content: messages.emailBody, status: "OPEN", createdAt: new Date().toISOString() },
+    { id: `notification-${Date.now()}-welcome-email`, parentId: parent.id, type: "WELCOME", channel: "EMAIL", content: messages.emailBody, status: status.email, createdAt: new Date().toISOString() },
+    { id: `notification-${Date.now()}-welcome-sms`, parentId: parent.id, type: "WELCOME", channel: "SMS", content: messages.smsBody, status: status.sms, createdAt: new Date().toISOString() }
+  );
+
   return status;
 }
 
@@ -270,6 +276,7 @@ const mockPayments: any[] = mockParents.slice(0, 12).map((parent, index) => {
 });
 
 const mockFinanceAgreements: any[] = [];
+const mockNotificationLogs: any[] = [];
 
 let paymentNotificationsEnabled = true;
 
@@ -312,12 +319,18 @@ async function sendDemoPaymentNotifications(payment: any, parent: any, students:
     studentLines
   ].join("\n");
   const smsBody = `EduPay: paiement ${payment.transactionNumber}. Motif: ${payment.reason}. Montant: ${amount}. Statut: ${getPaymentStatusLabel(payment.status)}.`;
-  return {
+  const status = {
     email: parent.email
       ? await sendEmail({ to: parent.email, subject: "Paiement enregistre dans EduPay", text: emailBody })
       : "SKIPPED",
     sms: parent.phone ? await sendSms({ to: parent.phone, text: smsBody }) : "SKIPPED"
   };
+  mockNotificationLogs.unshift(
+    { id: `notification-${Date.now()}-dashboard`, parentId: parent.id, type: "CONFIRMATION", channel: "DASHBOARD", content: emailBody, status: "OPEN", createdAt: new Date().toISOString() },
+    { id: `notification-${Date.now()}-email`, parentId: parent.id, type: "CONFIRMATION", channel: "EMAIL", content: emailBody, status: status.email, createdAt: new Date().toISOString() },
+    { id: `notification-${Date.now()}-sms`, parentId: parent.id, type: "CONFIRMATION", channel: "SMS", content: smsBody, status: status.sms, createdAt: new Date().toISOString() }
+  );
+  return status;
 }
 
 // Routes: Auth
@@ -635,7 +648,10 @@ function buildFinanceProfile(parentId: string) {
       students: mockStudents
         .filter((student) => Array.isArray(payment.students) ? payment.students.includes(student.id) : student.parentId === parent.id)
         .map((student) => ({ id: student.id, fullName: student.fullName }))
-    }))
+    })),
+    notificationHistory: mockNotificationLogs
+      .filter((log) => log.parentId === parent.id)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   };
 }
 

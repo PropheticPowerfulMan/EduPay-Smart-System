@@ -91,7 +91,7 @@ type DemoTuitionAllocationSummary = {
   }>;
 };
 type DemoPayment = { id: string; transactionNumber: string; parentId?: string; parentFullName: string; paymentSubjectName?: string; studentIds?: string[]; studentNames?: string[]; reason: string; method: string; amount: number; status: string; createdAt: string; date: string; tuitionAllocationSummary?: DemoTuitionAllocationSummary; bankTransferDetails?: { bankName: string; referenceNumber: string; transferDate: string; senderAccountNumber?: string; beneficiaryAccountNumber: string } | null };
-type DemoManualMessage = { id: string; parentId: string; parentName: string; parentPhone?: string; parentEmail?: string; type: "MANUAL_MESSAGE"; language: "fr" | "en"; channel: "DASHBOARD"; content: string; status: string; createdAt: string };
+type DemoManualMessage = { id: string; parentId: string; parentName: string; parentPhone?: string; parentEmail?: string; type: "MANUAL_MESSAGE"; language: "fr" | "en"; channel: "DASHBOARD" | "EMAIL" | "SMS"; content: string; status: string; createdAt: string };
 type DemoParentCredential = { parentId: string; email: string; password: string };
 type DemoPasswordResetToken = { token: string; email: string; expiresAt: string; usedAt?: string };
 type DemoPaymentOptionType = "FULL_PRESEPTEMBER" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS" | "STANDARD_MONTHLY" | "SPECIAL_OWNER_AGREEMENT";
@@ -1477,6 +1477,30 @@ function saveDemoManualMessages(messages: DemoManualMessage[]) {
   writeJson(DEMO_MANUAL_MESSAGES_KEY, messages);
 }
 
+function appendDemoParentNotification(input: {
+  parent: Pick<DemoParent, "id" | "fullName" | "phone" | "email">;
+  content: string;
+  channels?: Array<"DASHBOARD" | "EMAIL" | "SMS">;
+  status?: string;
+}) {
+  const createdAt = new Date().toISOString();
+  const channels: Array<"DASHBOARD" | "EMAIL" | "SMS"> = input.channels && input.channels.length > 0 ? input.channels : ["DASHBOARD"];
+  const entries = channels.map((channel, index): DemoManualMessage => ({
+    id: `auto-message-${Date.now()}-${index}-${input.parent.id}`,
+    parentId: input.parent.id,
+    parentName: input.parent.fullName,
+    parentPhone: input.parent.phone,
+    parentEmail: input.parent.email,
+    type: "MANUAL_MESSAGE",
+    language: "fr",
+    channel,
+    content: input.content,
+    status: input.status ?? (channel === "DASHBOARD" ? "OPEN" : "SIMULATED"),
+    createdAt
+  }));
+  saveDemoManualMessages([...entries, ...getDemoManualMessages()]);
+}
+
 function financeReductions() {
   getDemoFinanceOverrides();
   return buildDemoReductionAnalytics(getDemoParents(), getDemoPayments());
@@ -2171,6 +2195,19 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       } : null
     };
     writeJson(DEMO_PAYMENTS_KEY, [payment, ...getDemoPayments()]);
+    if (parent) {
+      appendDemoParentNotification({
+        parent,
+        channels: ["DASHBOARD", "EMAIL", "SMS"],
+        content: [
+          `Paiement EduPay enregistré pour ${payment.paymentSubjectName}.`,
+          `Transaction: ${payment.transactionNumber}.`,
+          `Montant: ${payment.amount.toFixed(2)} $US.`,
+          studentNames.length > 0 ? `Élève(s): ${studentNames.join(", ")}.` : "",
+          "Le reçu et le détail du paiement sont disponibles dans votre espace parent."
+        ].filter(Boolean).join("\n")
+      });
+    }
     return { payment, receipt: { id: `receipt-${Date.now()}` }, notificationStatus: { email: "SIMULATED", sms: "SIMULATED" } } as T;
   }
 
@@ -2181,6 +2218,13 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     if (!payment) throw new Error("Paiement introuvable.");
     const cancelled = { ...payment, status: "CANCELLED" };
     writeJson(DEMO_PAYMENTS_KEY, payments.map((item) => item.id === payment.id ? cancelled : item));
+    const parent = getDemoParents().find((item) => item.id === payment.parentId);
+    if (parent) {
+      appendDemoParentNotification({
+        parent,
+        content: `Le paiement ${payment.transactionNumber} a été annulé dans EduPay. Vérifiez votre historique de paiements pour le solde mis à jour.`
+      });
+    }
     return { payment: cancelled, snapshot: financeProfile(payment.parentId ?? null) } as T;
   }
 
@@ -2388,6 +2432,16 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     }
     saveDemoFinanceOverrides(overrides);
     writeJson(DEMO_PARENTS_KEY, [parent, ...existingParents]);
+    appendDemoParentNotification({
+      parent,
+      channels: ["DASHBOARD", "EMAIL", "SMS"],
+      content: [
+        `Votre compte parent EduPay a été créé pour ${parent.fullName}.`,
+        `Code d'accès: ${accessCode}.`,
+        `Élève(s): ${parent.students.map((student) => student.fullName).join(", ") || "aucun élève renseigné"}.`,
+        "Connectez-vous avec le mot de passe temporaire transmis par l'administration."
+      ].join("\n")
+    });
     return {
       ...parent,
       accessCode,
@@ -2454,6 +2508,16 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     }
     saveDemoFinanceOverrides(overrides);
     writeJson(DEMO_PARENTS_KEY, parents);
+    appendDemoParentNotification({
+      parent: updatedParent,
+      channels: ["DASHBOARD", "EMAIL", "SMS"],
+      content: [
+        "Votre dossier EduPay a été mis à jour.",
+        `Parent: ${updatedParent.fullName}.`,
+        `Élève(s): ${updatedParent.students.map((student) => student.fullName).join(", ") || "aucun élève renseigné"}.`,
+        "Consultez votre espace parent pour vérifier les informations et les plans de scolarité."
+      ].join("\n")
+    });
     return updatedParent as T;
   }
   if (parentMatch && method === "DELETE") {
@@ -2469,6 +2533,13 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const notifySms = body.notifySms !== false;
     if (parent?.email) {
       saveDemoParentCredential({ parentId: resetMatch[1], email: parent.email, password: temporaryPassword });
+    }
+    if (parent) {
+      appendDemoParentNotification({
+        parent,
+        channels: ["DASHBOARD", "EMAIL", "SMS"],
+        content: "Votre mot de passe EduPay a été réinitialisé. Utilisez le mot de passe temporaire fourni par l'administration, puis changez-le après connexion."
+      });
     }
     return {
       parentId: resetMatch[1],
