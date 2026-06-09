@@ -2417,7 +2417,7 @@ export function PaymentsPage() {
     };
 
     try {
-      const created = await api<{ payment: Partial<PaymentRecord> & { id: string }; notificationStatus?: { email?: string; sms?: string } }>("/api/payments", {
+      const created = await api<{ payment: Partial<PaymentRecord> & { id: string }; notificationStatus?: { dashboard?: string; email?: string; sms?: string } }>("/api/payments", {
         method: "POST",
         body: JSON.stringify({
           paymentCategory: form.paymentScope,
@@ -2432,7 +2432,7 @@ export function PaymentsPage() {
           transactionNumber: txNumber,
           status: record.status,
           bankTransferDetails: record.bankTransferDetails,
-          notifyParent: effectivePaymentNotificationsEnabled && Boolean(record.parentId),
+          notifyParent: true,
         }),
       });
       record.id = created?.payment?.id ?? record.id;
@@ -2442,7 +2442,7 @@ export function PaymentsPage() {
       record.parentFullName = created?.payment?.parentFullName ?? record.parentFullName;
       record.bankTransferDetails = created?.payment?.bankTransferDetails ?? record.bankTransferDetails;
       if (created?.notificationStatus) {
-        setNotificationStatus(`${record.parentFullName} - Email: ${created.notificationStatus.email ?? "SKIPPED"} | SMS: ${created.notificationStatus.sms ?? "SKIPPED"}`);
+        setNotificationStatus(`${record.parentFullName} - Compte parent: ${created.notificationStatus.dashboard ?? "OPEN"} | Email: ${created.notificationStatus.email ?? "SKIPPED"} | SMS: ${created.notificationStatus.sms ?? "SKIPPED"}`);
       }
     } catch { /* Mode démo - reçu généré même sans base de données */ }
 

@@ -62,4 +62,48 @@ describe("EduPay offline mutation queue", () => {
 
     expect(login).toMatchObject({ token: "local-admin-token", role: "ADMIN" });
   });
+
+  it("records parent dashboard, email, and sms messages for local payments", async () => {
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError("offline"))
+      .mockResolvedValue(new Response("Service unavailable", { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const created = await api<{
+      payment: { id: string };
+      notificationStatus: { dashboard?: string; email?: string; sms?: string };
+    }>("/api/payments", {
+      method: "POST",
+      body: JSON.stringify({
+        paymentCategory: "SERVICE",
+        parentId: "PAR-KCS-001",
+        parentFullName: "Rachel Kabongo",
+        studentDisplayName: "Rachel Kabongo",
+        reason: "Fournitures scolaires",
+        amount: 25,
+        method: "CASH",
+        status: "COMPLETED",
+        notifyParent: true
+      })
+    });
+
+    expect(created.notificationStatus).toMatchObject({
+      dashboard: "OPEN",
+      email: "SIMULATED",
+      sms: "SIMULATED"
+    });
+
+    localStorage.setItem("edupay_parent_id", "PAR-KCS-001");
+    const profile = await api<{ notificationHistory: Array<{ channel: string; content: string; status: string }> }>(
+      "/api/finance/me/profile"
+    );
+
+    expect(profile.notificationHistory).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ channel: "DASHBOARD", content: expect.stringContaining("Fournitures scolaires"), status: "OPEN" }),
+        expect.objectContaining({ channel: "EMAIL", content: expect.stringContaining("Fournitures scolaires"), status: "SIMULATED" }),
+        expect.objectContaining({ channel: "SMS", content: expect.stringContaining("Fournitures scolaires"), status: "SIMULATED" })
+      ])
+    );
+  });
 });

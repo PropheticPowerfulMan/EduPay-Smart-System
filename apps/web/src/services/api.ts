@@ -2224,13 +2224,14 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
         content: [
           `Paiement EduPay enregistré pour ${payment.paymentSubjectName}.`,
           `Transaction: ${payment.transactionNumber}.`,
+          `Motif: ${payment.reason}.`,
           `Montant: ${payment.amount.toFixed(2)} $US.`,
           studentNames.length > 0 ? `Élève(s): ${studentNames.join(", ")}.` : "",
           "Le reçu et le détail du paiement sont disponibles dans votre espace parent."
         ].filter(Boolean).join("\n")
       });
     }
-    return { payment, receipt: { id: `receipt-${Date.now()}` }, notificationStatus: { email: "SIMULATED", sms: "SIMULATED" } } as T;
+    return { payment, receipt: { id: `receipt-${Date.now()}` }, notificationStatus: { dashboard: parent ? "OPEN" : "SKIPPED", email: parent?.email ? "SIMULATED" : "SKIPPED", sms: parent?.phone ? "SIMULATED" : "SKIPPED" } } as T;
   }
 
   const cancelPaymentMatch = normalizedPath.match(/^\/api\/payments\/([^/]+)\/cancel$/);

@@ -462,9 +462,25 @@ async function sendPaymentNotifications(input: {
 }) {
   const messages = buildPaymentNotificationMessages(input);
   const status = {
+    dashboard: "OPEN",
     email: input.parent.email ? "PENDING" : "SKIPPED",
     sms: input.parent.phone ? "PENDING" : "SKIPPED"
   };
+
+  await prisma.notificationLog.create({
+    data: {
+      schoolId: input.schoolId,
+      parentId: input.parent.id,
+      type: "CONFIRMATION",
+      language: normalizeMessageLanguage(input.parent.preferredLanguage),
+      channel: "DASHBOARD",
+      content: messages.dashboardBody,
+      status: status.dashboard
+    }
+  }).catch((error) => {
+    status.dashboard = "FAILED";
+    console.error("Payment dashboard notification log failed", error);
+  });
 
   if (input.parent.email) {
     status.email = await sendEmail({
@@ -499,18 +515,6 @@ async function sendPaymentNotifications(input: {
       }
     }).catch((error) => console.error("Payment SMS notification log failed", error));
   }
-
-  await prisma.notificationLog.create({
-    data: {
-      schoolId: input.schoolId,
-      parentId: input.parent.id,
-      type: "CONFIRMATION",
-      language: normalizeMessageLanguage(input.parent.preferredLanguage),
-      channel: "DASHBOARD",
-      content: messages.dashboardBody,
-      status: "OPEN"
-    }
-  }).catch((error) => console.error("Payment dashboard notification log failed", error));
 
   return status;
 }
@@ -728,8 +732,7 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
       select: { receiptNumber: true, pdfBase64: true }
     }).catch(() => null);
     const tuitionAllocationSummary = parseTuitionAllocationSummary(paymentReceipt, payment.amount);
-    const shouldNotify = payload.notifyParent ?? paymentNotificationsEnabled;
-    const notificationStatus = shouldNotify && payment.parent
+    const notificationStatus = payment.parent
       ? await sendPaymentNotifications({
         schoolId: req.user!.schoolId,
         parent: payment.parent,
@@ -743,7 +746,7 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
         students: payment.students,
         tuitionAllocationSummary
       })
-      : { email: shouldNotify ? "SKIPPED" : "DISABLED", sms: shouldNotify ? "SKIPPED" : "DISABLED" };
+      : { dashboard: "SKIPPED", email: "SKIPPED", sms: "SKIPPED" };
 
     return res.status(201).json({
       payment: serializePayment(payment as typeof payment & { parent?: { fullName: string } | null }, {
@@ -753,7 +756,6 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
       notificationStatus
     });
   } catch (_dbErr) {
-    const shouldNotify = payload.notifyParent ?? paymentNotificationsEnabled;
     // Demo mode — no DB available
     return res.status(201).json({
       payment: {
@@ -769,7 +771,7 @@ paymentRouter.post("/", authorize("ADMIN", "ACCOUNTANT"), async (req: Authentica
         status: payload.status,
         createdAt: new Date().toISOString()
       },
-      notificationStatus: { email: shouldNotify ? "SKIPPED" : "DISABLED", sms: shouldNotify ? "SKIPPED" : "DISABLED" }
+      notificationStatus: { dashboard: "SIMULATED", email: "SIMULATED", sms: "SIMULATED" }
     });
   }
 });
