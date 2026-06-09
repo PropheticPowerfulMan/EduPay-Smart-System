@@ -24,10 +24,11 @@ For Africa's Talking:
 AFRIKTALK_API_URL=https://api.africastalking.com/version1/messaging
 AFRIKTALK_USERNAME=your-africastalking-username
 AFRIKTALK_API_KEY=your-real-api-key
-AFRIKTALK_SENDER=EduPay
+AFRIKTALK_SENDER=
 ```
 
 Phone numbers should be saved in international format, for example `+243...`.
+Leave `AFRIKTALK_SENDER` empty in markets where an approved sender ID is not supported or not enabled.
 
 ## Test
 
@@ -36,6 +37,12 @@ After setting the real credentials:
 ```bash
 cd apps/api
 TEST_EMAIL=parent@example.com TEST_PHONE=+243000000000 npm run test:messaging
+```
+
+On Windows PowerShell, if Node reports `UNABLE_TO_VERIFY_LEAF_SIGNATURE` while contacting Africa's Talking, rerun the test with the Windows certificate store enabled:
+
+```powershell
+$env:TEST_PHONE='+243000000000'; $env:NODE_OPTIONS='--use-system-ca'; npm run test:messaging
 ```
 
 Expected real statuses:

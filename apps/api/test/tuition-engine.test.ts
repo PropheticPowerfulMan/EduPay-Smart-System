@@ -1,6 +1,6 @@
-import { PaymentOptionType } from "@prisma/client";
+import { NotificationChannel, NotificationType, PaymentOptionType, PaymentStatus } from "@prisma/client";
 import { describe, expect, it } from "vitest";
-import { buildTuitionParentNotificationMessages, simulateTuitionEngineScenario } from "../src/modules/finance/service";
+import { buildParentNotificationHistory, buildTuitionParentNotificationMessages, simulateTuitionEngineScenario } from "../src/modules/finance/service";
 
 const tenChildFamily = [
   { id: "stu-k5", fullName: "Child K5", className: "K5" },
@@ -236,6 +236,71 @@ describe("EduPay Tuition Payment Engine", () => {
     expect(messages.emailBody).toContain("Finance note:");
     expect(messages.smsBody).toContain("received $ 12000.00 USD");
     expect(messages.smsBody).toContain("remaining $ 27993.75 USD");
+  });
+
+  it("keeps payment confirmations visible in parent received messages even if the dashboard log is missing", () => {
+    const history = buildParentNotificationHistory({
+      notificationLogs: [
+        {
+          id: "manual-message-1",
+          type: NotificationType.MANUAL_MESSAGE,
+          channel: NotificationChannel.DASHBOARD,
+          content: "Message administratif general.",
+          status: "OPEN",
+          createdAt: "2026-06-09T08:00:00.000Z"
+        }
+      ],
+      payments: [
+        {
+          id: "payment-1",
+          transactionNumber: "TXN-PARENT-MSG-001",
+          reason: "Tuition",
+          amount: 750,
+          status: PaymentStatus.COMPLETED,
+          createdAt: "2026-06-09T09:00:00.000Z",
+          students: [{ fullName: "Child One" }]
+        }
+      ]
+    });
+
+    expect(history).toHaveLength(2);
+    expect(history[0]).toEqual(expect.objectContaining({
+      id: "derived-payment-message-payment-1",
+      type: NotificationType.CONFIRMATION,
+      channel: NotificationChannel.DASHBOARD,
+      status: "OPEN"
+    }));
+    expect(history[0].content).toContain("TXN-PARENT-MSG-001");
+    expect(history[0].content).toContain("Montant : $ 750.00 USD");
+  });
+
+  it("does not duplicate payment confirmations already present in parent received messages", () => {
+    const history = buildParentNotificationHistory({
+      notificationLogs: [
+        {
+          id: "dashboard-payment-message-1",
+          type: NotificationType.CONFIRMATION,
+          channel: NotificationChannel.DASHBOARD,
+          content: "Paiement recu. Transaction : TXN-PARENT-MSG-002",
+          status: "OPEN",
+          createdAt: "2026-06-09T09:00:00.000Z"
+        }
+      ],
+      payments: [
+        {
+          id: "payment-2",
+          transactionNumber: "TXN-PARENT-MSG-002",
+          reason: "Tuition",
+          amount: 900,
+          status: PaymentStatus.COMPLETED,
+          createdAt: "2026-06-09T09:00:00.000Z",
+          students: [{ fullName: "Child Two" }]
+        }
+      ]
+    });
+
+    expect(history).toHaveLength(1);
+    expect(history[0].id).toBe("dashboard-payment-message-1");
   });
 
   it("uses first-day deadlines for every official tuition plan period", () => {

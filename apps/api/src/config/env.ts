@@ -21,7 +21,7 @@ const envSchema = z.object({
   AFRIKTALK_API_KEY: z.string().default("CHANGE_ME"),
   AFRIKTALK_USERNAME: z.string().default(""),
   AFRIKTALK_API_URL: z.string().default("https://api.africastalking.com/version1/messaging"),
-  AFRIKTALK_SENDER: z.string().default("EduPay"),
+  AFRIKTALK_SENDER: z.string().default(""),
   DEFAULT_LANG: z.enum(["fr", "en"]).default("fr"),
   ENABLE_DEMO_AUTH_FALLBACK: z.enum(["true", "false"]).default("false"),
   ENABLE_DEMO_DATA_FALLBACK: z.enum(["true", "false"]).default("false"),

@@ -82,3 +82,15 @@ services:
           name: edupay-web
           type: web
           property: url
+
+      - key: AFRIKTALK_API_URL
+        value: https://api.africastalking.com/version1/messaging
+
+      - key: AFRIKTALK_USERNAME
+        sync: false
+
+      - key: AFRIKTALK_API_KEY
+        sync: false
+
+      - key: AFRIKTALK_SENDER
+        value: ""

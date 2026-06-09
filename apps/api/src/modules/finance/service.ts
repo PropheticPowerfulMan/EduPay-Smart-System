@@ -59,6 +59,25 @@ type SnapshotInstallment = {
   gradeGroup: GradeGroup;
 };
 
+type ParentNotificationHistoryLog = {
+  id: string;
+  type: NotificationType | string;
+  channel: NotificationChannel | string;
+  content: string;
+  status: string;
+  createdAt: Date | string;
+};
+
+type ParentNotificationHistoryPayment = {
+  id: string;
+  transactionNumber: string;
+  reason: string;
+  amount: Prisma.Decimal | number | string | null;
+  status: PaymentStatus | string;
+  createdAt: Date | string;
+  students: Array<{ fullName: string }>;
+};
+
 const OFFICIAL_ACADEMIC_YEAR_NAME = "2026-2027";
 const OFFICIAL_ACADEMIC_YEAR_START = "2026-09-01T00:00:00.000Z";
 const OFFICIAL_ACADEMIC_YEAR_END = "2027-06-30T23:59:59.999Z";
@@ -310,6 +329,55 @@ const OFFICIAL_KCS_PLANS: Record<GradeGroup, OfficialPlanTemplate[]> = {
 
 function roundCurrency(value: number) {
   return Math.round((value + Number.EPSILON) * 100000) / 100000;
+}
+
+function toIsoString(value: Date | string) {
+  return value instanceof Date ? value.toISOString() : String(value);
+}
+
+export function buildParentNotificationHistory(input: {
+  notificationLogs: ParentNotificationHistoryLog[];
+  payments: ParentNotificationHistoryPayment[];
+}) {
+  const loggedPaymentTransactionNumbers = new Set(
+    input.notificationLogs.flatMap((log) =>
+      input.payments
+        .filter((payment) => log.content.includes(payment.transactionNumber))
+        .map((payment) => payment.transactionNumber)
+    )
+  );
+  const derivedPaymentNotifications = input.payments
+    .filter((payment) => !loggedPaymentTransactionNumbers.has(payment.transactionNumber))
+    .map((payment) => ({
+      id: `derived-payment-message-${payment.id}`,
+      type: NotificationType.CONFIRMATION,
+      channel: NotificationChannel.DASHBOARD,
+      content: [
+        "Paiement EduPay enregistre sur votre compte parent.",
+        `Transaction : ${payment.transactionNumber}`,
+        `Motif : ${payment.reason}`,
+        `Montant : $ ${roundCurrency(Number(payment.amount || 0)).toFixed(2)} USD`,
+        `Statut : ${payment.status}`,
+        payment.students.length
+          ? `Eleve(s) : ${payment.students.map((student) => student.fullName).join(", ")}`
+          : "Paiement rattache au compte famille.",
+        "Le recu et le detail du paiement sont disponibles dans votre espace parent."
+      ].join("\n"),
+      status: "OPEN",
+      createdAt: toIsoString(payment.createdAt)
+    }));
+
+  return [
+    ...input.notificationLogs.map((log) => ({
+      id: log.id,
+      type: log.type,
+      channel: log.channel,
+      content: log.content,
+      status: log.status,
+      createdAt: toIsoString(log.createdAt)
+    })),
+    ...derivedPaymentNotifications
+  ].sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)));
 }
 
 function formatAlertDueDate(value: string) {
@@ -1546,14 +1614,7 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
         allocationTrace: summarizePersistedPaymentAllocation(payment),
         createdAt: payment.receipt!.createdAt.toISOString()
       })),
-    notificationHistory: notificationLogs.map((log) => ({
-      id: log.id,
-      type: log.type,
-      channel: log.channel,
-      content: log.content,
-      status: log.status,
-      createdAt: log.createdAt.toISOString()
-      }))
+    notificationHistory: buildParentNotificationHistory({ notificationLogs, payments })
   };
 }
 
@@ -3255,12 +3316,6 @@ export async function recordTuitionEnginePayment(input: {
     return { payment, receipt, allocationPreview: preview };
   });
 
-  const snapshot = await getParentFinancialSnapshot({
-    schoolId: input.schoolId,
-    parentId: input.parentId,
-    academicYearName: setup.academicYear.name
-  });
-
   const parent = await prisma.parent.findFirst({ where: { id: input.parentId, schoolId: input.schoolId } });
   if (parent) {
     const messages = buildTuitionParentNotificationMessages({
@@ -3318,6 +3373,12 @@ export async function recordTuitionEnginePayment(input: {
     }
     await dashboardLog;
   }
+
+  const snapshot = await getParentFinancialSnapshot({
+    schoolId: input.schoolId,
+    parentId: input.parentId,
+    academicYearName: setup.academicYear.name
+  });
 
   return { ...setup, calculations: targetCalculations, ...result, snapshot };
 }

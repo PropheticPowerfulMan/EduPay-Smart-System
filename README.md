@@ -166,8 +166,10 @@ cd apps/web && pnpm test
 | SMTP_HOST/PORT/USER/PASS | Configuration email Nodemailer |
 | AFRIKTALK_USERNAME / AFRIKTALK_API_KEY | Compte et clé API AfrikTalk/Africa's Talking pour SMS réels |
 | AFRIKTALK_API_URL | Endpoint SMS, par défaut `https://api.africastalking.com/version1/messaging` |
-| AFRIKTALK_SENDER | Nom d'expéditeur SMS approuvé par le fournisseur |
+| AFRIKTALK_SENDER | Nom d'expéditeur SMS approuvé par le fournisseur; laisser vide si aucun sender ID n'est activé |
 | AI_SERVICE_URL | URL du microservice IA |
+
+Les confirmations de paiement tuition sont conservées dans `Messages reçus` du dashboard parent. Les SMS réels passent par Africa's Talking quand `AFRIKTALK_USERNAME` et `AFRIKTALK_API_KEY` sont configurés.
 
 ---
 
