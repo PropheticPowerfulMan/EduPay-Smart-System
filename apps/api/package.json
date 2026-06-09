@@ -16,7 +16,7 @@
     "lint": "echo \"No lint configured yet\""
   },
   "dependencies": {
-    "@ecosystem/shared-contracts": "file:../../../packages/shared-contracts",
+    "@ecosystem/shared-contracts": "file:../../packages/shared-contracts",
     "@prisma/client": "^5.20.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
