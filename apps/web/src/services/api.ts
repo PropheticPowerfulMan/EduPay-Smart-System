@@ -91,7 +91,8 @@ type DemoTuitionAllocationSummary = {
   }>;
 };
 type DemoPayment = { id: string; transactionNumber: string; parentId?: string; parentFullName: string; paymentSubjectName?: string; studentIds?: string[]; studentNames?: string[]; reason: string; method: string; amount: number; status: string; createdAt: string; date: string; tuitionAllocationSummary?: DemoTuitionAllocationSummary; bankTransferDetails?: { bankName: string; referenceNumber: string; transferDate: string; senderAccountNumber?: string; beneficiaryAccountNumber: string } | null };
-type DemoManualMessage = { id: string; parentId: string; parentName: string; parentPhone?: string; parentEmail?: string; type: "MANUAL_MESSAGE"; language: "fr" | "en"; channel: "DASHBOARD" | "EMAIL" | "SMS"; content: string; status: string; createdAt: string };
+type DemoNotificationType = "MANUAL_MESSAGE" | "CONFIRMATION" | "REMINDER" | "LATE_ALERT" | "UNPAID_BALANCE" | "INCOMPLETE_SCHEDULE";
+type DemoManualMessage = { id: string; parentId: string; parentName: string; parentPhone?: string; parentEmail?: string; type: DemoNotificationType; language: "fr" | "en"; channel: "DASHBOARD" | "EMAIL" | "SMS"; content: string; status: string; createdAt: string };
 type DemoParentCredential = { parentId: string; email: string; password: string; accessCode?: string };
 type DemoPasswordResetToken = { token: string; email: string; expiresAt: string; usedAt?: string };
 type DemoPaymentOptionType = "FULL_PRESEPTEMBER" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS" | "STANDARD_MONTHLY" | "SPECIAL_OWNER_AGREEMENT";
@@ -1486,6 +1487,7 @@ function saveDemoManualMessages(messages: DemoManualMessage[]) {
 function appendDemoParentNotification(input: {
   parent: Pick<DemoParent, "id" | "fullName" | "phone" | "email">;
   content: string;
+  type?: DemoNotificationType;
   channels?: Array<"DASHBOARD" | "EMAIL" | "SMS">;
   status?: string;
 }) {
@@ -1497,7 +1499,7 @@ function appendDemoParentNotification(input: {
     parentName: input.parent.fullName,
     parentPhone: input.parent.phone,
     parentEmail: input.parent.email,
-    type: "MANUAL_MESSAGE",
+    type: input.type ?? "MANUAL_MESSAGE",
     language: "fr",
     channel,
     content: input.content,
@@ -1505,6 +1507,24 @@ function appendDemoParentNotification(input: {
     createdAt
   }));
   saveDemoManualMessages([...entries, ...getDemoManualMessages()]);
+}
+
+function buildDemoPaymentNotificationContent(payment: DemoPayment, receiptNumber: string) {
+  const summary = payment.tuitionAllocationSummary;
+  const remaining = summary ? `Solde restant : $ ${roundAmount(summary.missingAmount).toFixed(2)} USD` : "";
+  const children = payment.studentNames?.length ? payment.studentNames.join(", ") : payment.paymentSubjectName || "Compte famille";
+  return [
+    "Paiement EduPay enregistre sur votre compte parent.",
+    `Transaction : ${payment.transactionNumber}`,
+    `Recu : ${receiptNumber}`,
+    `Motif : ${payment.reason}`,
+    `Montant recu : $ ${roundAmount(Number(payment.amount || 0)).toFixed(2)} USD`,
+    `Mode : ${payment.method}`,
+    `Eleve(s) : ${children}`,
+    remaining,
+    summary?.message ? `Detail : ${summary.message}` : "",
+    "Ce message est conserve dans Messages recus du dashboard parent."
+  ].filter(Boolean).join("\n");
 }
 
 function financeReductions() {
@@ -1978,7 +1998,17 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       tuitionAllocationSummary: buildDemoTuitionAllocationSummary(String(body.allocationMode ?? "AUTO") === "MANUAL" ? "MANUAL" : "AUTO", preview as any)
     };
     writeJson(DEMO_PAYMENTS_KEY, [payment, ...getDemoPayments()]);
-    return { ...preview, payment, receipt: { receiptNumber: `REC-${payment.transactionNumber}` } } as T;
+    const parent = getDemoParents().find((item) => item.id === payment.parentId);
+    const receiptNumber = `REC-${payment.transactionNumber}`;
+    if (parent && String(payment.status).toUpperCase() === "COMPLETED") {
+      appendDemoParentNotification({
+        parent,
+        type: "CONFIRMATION",
+        channels: ["DASHBOARD", "EMAIL", "SMS"],
+        content: buildDemoPaymentNotificationContent(payment as DemoPayment, receiptNumber)
+      });
+    }
+    return { ...preview, payment, receipt: { receiptNumber } } as T;
   }
 
   const financeParentProfileMatch = normalizedPath.match(/^\/api\/finance\/parents\/([^/]+)\/profile$/);
