@@ -7,18 +7,22 @@ Ouvrez 2 terminaux PowerShell:
 **Terminal 1 - API**:
 ```powershell
 cd apps\api
-npm run dev
+copy .env.example .env
+# si vous utilisez l'ecosysteme local, gardez DATABASE_URL=postgresql://postgres:postgres@localhost:5432/edupay?schema=public
+pnpm dev
 ```
 
 **Terminal 2 - Frontend**:
 ```powershell
 cd apps\web
-npm run dev
+pnpm dev
 ```
 
 ✅ Ouvrez: **http://localhost:5173**
 
 📧 Login: `admin@school.com` / `password123`
+
+Accès partagé validé localement : un parent SAVANEX peut aussi se connecter à EduPay avec son `access_code` généré.
 
 ---
 
@@ -79,7 +83,7 @@ Voir: **DEPLOYMENT_GUIDE.md**
 ## ✅ Checklist
 
 - [ ] Node.js installé (v24+)
-- [ ] `npm run dev` fonctionne localement
+- [ ] `pnpm dev` fonctionne localement
 - [ ] GitHub repo créé
 - [ ] Compte Render.com créé
 - [ ] Déploiement lancé
@@ -110,10 +114,8 @@ docker-compose logs web
 
 ## 🎯 Prochaines Étapes
 
-1. Tester localement (`npm run dev`)
+1. Tester localement (`pnpm dev`)
 2. Pusher sur GitHub
 3. Déployer sur Render.com
 4. Configurer domaine custom (optionnel)
 5. Monitorer performance
-
-**C'est parti!** 🚀

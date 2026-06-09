@@ -35,7 +35,7 @@ import {
   Zap
 } from "lucide-react";
 import { useI18n } from "../i18n";
-import { api } from "../services/api";
+import { api, getCachedApiResponse } from "../services/api";
 
 type Overview = {
   totalRevenue: number;
@@ -59,6 +59,33 @@ type Parent = {
   email?: string;
   students: Student[];
   createdAt?: string;
+};
+
+type SharedDirectoryResponse = {
+  counts?: { families?: number; parents?: number; students?: number; teachers?: number };
+  parents?: Array<{
+    id: string;
+    fullName?: string;
+    phone?: string | null;
+    email?: string | null;
+    students?: Array<{
+      id: string;
+      fullName?: string;
+      classId?: string | null;
+      className?: string | null;
+      annualFee?: number | null;
+      annualFeeDisplay?: number | null;
+    }>;
+  }>;
+  students?: Array<{
+    id: string;
+    parentId?: string | null;
+    fullName?: string;
+    classId?: string | null;
+    className?: string | null;
+    annualFee?: number | null;
+    annualFeeDisplay?: number | null;
+  }>;
 };
 
 type Payment = {
@@ -89,6 +116,55 @@ const USD = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD",
 function asNumber(value: unknown) {
   const n = Number(value);
   return Number.isFinite(n) ? n : 0;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(`${label} timeout`)), timeoutMs);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
+function parentsFromSharedDirectory(directory: SharedDirectoryResponse | null | undefined): Parent[] {
+  if (!directory) return [];
+  const studentsByParent = new Map<string, Student[]>();
+  for (const student of directory.students ?? []) {
+    const parentId = String(student.parentId ?? "");
+    if (!parentId) continue;
+    const row: Student = {
+      id: String(student.id),
+      fullName: String(student.fullName ?? ""),
+      classId: student.classId ? String(student.classId) : undefined,
+      className: student.className ? String(student.className) : undefined,
+      annualFee: asNumber(student.annualFeeDisplay ?? student.annualFee),
+    };
+    studentsByParent.set(parentId, [...(studentsByParent.get(parentId) ?? []), row]);
+  }
+
+  return (directory.parents ?? []).map((parent) => ({
+    id: String(parent.id),
+    fullName: String(parent.fullName ?? parent.id),
+    phone: parent.phone ? String(parent.phone) : undefined,
+    email: parent.email ? String(parent.email) : undefined,
+    students: (parent.students && parent.students.length > 0
+      ? parent.students.map((student) => ({
+          id: String(student.id),
+          fullName: String(student.fullName ?? ""),
+          classId: student.classId ? String(student.classId) : undefined,
+          className: student.className ? String(student.className) : undefined,
+          annualFee: asNumber(student.annualFeeDisplay ?? student.annualFee),
+        }))
+      : studentsByParent.get(String(parent.id)) ?? []),
+  }));
 }
 
 function clamp(value: number, min = 0, max = 100) {
@@ -356,9 +432,21 @@ export function DashboardPage() {
     let cancelled = false;
 
     async function load() {
-      const [overviewResult, paymentsResult, parentsResult] = await Promise.all([
+      const cachedOverview = getCachedApiResponse<Overview>("/api/analytics/overview");
+      const cachedPayments = getCachedApiResponse<Payment[]>("/api/payments");
+      const cachedDirectory = getCachedApiResponse<SharedDirectoryResponse>("/api/shared-directory");
+      const cachedParents = cachedDirectory ? parentsFromSharedDirectory(cachedDirectory) : getCachedApiResponse<Parent[]>("/api/parents");
+      if (cachedOverview || cachedPayments || cachedParents) {
+        setOverview(cachedOverview);
+        setPayments((cachedPayments ?? []).map((p) => ({ ...p, amount: asNumber(p.amount), status: p.status ?? "COMPLETED" })));
+        setParents(cachedParents ?? []);
+        setLoading(false);
+      }
+
+      const [overviewResult, paymentsResult, directoryResult, parentsResult] = await Promise.all([
         api<Overview>("/api/analytics/overview").catch(() => null),
         api<Payment[]>("/api/payments").catch(() => []),
+        withTimeout(api<SharedDirectoryResponse>("/api/shared-directory"), 4500, "shared-directory").catch(() => null),
         api<Parent[]>("/api/parents").catch(() => [])
       ]);
 
@@ -371,7 +459,7 @@ export function DashboardPage() {
 
       setOverview(overviewResult);
       setPayments([...apiPayments, ...mergedLocal]);
-      setParents(parentsResult);
+      setParents(directoryResult ? parentsFromSharedDirectory(directoryResult) : parentsResult);
       setLoading(false);
     }
 

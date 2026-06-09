@@ -1,0 +1,2278 @@
+import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
+import {
+  Area,
+  AreaChart,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis
+} from "recharts";
+import {
+  Activity,
+  AlertTriangle,
+  ArrowUpRight,
+  BadgeDollarSign,
+  BarChart3,
+  BrainCircuit,
+  CalendarClock,
+  CheckCircle2,
+  CirclePercent,
+  ClipboardList,
+  FileSpreadsheet,
+  Gauge,
+  HandCoins,
+  Landmark,
+  Printer,
+  Scale,
+  ShieldAlert,
+  Target,
+  TrendingUp,
+  WalletCards,
+  X
+} from "lucide-react";
+import { schoolBranding } from "../config/branding";
+import { api, getCachedApiResponse } from "../services/api";
+import { useI18n } from "../i18n";
+import { exportWorkbook } from "../utils/financeExcel";
+import { printHtmlDocument } from "../utils/printDocument";
+
+type RevenueOverviewResponse = {
+  academicYear: { id: string; name: string; startDate: string; endDate: string };
+  totalRevenue: number;
+  monthlyRevenue: number;
+  expectedRevenue: number;
+  collectedRevenue: number;
+  totalDebt: number;
+  totalReduction: number;
+  paymentSuccessRate: number;
+  paymentCompletionRate: number;
+  activeAlerts: number;
+  overdueParents: number;
+  parentsTracked: number;
+  classAnalytics: Array<{
+    className: string;
+    expected: number;
+    collected: number;
+    debt: number;
+    réductions: number;
+    students: number;
+    collectionRate: number;
+  }>;
+  parentDebtAnalytics: Array<{
+    parentId: string;
+    parentName: string;
+    totalDebt: number;
+    totalPaid: number;
+    carriedOverDebt: number;
+    overdueInstallments: number;
+    paymentBehaviorScore: number;
+  }>;
+  reductionStatistics: {
+    totalReductions: number;
+    reductionCount: number;
+    scholarshipTotal?: number;
+    scholarshipCount?: number;
+    manualScholarshipTotal?: number;
+    manualScholarshipCount?: number;
+    byScope: Array<{ scope: string; amount: number }>;
+    byGradeGroup: Array<{ gradeGroup: string; amount: number }>;
+    byPaymentOption: Array<{ paymentOptionType: string; amount: number }>;
+    scholarships?: Array<{ id: string; title: string; amount: number; parentName?: string | null; studentName?: string | null; scope?: string | null; source?: string | null; gradeGroup?: string | null; paymentOptionType?: string | null; percentage?: number | null; effectiveDate?: string }>;
+    réductions?: Array<{ id: string; title: string; amount: number; parentName?: string | null; studentName?: string | null; scope?: string | null; source?: string | null; gradeGroup?: string | null; paymentOptionType?: string | null; percentage?: number | null; effectiveDate?: string }>;
+    periodLabel: string;
+  };
+  financialHealthIndicators: {
+    collectionEfficiency: number;
+    debtExposure: number;
+    reductionLoad: number;
+    alertPressure: number;
+    averageBehaviorScore: number;
+  };
+};
+
+type ExpenseOverviewResponse = {
+  revenue: {
+    totalRevenue: number;
+    totalCompletedPayments: number;
+  };
+  expenses: {
+    totalExpenses: number;
+    approvedExpenses: number;
+    pendingExpenses: number;
+    rejectedExpenses: number;
+    pendingApprovalSteps: number;
+  };
+  payroll: {
+    activeProfiles: number;
+    runCount: number;
+    totalPayroll: number;
+    salaryLiability: number;
+  };
+  cashflow: {
+    availableCash: number;
+    operationalBalance: number;
+    profitLoss: number;
+  };
+  liabilities: {
+    supplierDebt: number;
+    payrollLiability: number;
+    institutionalObligations: number;
+  };
+  budgets: Array<{
+    id: string;
+    name: string;
+    department: string;
+    plannedAmount: number;
+    consumedAmount: number;
+    remainingAmount: number;
+    utilization: number;
+    status: string;
+    periodName: string;
+    categoryName: string | null;
+  }>;
+  budgetAlerts: Array<{
+    id: string;
+    name: string;
+    department: string;
+    plannedAmount: number;
+    consumedAmount: number;
+    remainingAmount: number;
+    utilization: number;
+    status: string;
+    periodName: string;
+    categoryName: string | null;
+  }>;
+  categorySpending: Array<{
+    categoryId: string;
+    categoryName: string;
+    type: string;
+    total: number;
+  }>;
+  departmentSpending: Array<{
+    department: string;
+    total: number;
+  }>;
+  monthlyPerformance: Array<{
+    period: string;
+    revenue: number;
+    expenses: number;
+    profitLoss: number;
+  }>;
+  recentExpenses: Array<{
+    id: string;
+    title: string;
+    department: string;
+    amount: number;
+    categoryName: string;
+    status: string;
+    expenseDate: string;
+  }>;
+  recentPayrollRuns: Array<{
+    id: string;
+    title: string;
+    department: string | null;
+    totalNet: number;
+    status: string;
+    periodName: string | null;
+    processedAt: string | null;
+  }>;
+};
+
+const EMPTY_EXPENSE_OVERVIEW: ExpenseOverviewResponse = {
+  revenue: {
+    totalRevenue: 0,
+    totalCompletedPayments: 0,
+  },
+  expenses: {
+    totalExpenses: 0,
+    approvedExpenses: 0,
+    pendingExpenses: 0,
+    rejectedExpenses: 0,
+    pendingApprovalSteps: 0,
+  },
+  payroll: {
+    activeProfiles: 0,
+    runCount: 0,
+    totalPayroll: 0,
+    salaryLiability: 0,
+  },
+  cashflow: {
+    availableCash: 0,
+    operationalBalance: 0,
+    profitLoss: 0,
+  },
+  liabilities: {
+    supplierDebt: 0,
+    payrollLiability: 0,
+    institutionalObligations: 0,
+  },
+  budgets: [],
+  budgetAlerts: [],
+  categorySpending: [],
+  departmentSpending: [],
+  monthlyPerformance: [],
+  recentExpenses: [],
+  recentPayrollRuns: [],
+};
+
+type FinanceErpModule = "health" | "forecast" | "revenue" | "scholarships" | "expenses" | "budgets" | "payroll";
+type ScholarshipRow = NonNullable<RevenueOverviewResponse["reductionStatistics"]["réductions"]>[number];
+
+function uniqueReductionRows<T extends { parentName?: string | null; studentName?: string | null; scope?: string | null; paymentOptionType?: string | null; amount: number; title: string }>(rows: T[]) {
+  return Array.from(rows.reduce((acc, row) => {
+    const key = [
+      row.parentName || "parent",
+      row.studentName || "parent-account",
+      row.scope || "UNKNOWN",
+      row.paymentOptionType || "CUSTOM",
+      Number(row.amount || 0).toFixed(5),
+      row.title.trim().toLowerCase()
+    ].join("|");
+    if (!acc.has(key)) acc.set(key, row);
+    return acc;
+  }, new Map<string, T>()).values());
+}
+
+const expenseStatusTone: Record<string, string> = {
+  APPROVED: "border-emerald-500/25 bg-emerald-500/10 text-emerald-200",
+  PENDING: "border-amber-500/25 bg-amber-500/10 text-amber-200",
+  REJECTED: "border-red-500/25 bg-red-500/10 text-red-200",
+  ARCHIVED: "border-slate-500/25 bg-slate-500/10 text-slate-300"
+};
+
+const budgetStatusTone: Record<string, string> = {
+  ACTIVE: "border-cyan-500/25 bg-cyan-500/10 text-cyan-200",
+  EXCEEDED: "border-red-500/25 bg-red-500/10 text-red-200",
+  CLOSED: "border-slate-500/25 bg-slate-500/10 text-slate-300",
+  ARCHIVED: "border-slate-500/25 bg-slate-500/10 text-slate-300"
+};
+
+const payrollStatusTone: Record<string, string> = {
+  PAID: "border-emerald-500/25 bg-emerald-500/10 text-emerald-200",
+  PROCESSED: "border-brand-500/25 bg-brand-500/10 text-brand-100",
+  DRAFT: "border-amber-500/25 bg-amber-500/10 text-amber-200",
+  ARCHIVED: "border-slate-500/25 bg-slate-500/10 text-slate-300"
+};
+
+function formatPercent(value: number) {
+  return `${value.toFixed(1)}%`;
+}
+
+function barWidth(value: number) {
+  return `${Math.max(0, Math.min(100, value))}%`;
+}
+
+function MetricCard({
+  label,
+  value,
+  detail,
+  icon: Icon,
+  tone
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon: typeof WalletCards;
+  tone: string;
+}) {
+  return (
+    <div className="card glass border border-white/10 shadow-lg">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-ink-dim">{label}</p>
+          <p className="mt-3 font-display text-2xl font-bold text-white">{value}</p>
+          <p className="mt-2 text-xs text-ink-dim">{detail}</p>
+        </div>
+        <div className={`rounded-2xl border p-3 ${tone}`}>
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ScienceIndicator({
+  label,
+  value,
+  detail,
+  tone = "text-white"
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: string;
+}) {
+  return (
+    <div className="min-w-0 rounded-xl border border-white/10 bg-slate-950/40 p-4">
+      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">{label}</p>
+      <p className={`mt-2 font-display text-xl font-bold ${tone}`}>{value}</p>
+      <p className="mt-1 text-xs leading-relaxed text-ink-dim">{detail}</p>
+    </div>
+  );
+}
+
+function FinanceErpDialog({
+  title,
+  subtitle,
+  onClose,
+  children
+}: {
+  title: string;
+  subtitle: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="edupay-finance-erp-dialog fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-950/82 px-3 py-4 backdrop-blur-md sm:px-6 sm:py-8">
+      <div className="edupay-finance-erp-modal w-full max-w-[min(98vw,112rem)] rounded-2xl border border-brand-300/15 bg-slate-950/96 p-6 shadow-2xl sm:min-h-[82vh] sm:p-8">
+        <div className="flex flex-col gap-4 border-b border-white/10 pb-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-200">Tableau financier EduPay</p>
+            <h2 className="mt-2 font-display text-2xl font-bold text-white sm:text-3xl">{title}</h2>
+            <p className="mt-2 text-sm text-ink-dim">{subtitle}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-ink-dim transition hover:border-brand-300/30 hover:text-white"
+            aria-label="Fermer"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+        <div className="mt-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function formatPeriod(period: string, locale: string) {
+  const [year, month] = period.split("-").map(Number);
+  return new Date(year, month - 1, 1).toLocaleDateString(locale, { month: "short" });
+}
+
+function average(values: number[]) {
+  if (values.length === 0) return 0;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function clampScore(value: number) {
+  return Math.max(0, Math.min(100, value));
+}
+
+function reductionOrigin(scope?: string | null, title?: string | null) {
+  const normalizedScope = String(scope ?? "").toUpperCase();
+  const normalizedTitle = String(title ?? "").toLowerCase();
+  if (normalizedScope === "PARENT" || normalizedTitle.includes("family")) return "Familiale";
+  if (normalizedScope === "STUDENT") return "Individuelle";
+  if (normalizedScope === "PAYMENT_OPTION") return "Option de paiement";
+  if (normalizedScope === "GRADE_GROUP") return "Niveau / classe";
+  if (normalizedScope === "AGREEMENT") return "Accord spécial";
+  if (normalizedScope === "MANUAL" || normalizedTitle.includes("bourse") || normalizedTitle.includes("scholarship")) return "Bourse manuelle";
+  if (normalizedScope === "ACADEMIC_YEAR") return "Année académique";
+  return "Autre réduction";
+}
+
+function formatCodeLabel(value?: string | null) {
+  return String(value ?? "Non défini").replace(/_/g, " ").toLowerCase().replace(/\b\w/g, (letter: string) => letter.toUpperCase());
+}
+
+function slugifyScholarshipFilename(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "") || "bourses";
+}
+
+function plainPrintText(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildScholarshipReportHtml(input: {
+  rows: ScholarshipRow[];
+  title: string;
+  scopeLabel: string;
+  locale: string;
+}) {
+  const money = new Intl.NumberFormat(input.locale, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+  const total = input.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const logoSrc = plainPrintText(new URL(schoolBranding.logoSrc, window.location.href).toString());
+  const generatedAt = new Date();
+  const documentReference = plainPrintText(`KCS-BRS-${generatedAt.toISOString().slice(0, 10)}-${String(input.rows.length).padStart(3, "0")}`);
+  const branding = {
+    schoolName: plainPrintText(schoolBranding.schoolName),
+    shortName: plainPrintText(schoolBranding.shortName),
+    appName: plainPrintText(schoolBranding.appName),
+    tagline: plainPrintText(schoolBranding.tagline),
+    logoSrc,
+    primary: plainPrintText(schoolBranding.colors.primary),
+    secondary: plainPrintText(schoolBranding.colors.secondary),
+    accent: plainPrintText(schoolBranding.colors.accent),
+    surface: plainPrintText(schoolBranding.colors.surface)
+  };
+
+  const rowsHtml = input.rows.map((row) => `
+    <tr>
+      <td>${plainPrintText(row.title)}</td>
+      <td>${plainPrintText(row.parentName || "Parent non précisé")}</td>
+      <td>${plainPrintText(row.studentName || "Compte parent")}</td>
+      <td>${plainPrintText(reductionOrigin(row.scope, row.title))}</td>
+      <td>${plainPrintText(formatCodeLabel(row.scope))}</td>
+      <td>${plainPrintText(formatCodeLabel(row.paymentOptionType))}</td>
+      <td>${plainPrintText(formatCodeLabel(row.gradeGroup))}</td>
+      <td>${row.effectiveDate ? plainPrintText(new Date(row.effectiveDate).toLocaleDateString(input.locale)) : "-"}</td>
+      <td style="text-align:right">${plainPrintText(money.format(Number(row.amount || 0)))}</td>
+    </tr>`).join("");
+
+  return `<!DOCTYPE html>
+  <html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <title>${plainPrintText(input.title)}</title>
+    <style>
+      @page { size: A4 portrait; margin: 12mm; }
+      * { box-sizing: border-box; }
+      :root {
+        --brand-primary: ${branding.primary};
+        --brand-secondary: ${branding.secondary};
+        --brand-accent: ${branding.accent};
+        --brand-surface: ${branding.surface};
+        --ink: #0f172a;
+        --ink-soft: #475569;
+        --line: #cbd5e1;
+      }
+      body { position: relative; font-family: Arial, Helvetica, sans-serif; color: var(--ink); margin: 0; background: #fff; }
+      .watermark-text {
+        position: fixed;
+        inset: 0;
+        z-index: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 108px;
+        font-weight: 900;
+        letter-spacing: 14px;
+        color: rgba(11, 46, 89, 0.055);
+        transform: rotate(-26deg);
+        pointer-events: none;
+        user-select: none;
+      }
+      .watermark-logo-frame {
+        position: fixed;
+        left: 50%;
+        top: 48%;
+        z-index: 0;
+        width: 420px;
+        height: 420px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        border: 2px solid rgba(11, 46, 89, 0.05);
+        background: radial-gradient(circle, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.04) 58%, rgba(11,46,89,0.03) 100%);
+        transform: translate(-50%, -50%);
+        pointer-events: none;
+        user-select: none;
+      }
+      .watermark-logo {
+        width: 78%;
+        height: 78%;
+        object-fit: contain;
+        opacity: 0.11;
+        filter: grayscale(100%) contrast(1.08) saturate(0.3);
+        transform: rotate(-12deg);
+        pointer-events: none;
+        user-select: none;
+      }
+      .shell { position: relative; z-index: 2; padding: 12px; }
+      .topbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding: 0 2px 10px;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        color: var(--ink-soft);
+      }
+      .topbar strong { color: var(--brand-primary); }
+      .hero {
+        position: relative;
+        overflow: hidden;
+        border: 2px solid var(--brand-primary);
+        background: linear-gradient(145deg, rgba(11,46,89,.05), rgba(31,79,143,.08) 45%, rgba(143,183,232,.16));
+        padding: 18px 20px;
+        border-radius: 20px;
+        box-shadow: 0 24px 50px rgba(15, 23, 42, 0.08);
+      }
+      .hero:after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.26) 48%, transparent 100%);
+        opacity: .45;
+        pointer-events: none;
+      }
+      .hero-header { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+      .brand { display: flex; align-items: center; gap: 14px; }
+      .logo {
+        width: 64px;
+        height: 64px;
+        object-fit: contain;
+        border-radius: 999px;
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        padding: 5px;
+      }
+      .eyebrow { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #0f766e; font-weight: 700; }
+      .school { margin-top: 4px; font-size: 22px; font-weight: 800; color: var(--brand-primary); letter-spacing: .5px; }
+      .tagline { margin-top: 4px; font-size: 12px; font-weight: 700; color: #334155; }
+      .meta { text-align: right; }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--brand-primary);
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 1.6px;
+        text-transform: uppercase;
+        color: var(--brand-primary);
+        background: rgba(255,255,255,0.45);
+      }
+      h1 { margin: 14px 0 6px; font-size: 26px; color: var(--brand-primary); }
+      .scope { font-size: 12px; color: #475569; }
+      .hero-meta-grid {
+        margin-top: 16px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+      }
+      .hero-meta-card {
+        position: relative;
+        z-index: 1;
+        border: 1px solid rgba(11, 46, 89, 0.14);
+        border-radius: 14px;
+        padding: 10px 12px;
+        background: rgba(255,255,255,0.62);
+      }
+      .hero-meta-label {
+        font-size: 9px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        color: var(--ink-soft);
+      }
+      .hero-meta-value {
+        margin-top: 6px;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--brand-primary);
+      }
+      .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 16px 0; }
+      .metric { border: 1px solid #cbd5e1; border-radius: 12px; padding: 12px; background: linear-gradient(180deg, #ffffff 0%, var(--brand-surface) 100%); }
+      .metric-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #64748b; }
+      .metric-value { margin-top: 6px; font-size: 18px; font-weight: 700; color: var(--brand-primary); }
+      table { width: 100%; border-collapse: collapse; margin-top: 14px; background: rgba(255,255,255,0.94); }
+      th, td { border: 1px solid #cbd5e1; padding: 8px 9px; font-size: 11px; vertical-align: top; }
+      th { background: linear-gradient(180deg, #d8e7fa, #e9f1fb); text-transform: uppercase; letter-spacing: .6px; text-align: left; color: var(--brand-primary); }
+      tr:nth-child(even) td { background: #f8fafc; }
+      .compliance {
+        margin-top: 14px;
+        border: 1px solid rgba(15, 118, 110, 0.2);
+        border-left: 5px solid #0f766e;
+        border-radius: 14px;
+        background: rgba(240, 253, 250, 0.96);
+        padding: 12px 14px;
+        font-size: 11px;
+        color: #134e4a;
+      }
+      .signatures {
+        margin-top: 18px;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 16px;
+      }
+      .signature-box {
+        min-height: 86px;
+        border: 1px dashed rgba(11, 46, 89, 0.26);
+        border-radius: 16px;
+        background: rgba(255,255,255,0.82);
+        padding: 14px;
+      }
+      .signature-title {
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-weight: 800;
+        color: var(--ink-soft);
+      }
+      .signature-line {
+        margin-top: 40px;
+        border-top: 1px solid rgba(11, 46, 89, 0.28);
+        padding-top: 6px;
+        font-size: 11px;
+        color: var(--brand-primary);
+        font-weight: 700;
+      }
+      .footer {
+        margin-top: 18px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        border-top: 2px solid #dbe4ef;
+        padding-top: 12px;
+        font-size: 10px;
+        color: #475569;
+      }
+      .footer strong { color: var(--brand-primary); }
+      @media print {
+        body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="watermark-text">${branding.shortName}</div>
+    <div class="watermark-logo-frame">
+      <img class="watermark-logo" src="${branding.logoSrc}" alt="${branding.shortName}" />
+    </div>
+    <div class="shell">
+      <div class="topbar">
+        <span><strong>${branding.shortName}</strong> · État institutionnel des bourses</span>
+        <span>Référence ${documentReference}</span>
+      </div>
+      <div class="hero">
+        <div class="hero-header">
+          <div class="brand">
+            <img class="logo" src="${branding.logoSrc}" alt="${branding.schoolName}" />
+            <div>
+              <div class="eyebrow">Document administratif EduPay</div>
+              <div class="school">${branding.schoolName}</div>
+              <div class="tagline">${branding.shortName} · ${branding.tagline}</div>
+            </div>
+          </div>
+          <div class="meta">
+            <div class="badge">Rapport officiel - Bourses</div>
+            <div style="margin-top:8px;font-size:11px;color:#475569;">${branding.appName}</div>
+          </div>
+        </div>
+        <h1>${plainPrintText(input.title)}</h1>
+        <div class="scope">${plainPrintText(input.scopeLabel)}</div>
+        <div class="hero-meta-grid">
+          <div class="hero-meta-card">
+            <div class="hero-meta-label">Document de référence</div>
+            <div class="hero-meta-value">${documentReference}</div>
+          </div>
+          <div class="hero-meta-card">
+            <div class="hero-meta-label">École émettrice</div>
+            <div class="hero-meta-value">${branding.schoolName}</div>
+          </div>
+          <div class="hero-meta-card">
+            <div class="hero-meta-label">Date d'édition</div>
+            <div class="hero-meta-value">${plainPrintText(generatedAt.toLocaleString(input.locale))}</div>
+          </div>
+        </div>
+      </div>
+      <div class="metrics">
+        <div class="metric"><div class="metric-label">Lignes visibles</div><div class="metric-value">${input.rows.length}</div></div>
+        <div class="metric"><div class="metric-label">Montant visible</div><div class="metric-value">${plainPrintText(money.format(total))}</div></div>
+        <div class="metric"><div class="metric-label">Portée du filtre</div><div class="metric-value">${plainPrintText(input.scopeLabel)}</div></div>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Bourse / réduction</th>
+            <th>Famille</th>
+            <th>Élève</th>
+            <th>Origine</th>
+            <th>Scope</th>
+            <th>Plan</th>
+            <th>Niveau</th>
+            <th>Date</th>
+            <th>Montant</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml || `<tr><td colspan="9">Aucune ligne visible pour ce filtre.</td></tr>`}</tbody>
+      </table>
+      <div class="compliance">
+        Ce document reprend l'état filtré des bourses et réductions visibles dans le tableau financier EduPay. Il est édité selon la charte visuelle ${branding.shortName}, avec identité de l'établissement en en-tête et en filigrane pour archivage administratif.
+      </div>
+      <div class="signatures">
+        <div class="signature-box">
+          <div class="signature-title">Validation financière</div>
+          <div class="signature-line">Service comptable / financier</div>
+        </div>
+        <div class="signature-box">
+          <div class="signature-title">Visa de direction</div>
+          <div class="signature-line">Direction de l'établissement</div>
+        </div>
+      </div>
+      <div class="footer">
+        <span><strong>${branding.schoolName}</strong> · ${branding.appName}</span>
+        <span>Édité le ${plainPrintText(generatedAt.toLocaleString(input.locale))}</span>
+      </div>
+    </div>
+  </body>
+  </html>`;
+}
+
+function printScholarshipReport(html: string) {
+  printHtmlDocument(html);
+}
+
+function exportScholarshipRowsExcel(filename: string, rows: ScholarshipRow[], scopeLabel: string, locale: string) {
+  const money = new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+  const total = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  exportWorkbook(filename, [
+    {
+      name: "Synthese",
+      rows: [{
+        "Portee": scopeLabel,
+        "Lignes visibles": rows.length,
+        "Montant visible": total,
+        "Montant visible formatte": money.format(total),
+        "Généré le": new Date().toLocaleString(locale)
+      }]
+    },
+    {
+      name: "Bourses",
+      rows: rows.map((row) => ({
+        "Bourse / reduction": row.title,
+        "Famille": row.parentName || "Parent non precise",
+        "Eleve": row.studentName || "Compte parent",
+        "Origine": reductionOrigin(row.scope, row.title),
+        "Scope": formatCodeLabel(row.scope),
+        "Plan": formatCodeLabel(row.paymentOptionType),
+        "Niveau": formatCodeLabel(row.gradeGroup),
+        "Source": row.source || "-",
+        "Date effective": row.effectiveDate ? new Date(row.effectiveDate).toLocaleDateString(locale) : "-",
+        "Pourcentage": row.percentage ?? "-",
+        "Montant USD": Number(row.amount || 0)
+      }))
+    }
+  ]);
+}
+
+export function FinanceDashboardPage() {
+  const { lang } = useI18n();
+  const locale = lang === "fr" ? "fr-FR" : "en-US";
+  const [revenueOverview, setRevenueOverview] = useState<RevenueOverviewResponse | null>(null);
+  const [expenseOverview, setExpenseOverview] = useState<ExpenseOverviewResponse>(EMPTY_EXPENSE_OVERVIEW);
+  const [expenseOverviewReady, setExpenseOverviewReady] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [expenseOverviewError, setExpenseOverviewError] = useState<string | null>(null);
+  const [activeModule, setActiveModule] = useState<FinanceErpModule | null>(null);
+  const [financeModuleSearch, setFinanceModuleSearch] = useState("");
+  const [scholarshipSearch, setScholarshipSearch] = useState("");
+  const [scholarshipScopeFilter, setScholarshipScopeFilter] = useState("ALL");
+  const [scholarshipOriginFilter, setScholarshipOriginFilter] = useState("ALL");
+  const [scholarshipDateFrom, setScholarshipDateFrom] = useState("");
+  const [scholarshipDateTo, setScholarshipDateTo] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    const cachedRevenue = getCachedApiResponse<RevenueOverviewResponse>("/api/finance/overview");
+    const cachedExpenses = getCachedApiResponse<ExpenseOverviewResponse>("/api/expenses/overview");
+    if (cachedRevenue) {
+      setRevenueOverview(cachedRevenue);
+      setLoading(false);
+    }
+    if (cachedExpenses) {
+      setExpenseOverview(cachedExpenses);
+      setExpenseOverviewReady(true);
+    }
+
+    api<RevenueOverviewResponse>("/api/finance/overview")
+      .then((revenueResult) => {
+        if (!active) return;
+        setRevenueOverview(revenueResult);
+        setError(null);
+      })
+      .catch((loadError) => {
+        if (!active) return;
+        setError(loadError instanceof Error ? loadError.message : "Impossible de charger le tableau financier.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    api<ExpenseOverviewResponse>("/api/expenses/overview")
+      .then((expenseResult) => {
+        if (!active) return;
+        setExpenseOverview(expenseResult);
+        setExpenseOverviewReady(true);
+        setExpenseOverviewError(null);
+      })
+      .catch((loadError) => {
+        if (!active) return;
+        setExpenseOverviewError(loadError instanceof Error ? loadError.message : "Les modules budgets, dépenses et paie prennent plus de temps que prévu.");
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const money = useMemo(
+    () => new Intl.NumberFormat(locale, {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }),
+    [locale]
+  );
+  const L = (fr: string, en: string) => lang === "fr" ? fr : en;
+
+  const performanceChart = useMemo(() => {
+    return expenseOverview.monthlyPerformance.map((entry) => ({
+      ...entry,
+      label: formatPeriod(entry.period, locale)
+    }));
+  }, [expenseOverview, locale]);
+
+  const reductionStatistics = revenueOverview?.reductionStatistics ?? null;
+  const scholarshipRows = useMemo(
+    () => uniqueReductionRows(reductionStatistics?.réductions ?? reductionStatistics?.scholarships ?? []),
+    [reductionStatistics]
+  );
+  const manualScholarshipRows = useMemo(
+    () => uniqueReductionRows(reductionStatistics?.scholarships ?? []),
+    [reductionStatistics]
+  );
+  const scholarshipScopeOptions = useMemo(
+    () => Array.from(new Set(scholarshipRows.map((row) => String(row.scope ?? "UNKNOWN")))).sort(),
+    [scholarshipRows]
+  );
+  const scholarshipOriginOptions = useMemo(
+    () => Array.from(new Set(scholarshipRows.map((row) => reductionOrigin(row.scope, row.title)))).sort(),
+    [scholarshipRows]
+  );
+  const filteredScholarshipRows = useMemo(() => {
+    if (activeModule !== "scholarships") return [];
+
+    const normalizedSearch = scholarshipSearch.trim().toLowerCase();
+    return scholarshipRows.filter((row) => {
+      const rowOrigin = reductionOrigin(row.scope, row.title);
+      const effectiveDate = row.effectiveDate ? new Date(row.effectiveDate) : null;
+      const matchesSearch = !normalizedSearch || [
+        row.title,
+        row.parentName,
+        row.studentName,
+        row.scope,
+        row.source,
+        row.gradeGroup,
+        row.paymentOptionType,
+        rowOrigin
+      ].some((value) => String(value ?? "").toLowerCase().includes(normalizedSearch));
+      const matchesScope = scholarshipScopeFilter === "ALL" || String(row.scope ?? "UNKNOWN") === scholarshipScopeFilter;
+      const matchesOrigin = scholarshipOriginFilter === "ALL" || rowOrigin === scholarshipOriginFilter;
+      const matchesDateFrom = !scholarshipDateFrom || (effectiveDate && effectiveDate >= new Date(`${scholarshipDateFrom}T00:00:00`));
+      const matchesDateTo = !scholarshipDateTo || (effectiveDate && effectiveDate <= new Date(`${scholarshipDateTo}T23:59:59`));
+      return matchesSearch && matchesScope && matchesOrigin && matchesDateFrom && matchesDateTo;
+    });
+  }, [activeModule, scholarshipDateFrom, scholarshipDateTo, scholarshipOriginFilter, scholarshipRows, scholarshipScopeFilter, scholarshipSearch]);
+  const filteredScholarshipTotal = useMemo(
+    () => filteredScholarshipRows.reduce((sum, row) => sum + Number(row.amount || 0), 0),
+    [filteredScholarshipRows]
+  );
+  const filteredManualScholarshipRows = useMemo(
+    () => filteredScholarshipRows.filter((row) => {
+      const normalizedScope = String(row.scope ?? "").toUpperCase();
+      const normalizedTitle = String(row.title ?? "").toLowerCase();
+      return normalizedScope === "MANUAL" || normalizedTitle.includes("bourse") || normalizedTitle.includes("scholarship");
+    }),
+    [filteredScholarshipRows]
+  );
+  const filteredReductionsByOrigin = useMemo(
+    () => Array.from(filteredScholarshipRows.reduce<Map<string, { origin: string; amount: number; count: number }>>((acc, row) => {
+      const origin = reductionOrigin(row.scope, row.title);
+      const current = acc.get(origin) ?? { origin, amount: 0, count: 0 };
+      current.amount += Number(row.amount || 0);
+      current.count += 1;
+      acc.set(origin, current);
+      return acc;
+    }, new Map()).values())
+      .map((entry) => ({ ...entry, amount: Math.round((entry.amount + Number.EPSILON) * 100) / 100 }))
+      .sort((left, right) => right.amount - left.amount),
+    [filteredScholarshipRows]
+  );
+  const filteredScholarshipsByScope = useMemo(
+    () => Array.from(filteredScholarshipRows.reduce<Map<string, number>>((acc, row) => {
+      const scope = formatCodeLabel(row.scope);
+      acc.set(scope, (acc.get(scope) ?? 0) + Number(row.amount || 0));
+      return acc;
+    }, new Map()).entries()).map(([scope, amount]) => ({ scope, amount })),
+    [filteredScholarshipRows]
+  );
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[65vh] items-center justify-center">
+        <div className="space-y-4 text-center">
+          <div className="mx-auto h-12 w-12 animate-pulse rounded-2xl bg-brand-500/30" />
+          <p className="text-sm font-semibold text-ink-dim">{L("Chargement du centre ERP financier EduPay...", "Loading the EduPay Financial ERP center...")}</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!revenueOverview) {
+    return (
+      <div className="flex min-h-[65vh] items-center justify-center px-4">
+        <div className="glass max-w-lg rounded-2xl border border-red-500/20 p-8 text-center shadow-xl">
+          <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-300">{L("ERP financier indisponible", "Financial ERP unavailable")}</p>
+          <h1 className="mt-3 font-display text-3xl font-bold text-white">{L("Le cockpit financier EduPay n'est pas disponible", "The EduPay financial cockpit is unavailable")}</h1>
+          <p className="mt-3 text-sm text-ink-dim">{error ?? L("Aucune donnee n'a ete renvoyee par les modules financiers.", "No data was returned by the finance modules.")}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const spendCoverage = revenueOverview.collectedRevenue > 0
+    ? (expenseOverview.expenses.totalExpenses / revenueOverview.collectedRevenue) * 100
+    : 0;
+  const totalInstitutionalLiabilities = expenseOverview.liabilities.supplierDebt + expenseOverview.liabilities.payrollLiability + expenseOverview.liabilities.institutionalObligations;
+  const operatingMargin = revenueOverview.collectedRevenue > 0
+    ? (expenseOverview.cashflow.profitLoss / revenueOverview.collectedRevenue) * 100
+    : 0;
+  const liquidityCoverage = totalInstitutionalLiabilities > 0
+    ? (expenseOverview.cashflow.availableCash / totalInstitutionalLiabilities) * 100
+    : 100;
+  const recentPerformance = performanceChart.slice(-3);
+  const forecastRevenue = average(recentPerformance.map((entry) => entry.revenue)) || revenueOverview.monthlyRevenue;
+  const forecastExpenses = average(recentPerformance.map((entry) => entry.expenses)) || expenseOverview.expenses.totalExpenses;
+  const predictedCash30 = expenseOverview.cashflow.availableCash + forecastRevenue - forecastExpenses;
+  const monthlyBurn = average(recentPerformance.map((entry) => entry.expenses)) || Math.max(expenseOverview.payroll.totalPayroll + expenseOverview.expenses.totalExpenses, 1);
+  const runwayMonths = monthlyBurn > 0 ? expenseOverview.cashflow.availableCash / monthlyBurn : 0;
+  const healthScore = clampScore(
+    revenueOverview.financialHealthIndicators.collectionEfficiency * 0.24
+    + Math.max(0, 100 - revenueOverview.financialHealthIndicators.debtExposure) * 0.18
+    + Math.max(0, 100 - spendCoverage) * 0.14
+    + Math.max(0, 100 - revenueOverview.financialHealthIndicators.alertPressure) * 0.12
+    + clampScore(liquidityCoverage) * 0.12
+    + revenueOverview.financialHealthIndicators.averageBehaviorScore * 0.12
+    + clampScore(operatingMargin + 50) * 0.08
+  );
+  const healthTone = healthScore >= 78 ? "text-emerald-300" : healthScore >= 58 ? "text-amber-300" : "text-red-300";
+  const healthLabel = healthScore >= 78 ? L("Stable", "Stable") : healthScore >= 58 ? L("Sous surveillance", "Under watch") : L("Critique", "Critical");
+  const riskIndex = clampScore(100 - healthScore);
+  const expenseOverviewNotice = expenseOverviewError
+    ? L(`Modules secondaires partiellement indisponibles : ${expenseOverviewError}`, `Secondary modules are partially unavailable: ${expenseOverviewError}`)
+    : !expenseOverviewReady
+      ? L("Budgets, dépenses et paie sont encore en cours de chargement. Les indicateurs principaux sont déjà visibles.", "Budgets, expenses and payroll are still loading. The main indicators are already visible.")
+      : null;
+  const scholarshipTotal = revenueOverview.reductionStatistics.scholarshipTotal ?? revenueOverview.reductionStatistics.totalReductions;
+  const scholarshipCount = revenueOverview.reductionStatistics.scholarshipCount ?? revenueOverview.reductionStatistics.reductionCount;
+  const manualScholarshipTotal = revenueOverview.reductionStatistics.manualScholarshipTotal ?? manualScholarshipRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const manualScholarshipCount = revenueOverview.reductionStatistics.manualScholarshipCount ?? manualScholarshipRows.length;
+  const réductionsByOrigin = Array.from(scholarshipRows.reduce<Map<string, { origin: string; amount: number; count: number }>>((acc, row) => {
+    const origin = reductionOrigin(row.scope, row.title);
+    const current = acc.get(origin) ?? { origin, amount: 0, count: 0 };
+    current.amount += Number(row.amount || 0);
+    current.count += 1;
+    acc.set(origin, current);
+    return acc;
+  }, new Map()).values())
+    .map((entry) => ({ ...entry, amount: Math.round((entry.amount + Number.EPSILON) * 100) / 100 }))
+    .sort((left, right) => right.amount - left.amount);
+  const scholarshipFilterScopeLabel = [
+    scholarshipSearch ? `Recherche: ${scholarshipSearch}` : "Recherche: toutes",
+    scholarshipScopeFilter !== "ALL" ? `Scope: ${formatCodeLabel(scholarshipScopeFilter)}` : "Scope: tous",
+    scholarshipOriginFilter !== "ALL" ? `Origine: ${scholarshipOriginFilter}` : "Origine: toutes",
+    scholarshipDateFrom ? `Du: ${new Date(`${scholarshipDateFrom}T00:00:00`).toLocaleDateString(locale)}` : "Du: début",
+    scholarshipDateTo ? `Au: ${new Date(`${scholarshipDateTo}T00:00:00`).toLocaleDateString(locale)}` : "Au: fin"
+  ].join(" | ");
+
+  function printFinancialStateReport() {
+    const overview = revenueOverview;
+    if (!overview) return;
+    const generatedAt = new Date();
+    const logoSrc = plainPrintText(new URL(schoolBranding.logoSrc, window.location.href).toString());
+    const rows = [
+      ["Revenu attendu net", money.format(overview.expectedRevenue), "Base annuelle après réductions et accords connus."],
+      ["Revenu encaissé", money.format(overview.collectedRevenue), "Somme des paiements validés dans EduPay."],
+      ["Dette parentale", money.format(overview.totalDebt), `${overview.overdueParents} parent(s) en retard.`],
+      ["Cash disponible", money.format(expenseOverview.cashflow.availableCash), "Trésorerie après dépenses approuvées et paie traitée."],
+      ["Dépenses + paie", money.format(expenseOverview.expenses.totalExpenses + expenseOverview.payroll.totalPayroll), "Charges institutionnelles reconnues."],
+      ["Marge opérationnelle", formatPercent(operatingMargin), "Profit/perte rapporté aux encaissements."],
+      ["Couverture liquidité", formatPercent(liquidityCoverage), "Cash disponible face aux passifs connus."],
+      ["Score santé", `${healthScore.toFixed(1)}/100`, healthLabel]
+    ];
+    const html = `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8" /><title>État financier global</title><style>
+      @page { size: A4; margin: 14mm; }
+      body { font-family: Arial, Helvetica, sans-serif; margin:0; padding:18px; background:#f8fbff; color:#0f172a; }
+      .watermark { position: fixed; inset: 0; display:grid; place-items:center; opacity:.07; pointer-events:none; }
+      .watermark img { width: 330px; height:330px; object-fit:contain; }
+      .sheet { position:relative; z-index:1; width:100%; max-width:100%; background:#fff; border:1px solid #cbd5e1; border-radius:18px; overflow:hidden; }
+      .hero { display:flex; justify-content:space-between; gap:16px; padding:22px; background:linear-gradient(135deg,#0b2e59,#1f4f8f); color:#fff; }
+      .brand { display:flex; min-width:0; gap:14px; align-items:center; }
+      .logo { width:64px; height:64px; object-fit:contain; background:#fff; border-radius:16px; padding:6px; }
+      h1 { margin:0; font-size:24px; } p { margin:6px 0 0; color:#dbeafe; }
+      .score { flex:0 0 120px; max-width:120px; text-align:right; font-weight:800; font-size:24px; overflow-wrap:anywhere; }
+      .metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; padding:18px 20px 8px; }
+      .metric { min-width:0; border:1px solid #dbeafe; border-radius:14px; padding:11px; background:#f8fbff; overflow:hidden; }
+      .label { font-size:10px; color:#64748b; text-transform:uppercase; letter-spacing:.12em; font-weight:800; }
+      .value { margin-top:7px; color:#0b2e59; font-size:16px; font-weight:900; overflow-wrap:anywhere; }
+      table { width:calc(100% - 40px); margin:18px 20px; border-collapse:collapse; table-layout:fixed; }
+      th,td { border-bottom:1px solid #e2e8f0; padding:10px; text-align:left; font-size:12px; }
+      th { background:#eff6ff; color:#0b2e59; text-transform:uppercase; font-size:10px; letter-spacing:.08em; }
+      .note { margin:0 20px 18px; border-left:5px solid #0f766e; background:#f0fdfa; border-radius:12px; padding:12px; color:#134e4a; font-size:11px; line-height:1.55; }
+      .sign { display:grid; grid-template-columns:1fr 1fr; gap:14px; padding:0 20px 20px; }
+      .box { min-height:78px; border:1px dashed rgba(11,46,89,.25); border-radius:14px; padding:12px; }
+      .line { margin-top:36px; border-top:1px solid rgba(11,46,89,.25); padding-top:6px; color:#0b2e59; font-weight:800; font-size:11px; }
+      @media print { body { -webkit-print-color-adjust:exact; print-color-adjust:exact; } }
+    </style></head><body>
+      <div class="watermark"><img src="${logoSrc}" alt="" /></div>
+      <div class="sheet">
+        <div class="hero"><div class="brand"><img class="logo" src="${logoSrc}" alt="Logo ${plainPrintText(schoolBranding.schoolName)}" /><div><h1>État financier global</h1><p>${plainPrintText(schoolBranding.schoolName)} - document administratif EduPay</p><p>Généré le ${plainPrintText(generatedAt.toLocaleString(locale))}</p></div></div><div class="score">${healthScore.toFixed(1)}/100<br/><span style="font-size:13px">${plainPrintText(healthLabel)}</span></div></div>
+        <div class="metrics">
+          <div class="metric"><div class="label">Encaissé</div><div class="value">${plainPrintText(money.format(overview.collectedRevenue))}</div></div>
+          <div class="metric"><div class="label">Dette</div><div class="value">${plainPrintText(money.format(overview.totalDebt))}</div></div>
+          <div class="metric"><div class="label">Cash</div><div class="value">${plainPrintText(money.format(expenseOverview.cashflow.availableCash))}</div></div>
+          <div class="metric"><div class="label">Risque</div><div class="value">${plainPrintText(formatPercent(riskIndex))}</div></div>
+        </div>
+        <table><thead><tr><th>Indicateur</th><th>Valeur réelle</th><th>Lecture administrative</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${plainPrintText(row[0])}</td><td>${plainPrintText(row[1])}</td><td>${plainPrintText(row[2])}</td></tr>`).join("")}</tbody></table>
+        <div class="note">Ce document reprend les chiffres calculés depuis les paiements, les dettes, les réductions, les dépenses, la paie et les passifs visibles dans EduPay au moment de l'impression. Il respecte la charte administrative ${plainPrintText(schoolBranding.shortName)}.</div>
+        <div class="sign"><div class="box"><div class="label">Contrôle financier</div><div class="line">Service financier</div></div><div class="box"><div class="label">Visa direction</div><div class="line">Direction administrative</div></div></div>
+      </div>
+    </body></html>`;
+    printHtmlDocument(html);
+  }
+
+  function exportFinancialStateExcel() {
+    const overview = revenueOverview;
+    if (!overview) return;
+    exportWorkbook(`etat-financier-global-${new Date().toISOString().slice(0, 10)}`, [
+      {
+        name: "Etat global",
+        rows: [{
+          "Score santé": Number(healthScore.toFixed(2)),
+          "Risque global %": Number(riskIndex.toFixed(2)),
+          "Revenu attendu": overview.expectedRevenue,
+          "Revenu encaisse": overview.collectedRevenue,
+          "Dette parentale": overview.totalDebt,
+          "Cash disponible": expenseOverview.cashflow.availableCash,
+          "Dépenses": expenseOverview.expenses.totalExpenses,
+          "Paie": expenseOverview.payroll.totalPayroll,
+          "Marge opérationnelle %": Number(operatingMargin.toFixed(2)),
+          "Couverture liquidité %": Number(liquidityCoverage.toFixed(2)),
+          "Parents suivis": overview.parentsTracked,
+          "Parents en retard": overview.overdueParents
+        }]
+      },
+      {
+        name: "Classes",
+        rows: overview.classAnalytics.map((row) => ({
+          "Classe": row.className,
+          "Eleves": row.students,
+          "Attendu": row.expected,
+          "Encaisse": row.collected,
+          "Dette": row.debt,
+          "Reductions": row.réductions,
+          "Taux recouvrement %": Number(row.collectionRate.toFixed(2))
+        }))
+      }
+    ]);
+  }
+
+  const activeModuleMeta = activeModule ? {
+    health: {
+      title: L("Santé financière globale", "Global financial health"),
+      subtitle: L("Score composite calculé avec le recouvrement, la dette, la trésorerie, les passifs, les alertes et le comportement de paiement.", "Composite score based on collection, debt, cash, liabilities, alerts and payment behavior.")
+    },
+    forecast: {
+      title: L("Prévisions et scénarios", "Forecasts and scenarios"),
+      subtitle: L("Projection scientifique simple sur 30 jours, à partir de la performance mensuelle récente.", "Simple 30-day projection based on recent monthly performance.")
+    },
+    revenue: {
+      title: L("Revenus, parents et recouvrement", "Revenue, parents and collection"),
+      subtitle: L("Lecture des encaissements, des dettes parentales, des réductions et des segments scolaires.", "View collections, parent debts, discounts and school segments.")
+    },
+    scholarships: {
+      title: L("Bourses et réductions détaillées", "Scholarships and detailed réductions"),
+      subtitle: L("Rubrique visible pour le financier : réductions familiales, individuelles, options de paiement, accords owner-parent et toutes les provenances.", "Finance-visible section: family réductions, individual réductions, payment-option réductions, owner-parent agreements and all sources.")
+    },
+    expenses: {
+      title: L("Dépenses et contrôle opérationnel", "Expenses and operational control"),
+      subtitle: L("Sorties de trésorerie, catégories, départements et workflow d'approbation.", "Cash outflows, categories, departments and approval workflow.")
+    },
+    budgets: {
+      title: L("Budgets et seuils critiques", "Budgets and critical thresholds"),
+      subtitle: L("Consommation prévue/réelle, alertes et enveloppes à surveiller.", "Planned versus actual usage, alerts and envelopes to monitor.")
+    },
+    payroll: {
+      title: L("Paie, obligations et passifs", "Payroll, obligations and liabilities"),
+      subtitle: L("Masse salariale, cycles de paie et dette institutionnelle restante.", "Payroll mass, payroll runs and remaining institutional liabilities.")
+    }
+  }[activeModule] : null;
+
+  type FinanceReportRow = Record<string, string | number>;
+  const moduleSearchNeedle = financeModuleSearch.trim().toLowerCase();
+  const matchesFinanceSearch = (row: FinanceReportRow) => !moduleSearchNeedle
+    || Object.values(row).some((value) => String(value ?? "").toLowerCase().includes(moduleSearchNeedle));
+
+  function getFinanceModuleReportRows(module: FinanceErpModule): FinanceReportRow[] {
+    const overview = revenueOverview;
+    if (!overview) return [];
+    if (module === "health") {
+      return [
+        { Indicateur: "Score santé", Valeur: `${healthScore.toFixed(1)}/100`, Lecture: healthLabel },
+        { Indicateur: "Recouvrement", Valeur: formatPercent(overview.financialHealthIndicators.collectionEfficiency), Lecture: "Encaissement compare au revenu attendu" },
+        { Indicateur: "Dette", Valeur: money.format(overview.totalDebt), Lecture: `Exposition ${formatPercent(overview.financialHealthIndicators.debtExposure)}` },
+        { Indicateur: "Reductions", Valeur: money.format(overview.totalReduction), Lecture: `Charge ${formatPercent(overview.financialHealthIndicators.reductionLoad)}` },
+        { Indicateur: "Trésorerie disponible", Valeur: money.format(expenseOverview.cashflow.availableCash), Lecture: `Couverture ${formatPercent(liquidityCoverage)}` },
+        { Indicateur: "Passifs institutionnels", Valeur: money.format(totalInstitutionalLiabilities), Lecture: "Fournisseurs, paie et obligations" }
+      ];
+    }
+    if (module === "forecast") {
+      return performanceChart.map((row) => ({
+        Période: row.label,
+        Revenus: money.format(row.revenue),
+        Dépenses: money.format(row.expenses),
+        Resultat: money.format(row.profitLoss)
+      }));
+    }
+    if (module === "revenue") {
+      return [
+        ...overview.parentDebtAnalytics.map((row) => ({
+          Type: "Parent",
+          Nom: row.parentName,
+          Dette: money.format(row.totalDebt),
+          Paye: money.format(row.totalPaid),
+          Retard: row.overdueInstallments,
+          Score: formatPercent(row.paymentBehaviorScore)
+        })),
+        ...overview.classAnalytics.map((row) => ({
+          Type: "Classe",
+          Nom: row.className,
+          Attendu: money.format(row.expected),
+          Encaisse: money.format(row.collected),
+          Dette: money.format(row.debt),
+          Taux: formatPercent(row.collectionRate)
+        }))
+      ];
+    }
+    if (module === "expenses") {
+      return expenseOverview.recentExpenses.map((expense) => ({
+        Titre: expense.title,
+        Departement: expense.department,
+        Categorie: expense.categoryName,
+        Statut: expense.status,
+        Montant: money.format(expense.amount)
+      }));
+    }
+    if (module === "budgets") {
+      return expenseOverview.budgets.map((budget) => ({
+        Budget: budget.name,
+        Departement: budget.department,
+        Période: budget.periodName,
+        Categorie: budget.categoryName ?? "Global",
+        Statut: budget.status,
+        Prevu: money.format(budget.plannedAmount),
+        Consomme: money.format(budget.consumedAmount),
+        Reste: money.format(budget.remainingAmount),
+        Utilisation: formatPercent(budget.utilization)
+      }));
+    }
+    if (module === "payroll") {
+      return expenseOverview.recentPayrollRuns.map((run) => ({
+        Run: run.title,
+        Departement: run.department ?? "RH",
+        Période: run.periodName ?? "Période non definie",
+        Statut: run.status,
+        Net: money.format(run.totalNet)
+      }));
+    }
+    return [];
+  }
+
+  const activeFinanceModuleRows = activeModule ? getFinanceModuleReportRows(activeModule).filter(matchesFinanceSearch) : [];
+  const filteredRevenueParents = revenueOverview.parentDebtAnalytics.filter((row) => matchesFinanceSearch({
+    Nom: row.parentName,
+    Dette: row.totalDebt,
+    Paye: row.totalPaid,
+    Retard: row.overdueInstallments,
+    Score: row.paymentBehaviorScore
+  }));
+  const filteredRevenueClasses = revenueOverview.classAnalytics.filter((row) => matchesFinanceSearch({
+    Classe: row.className,
+    Attendu: row.expected,
+    Encaisse: row.collected,
+    Dette: row.debt,
+    Taux: row.collectionRate
+  }));
+  const filteredErpExpenses = expenseOverview.recentExpenses.filter((expense) => matchesFinanceSearch({
+    Titre: expense.title,
+    Departement: expense.department,
+    Categorie: expense.categoryName,
+    Statut: expense.status,
+    Montant: expense.amount
+  }));
+  const filteredErpBudgets = expenseOverview.budgets.filter((budget) => matchesFinanceSearch({
+    Budget: budget.name,
+    Departement: budget.department,
+    Période: budget.periodName,
+    Categorie: budget.categoryName ?? "Global",
+    Statut: budget.status,
+    Utilisation: budget.utilization
+  }));
+  const filteredErpPayrollRuns = expenseOverview.recentPayrollRuns.filter((run) => matchesFinanceSearch({
+    Run: run.title,
+    Departement: run.department ?? "RH",
+    Période: run.periodName ?? "Période non definie",
+    Statut: run.status,
+    Net: run.totalNet
+  }));
+
+  function buildFinanceModuleReportHtml(module: FinanceErpModule) {
+    const meta = activeModuleMeta;
+    const rows = getFinanceModuleReportRows(module).filter(matchesFinanceSearch);
+    const generatedAt = new Date();
+    const headers = Object.keys(rows[0] ?? { Information: "Aucune ligne" });
+    const bodyRows = rows.length
+      ? rows.map((row) => `<tr>${headers.map((header) => `<td>${plainPrintText(String(row[header] ?? ""))}</td>`).join("")}</tr>`).join("")
+      : `<tr><td colspan="${headers.length}">Aucune donnee ne correspond au filtre actuel.</td></tr>`;
+    const logoSrc = plainPrintText(new URL(schoolBranding.logoSrc, window.location.href).toString());
+    return `<!doctype html><html><head><meta charset="utf-8" /><title>${plainPrintText(meta?.title ?? "Rapport financier")}</title><style>
+      @page{size:A4;margin:14mm}body{font-family:Inter,Arial,sans-serif;color:#0f172a}header{display:flex;align-items:center;justify-content:space-between;border-bottom:3px solid ${schoolBranding.colors.primary};padding-bottom:14px;margin-bottom:18px}.brand{display:flex;align-items:center;gap:12px}.logo{width:58px;height:58px;object-fit:contain}.kicker{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#64748b}.title{font-size:22px;font-weight:800;margin:2px 0}.meta{text-align:right;font-size:12px;color:#475569}.scope{margin:12px 0 18px;padding:10px 12px;border:1px solid #cbd5e1;background:#f8fafc;font-size:12px}table{width:100%;border-collapse:collapse;font-size:11px}th{background:#0f172a;color:white;text-align:left;padding:8px;border:1px solid #0f172a}td{padding:7px;border:1px solid #cbd5e1;vertical-align:top}footer{margin-top:18px;border-top:1px solid #cbd5e1;padding-top:8px;font-size:10px;color:#64748b}</style></head><body>
+      <header><div class="brand"><img class="logo" src="${logoSrc}" alt="Logo ${plainPrintText(schoolBranding.schoolName)}" /><div><div class="kicker">${plainPrintText(schoolBranding.appName)}</div><div class="title">${plainPrintText(meta?.title ?? "Rapport financier")}</div><div>${plainPrintText(schoolBranding.schoolName)}</div></div></div><div class="meta">Document administratif<br/>${plainPrintText(generatedAt.toLocaleString(locale))}<br/>${plainPrintText(schoolBranding.shortName)}</div></header>
+      <div class="scope">${plainPrintText(meta?.subtitle ?? "")}<br/>Filtre : ${plainPrintText(financeModuleSearch.trim() || "Toutes les données")}</div>
+      <table><thead><tr>${headers.map((header) => `<th>${plainPrintText(header)}</th>`).join("")}</tr></thead><tbody>${bodyRows}</tbody></table>
+      <footer>Rapport genere depuis EduPay avec les données visibles au moment de l'impression.</footer>
+    </body></html>`;
+  }
+
+  function printFinanceModuleReport(module: FinanceErpModule) {
+    printHtmlDocument(buildFinanceModuleReportHtml(module));
+  }
+
+  function exportFinanceModuleExcel(module: FinanceErpModule) {
+    const meta = activeModuleMeta;
+    exportWorkbook(`${module}-finance-${new Date().toISOString().slice(0, 10)}`, [
+      {
+        name: "Rapport",
+        rows: getFinanceModuleReportRows(module).filter(matchesFinanceSearch)
+      },
+      {
+        name: "Portee",
+        rows: [{
+          Module: meta?.title ?? module,
+          Filtre: financeModuleSearch || "Toutes les données",
+          Generation: new Date().toLocaleString(locale),
+          Lignes: getFinanceModuleReportRows(module).filter(matchesFinanceSearch).length
+        }]
+      }
+    ]);
+  }
+
+  const erpModules: Array<{
+    id: FinanceErpModule;
+    title: string;
+    description: string;
+    metric: string;
+    signal: string;
+    icon: typeof WalletCards;
+    tone: string;
+  }> = [
+    {
+      id: "health",
+      title: L("Santé financière", "Financial health"),
+      description: L("Score global, marge, liquidité, dette et pression des alertes.", "Global score, margin, liquidity, debt and alert pressure."),
+      metric: `${healthScore.toFixed(1)}/100`,
+      signal: healthLabel,
+      icon: Gauge,
+      tone: "border-emerald-400/20 bg-emerald-500/10 text-emerald-200"
+    },
+    {
+      id: "forecast",
+      title: L("Prévision à 30 jours", "30-day forecast"),
+      description: L("Trésorerie projetée, risque, autonomie financière et tendance revenus/dépenses.", "Projected cash, risk, runway and revenue/expense trend."),
+      metric: money.format(predictedCash30),
+      signal: `${riskIndex.toFixed(1)}% risque`,
+      icon: BrainCircuit,
+      tone: "border-cyan-400/20 bg-cyan-500/10 text-cyan-200"
+    },
+    {
+      id: "revenue",
+      title: L("Revenus & parents", "Revenue & parents"),
+      description: L("Encaissements, dettes, réductions, classes et parents sensibles.", "Collections, debts, discounts, classes and sensitive parent accounts."),
+      metric: money.format(revenueOverview.collectedRevenue),
+      signal: L(`${revenueOverview.overdueParents} parent(s) en retard`, `${revenueOverview.overdueParents} overdue parents`),
+      icon: WalletCards,
+      tone: "border-brand-300/20 bg-brand-500/10 text-brand-100"
+    },
+    {
+      id: "scholarships",
+      title: L("Bourses", "Scholarships"),
+      description: L("Toutes les réductions accordées : familiales, individuelles, plans, arrangements et bourses.", "All granted réductions: family, individual, plans, arrangements and scholarships."),
+      metric: money.format(scholarshipTotal),
+      signal: L(`${scholarshipCount} reduction(s)`, `${scholarshipCount} reduction(s)`),
+      icon: HandCoins,
+      tone: "border-cyan-300/20 bg-cyan-500/10 text-cyan-100"
+    },
+    {
+      id: "expenses",
+      title: L("Dépenses", "Expenses"),
+      description: L("Charges, pièces récentes, départements consommateurs et contrôles.", "Charges, recent documents, consuming departments and controls."),
+      metric: money.format(expenseOverview.expenses.totalExpenses),
+      signal: L(`${expenseOverview.expenses.pendingExpenses} en attente`, `${expenseOverview.expenses.pendingExpenses} pending`),
+      icon: ClipboardList,
+      tone: "border-red-400/20 bg-red-500/10 text-red-200"
+    },
+    {
+      id: "budgets",
+      title: L("Budgets", "Budgets"),
+      description: L("Utilisation par enveloppe, seuils critiques et dépassements.", "Envelope usage, critical thresholds and overruns."),
+      metric: String(expenseOverview.budgets.length),
+      signal: L(`${expenseOverview.budgetAlerts.length} alerte(s)`, `${expenseOverview.budgetAlerts.length} alert(s)`),
+      icon: Target,
+      tone: "border-amber-300/20 bg-amber-500/10 text-amber-100"
+    },
+    {
+      id: "payroll",
+      title: L("Paie et passifs", "Payroll & liabilities"),
+      description: L("Masse salariale, obligations RH, fournisseurs et dette structurelle.", "Payroll mass, HR obligations, suppliers and structural debt."),
+      metric: money.format(expenseOverview.payroll.totalPayroll),
+      signal: money.format(totalInstitutionalLiabilities),
+      icon: Scale,
+      tone: "border-violet-300/20 bg-violet-500/10 text-violet-100"
+    }
+  ];
+
+  return (
+    <div className="edupay-finance-erp space-y-6 pb-10 animate-fadeInUp">
+      {expenseOverviewNotice && (
+        <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-50">
+          {expenseOverviewNotice}
+        </div>
+      )}
+      <section className="relative overflow-hidden rounded-[2rem] border border-brand-300/15 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_30%),radial-gradient(circle_at_top_right,rgba(59,130,246,0.18),transparent_35%),linear-gradient(160deg,rgba(15,23,42,0.98),rgba(2,6,23,0.96))] px-6 py-6 shadow-2xl">
+        <div className="absolute inset-y-0 right-0 w-1/3 bg-[linear-gradient(90deg,transparent,rgba(125,232,255,0.07))]" />
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div className="max-w-4xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand-200">{L("Tableau financier EduPay 2026-2027", "EduPay Financial overview 2026-2027")}</p>
+            <h1 className="mt-2 font-display text-3xl font-bold text-white">{L("Pilotage unifié des revenus, des dépenses, de la paie et de la trésorerie", "Unified control of revenue, expenses, payroll and cash")}</h1>
+            <p className="mt-3 max-w-3xl text-sm text-ink-dim">
+              {L(
+                "EduPay devient un écosystème financier scolaire complet : encaissements, dettes des parents, dépenses institutionnelles, budgétisation, workflow d'approbation, paie et intelligence de trésorerie, tout en conservant le cadre de facturation parentale.",
+                "EduPay becomes a complete school finance ecosystem: collections, parent debts, institutional expenses, budgeting, approval workflow, payroll and cash-flow intelligence while preserving parent billing logic."
+              )}
+            </p>
+            <div className="mt-5 flex flex-wrap gap-3 text-xs">
+              <span className="rounded-full border border-emerald-500/25 bg-emerald-500/10 px-3 py-1.5 font-semibold text-emerald-200">{L("Continuité complète de la facturation parentale", "Full continuity of parent billing")}</span>
+              <span className="rounded-full border border-cyan-500/25 bg-cyan-500/10 px-3 py-1.5 font-semibold text-cyan-200">{L("Double moteur : revenus et dépenses", "Dual revenue + expense engine")}</span>
+              <span className="rounded-full border border-amber-500/25 bg-amber-500/10 px-3 py-1.5 font-semibold text-amber-200">{L("Workflow d'approbation hiérarchique", "Hierarchical approval workflow")}</span>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-cyan-500/25 bg-cyan-500/10 px-4 py-3 backdrop-blur-sm">
+              <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Période active</p>
+              <p className="mt-1 font-display text-2xl font-bold text-white">{revenueOverview.academicYear.name}</p>
+              <p className="mt-1 text-xs text-cyan-100">Mise à jour {new Date().toLocaleDateString(locale)}</p>
+            </div>
+            <div className="rounded-2xl border border-brand-500/25 bg-brand-500/10 px-4 py-3 backdrop-blur-sm">
+              <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Santé opérationnelle</p>
+              <p className="mt-1 font-display text-2xl font-bold text-white">{money.format(expenseOverview.cashflow.operationalBalance)}</p>
+              <p className="mt-1 text-xs text-brand-100">Cash disponible après dépenses et paie</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+        <MetricCard
+          label="Encaissements"
+          value={money.format(revenueOverview.collectedRevenue)}
+          detail={`${formatPercent(revenueOverview.paymentCompletionRate)} du net attendu`}
+          icon={WalletCards}
+          tone="border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+        />
+        <MetricCard
+          label="Bourses"
+          value={money.format(scholarshipTotal)}
+          detail={`${scholarshipCount} réduction(s), dont ${manualScholarshipCount} accord(s) manuel(s)`}
+          icon={HandCoins}
+          tone="border-cyan-500/30 bg-cyan-500/10 text-cyan-300"
+        />
+        <MetricCard
+          label="Dépenses approuvées"
+          value={money.format(expenseOverview.expenses.totalExpenses)}
+          detail={`${expenseOverview.expenses.approvedExpenses} dépenses validées`}
+          icon={BadgeDollarSign}
+          tone="border-red-500/30 bg-red-500/10 text-red-300"
+        />
+        <MetricCard
+          label="Trésorerie disponible"
+          value={money.format(expenseOverview.cashflow.availableCash)}
+          detail={`${formatPercent(Math.max(0, 100 - spendCoverage))} de marge sur les encaissements`}
+          icon={Landmark}
+          tone="border-brand-500/30 bg-brand-500/10 text-brand-200"
+        />
+        <MetricCard
+          label="Masse salariale"
+          value={money.format(expenseOverview.payroll.totalPayroll)}
+          detail={`${expenseOverview.payroll.activeProfiles} profils salariés actifs`}
+          icon={TrendingUp}
+          tone="border-cyan-500/30 bg-cyan-500/10 text-cyan-300"
+        />
+        <MetricCard
+          label="Passifs"
+          value={money.format(expenseOverview.liabilities.supplierDebt + expenseOverview.liabilities.payrollLiability)}
+          detail={`${expenseOverview.expenses.pendingApprovalSteps} étapes d'approbation en attente`}
+          icon={ShieldAlert}
+          tone="border-amber-500/30 bg-amber-500/10 text-amber-300"
+        />
+      </section>
+
+      <section className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+        <div className="glass min-w-0 border border-white/10 p-4 shadow-lg sm:p-5">
+          <div className="flex min-w-0 items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-200">Indice scientifique</p>
+              <h2 className="mt-2 font-display text-2xl font-bold text-white">Santé financière de l'école</h2>
+              <p className="mt-2 text-sm text-ink-dim">
+                Score composite sur revenus, dettes, cash, passifs, alertes et comportement parent.
+              </p>
+            </div>
+            <div className="flex shrink-0 flex-wrap justify-end gap-2">
+              <button type="button" onClick={printFinancialStateReport} className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-100 transition hover:bg-cyan-500/20">
+                <Printer className="h-4 w-4" /> PDF
+              </button>
+              <button type="button" onClick={exportFinancialStateExcel} className="inline-flex items-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-100 transition hover:bg-emerald-500/20">
+                <FileSpreadsheet className="h-4 w-4" /> Excel
+              </button>
+              <Activity className={`h-7 w-7 ${healthTone}`} />
+            </div>
+          </div>
+          <div className="mt-5 grid gap-4 sm:grid-cols-[150px_1fr]">
+            <div className="rounded-2xl border border-white/10 bg-slate-950/50 p-4 text-center">
+              <p className={`font-display text-4xl font-bold ${healthTone}`}>{healthScore.toFixed(1)}</p>
+              <p className="mt-1 text-xs uppercase tracking-[0.16em] text-ink-dim">sur 100</p>
+              <p className="mt-3 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-white">{healthLabel}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ScienceIndicator label="Marge opérationnelle" value={formatPercent(operatingMargin)} detail="Profit/perte rapporté aux encaissements." tone={operatingMargin >= 0 ? "text-emerald-300" : "text-red-300"} />
+              <ScienceIndicator label="Couverture liquidité" value={formatPercent(liquidityCoverage)} detail="Cash disponible face aux passifs connus." tone={liquidityCoverage >= 100 ? "text-emerald-300" : "text-amber-300"} />
+              <ScienceIndicator label="Risque global" value={formatPercent(riskIndex)} detail="Inverse du score de santé financière." tone={riskIndex <= 30 ? "text-emerald-300" : riskIndex <= 55 ? "text-amber-300" : "text-red-300"} />
+              <ScienceIndicator label="Cash 30 jours" value={money.format(predictedCash30)} detail="Projection : cash + revenus prévus - charges prévues." tone={predictedCash30 >= 0 ? "text-emerald-300" : "text-red-300"} />
+            </div>
+          </div>
+        </div>
+
+        <div className="glass min-w-0 border border-white/10 p-4 shadow-lg sm:p-5">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-brand-200">Modules de pilotage</p>
+              <h2 className="mt-2 font-display text-2xl font-bold text-white">Ouvrir une analyse ciblee</h2>
+            </div>
+            <span className="rounded-full border border-cyan-300/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-100">
+              Dashboard principal
+            </span>
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {erpModules.map((module) => {
+              const Icon = module.icon;
+              return (
+                <button
+                  key={module.id}
+                  type="button"
+                  onClick={() => setActiveModule(module.id)}
+                  className="group min-w-0 rounded-xl border border-white/10 bg-slate-950/45 p-4 text-left transition hover:border-brand-300/30 hover:bg-white/[0.07]"
+                >
+                  <span className="flex min-w-0 items-start gap-3">
+                    <span className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${module.tone}`}>
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-display text-lg font-bold text-white">{module.title}</span>
+                      <span className="mt-1 block text-xs leading-relaxed text-ink-dim">{module.description}</span>
+                    </span>
+                  </span>
+                  <span className="mt-4 flex min-w-0 items-center justify-between gap-3">
+                    <span className="min-w-0">
+                      <span className="block font-mono text-sm font-bold text-white">{module.metric}</span>
+                      <span className="block text-xs text-ink-dim">{module.signal}</span>
+                    </span>
+                    <ArrowUpRight className="h-4 w-4 shrink-0 text-brand-200 transition group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section className="hidden grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <div className="card glass border border-brand-500/10 shadow-lg">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h2 className="font-display text-2xl font-bold text-white">Command center financier</h2>
+              <p className="mt-1 text-sm text-ink-dim">
+                Vue instantanee des revenus, sorties de cash, dettes institutionnelles et alertes budgetaires.
+              </p>
+            </div>
+            <BarChart3 className="h-6 w-6 text-brand-200" />
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {[
+              ["Profit / perte", money.format(expenseOverview.cashflow.profitLoss), expenseOverview.cashflow.profitLoss >= 0 ? "text-emerald-300" : "text-red-300"],
+              ["Dette fournisseurs", money.format(expenseOverview.liabilities.supplierDebt), "text-amber-200"],
+              ["Passif salarial", money.format(expenseOverview.liabilities.payrollLiability), "text-cyan-200"],
+              ["Dettes parents", money.format(revenueOverview.totalDebt), "text-red-300"],
+              ["Budgets sous tension", String(expenseOverview.budgetAlerts.length), "text-white"],
+              ["Alertes revenus", String(revenueOverview.activeAlerts), "text-brand-100"]
+            ].map(([label, value, color]) => (
+              <div key={label} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">{label}</p>
+                <p className={`mt-2 font-display text-xl font-bold ${color}`}>{value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-5 grid gap-3 lg:grid-cols-3">
+            <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Recettes</p>
+              <p className="mt-2 text-2xl font-bold text-white">{money.format(revenueOverview.expectedRevenue)}</p>
+              <p className="mt-1 text-sm text-emerald-100">Attendu annuel net avec réductions et accords.</p>
+            </div>
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Dépenses</p>
+              <p className="mt-2 text-2xl font-bold text-white">{money.format(expenseOverview.expenses.totalExpenses)}</p>
+              <p className="mt-1 text-sm text-red-100">Opérations, achats, maintenance et paie inclus.</p>
+            </div>
+            <div className="rounded-2xl border border-brand-500/20 bg-brand-500/10 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Cash disponible</p>
+              <p className="mt-2 text-2xl font-bold text-white">{money.format(expenseOverview.cashflow.availableCash)}</p>
+              <p className="mt-1 text-sm text-brand-100">Solde opérationnel mobilisable en temps réel.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="card glass border border-white/10 shadow-lg">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-2xl font-bold text-white">Workflow d'approbation</h2>
+              <p className="mt-1 text-sm text-ink-dim">Validation, approbation administrative et arbitrage propriétaire si nécessaire.</p>
+            </div>
+            <CheckCircle2 className="h-6 w-6 text-emerald-300" />
+          </div>
+          <div className="mt-5 space-y-3">
+            {[
+              ["1", "Officier financier", "Contrôle catégorie, budget, pièce justificative et période comptable."],
+              ["2", "Administration", "Autorise la sortie de fonds et la cohérence départementale."],
+              ["3", "Owner / Direction", "Valide les dépenses sensibles, urgentes ou stratégiques."]
+            ].map(([step, label, detail]) => (
+              <div key={step} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <div className="flex gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-brand-400/30 bg-brand-500/10 text-sm font-bold text-brand-100">{step}</span>
+                  <div>
+                    <p className="font-semibold text-white">{label}</p>
+                    <p className="mt-1 text-sm text-ink-dim">{detail}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Dépenses en attente</p>
+              <p className="mt-2 text-2xl font-bold text-white">{expenseOverview.expenses.pendingExpenses}</p>
+            </div>
+            <div className="rounded-2xl border border-brand-500/20 bg-brand-500/10 p-4">
+              <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Étapes à traiter</p>
+              <p className="mt-2 text-2xl font-bold text-white">{expenseOverview.expenses.pendingApprovalSteps}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="hidden grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+        <div className="card glass border border-white/10 shadow-lg">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-2xl font-bold text-white">Cashflow et performance mensuelle</h2>
+              <p className="mt-1 text-sm text-ink-dim">Comparaison recettes vs dépenses pour lire la marge opérationnelle de l'institution.</p>
+            </div>
+            <CalendarClock className="h-6 w-6 text-brand-200" />
+          </div>
+          <div className="mt-4 h-80 rounded-2xl border border-white/10 bg-slate-950/30 p-3">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={performanceChart}>
+                <CartesianGrid stroke="rgba(148,163,184,0.14)" vertical={false} />
+                <XAxis dataKey="label" stroke="#94a3b8" tickLine={false} axisLine={false} />
+                <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#020617", border: "1px solid rgba(125,232,255,0.18)", borderRadius: 16 }}
+                  formatter={(value: number) => money.format(Number(value))}
+                />
+                <Bar dataKey="revenue" radius={[10, 10, 0, 0]} fill="#22c55e" />
+                <Bar dataKey="expenses" radius={[10, 10, 0, 0]} fill="#f97316" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Revenus comptabilisés</p>
+              <p className="mt-2 text-xl font-bold text-emerald-300">{money.format(expenseOverview.revenue.totalRevenue)}</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Charges engagées</p>
+              <p className="mt-2 text-xl font-bold text-red-300">{money.format(expenseOverview.expenses.totalExpenses)}</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Profit / perte</p>
+              <p className={`mt-2 text-xl font-bold ${expenseOverview.cashflow.profitLoss >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                {money.format(expenseOverview.cashflow.profitLoss)}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="card glass border border-white/10 shadow-lg">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-2xl font-bold text-white">Analyse des dépenses</h2>
+              <p className="mt-1 text-sm text-ink-dim">Postes dominants et ventilation par catégorie pour détecter les poches de consommation.</p>
+            </div>
+            <AlertTriangle className="h-6 w-6 text-amber-300" />
+          </div>
+          <div className="mt-4 h-80 rounded-2xl border border-white/10 bg-slate-950/30 p-3">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={expenseOverview.categorySpending.slice(0, 6)}>
+                <CartesianGrid stroke="rgba(148,163,184,0.14)" vertical={false} />
+                <XAxis dataKey="categoryName" stroke="#94a3b8" tickLine={false} axisLine={false} interval={0} angle={-15} textAnchor="end" height={70} />
+                <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#020617", border: "1px solid rgba(125,232,255,0.18)", borderRadius: 16 }}
+                  formatter={(value: number) => money.format(Number(value))}
+                />
+                <Area type="monotone" dataKey="total" stroke="#38bdf8" fill="rgba(56,189,248,0.35)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="mt-4 space-y-3">
+            {expenseOverview.departmentSpending.slice(0, 5).map((entry) => (
+              <div key={entry.department} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-semibold text-white">{entry.department}</p>
+                  <p className="font-mono text-sm font-bold text-cyan-200">{money.format(entry.total)}</p>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+                  <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-cyan-400" style={{ width: barWidth((entry.total / Math.max(expenseOverview.expenses.totalExpenses, 1)) * 100) }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="hidden grid gap-6 xl:grid-cols-[1fr_1fr]">
+        <div className="card glass border border-white/10 shadow-lg">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-2xl font-bold text-white">Budgets et alertes de consommation</h2>
+              <p className="mt-1 text-sm text-ink-dim">Suivi planned vs actual, seuils critiques et depassements par departement.</p>
+            </div>
+            <CirclePercent className="h-6 w-6 text-cyan-300" />
+          </div>
+          <div className="mt-5 space-y-3">
+            {expenseOverview.budgets.map((budget) => (
+              <div key={budget.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-white">{budget.name}</p>
+                    <p className="mt-1 text-xs text-ink-dim">{budget.department} • {budget.periodName} • {budget.categoryName ?? "Global"}</p>
+                  </div>
+                  <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${budgetStatusTone[budget.status] ?? budgetStatusTone.ACTIVE}`}>
+                    {budget.status}
+                  </span>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-3 text-sm">
+                  <div>
+                    <p className="text-ink-dim">Prevu</p>
+                    <p className="font-semibold text-white">{money.format(budget.plannedAmount)}</p>
+                  </div>
+                  <div>
+                    <p className="text-ink-dim">Consomme</p>
+                    <p className="font-semibold text-amber-200">{money.format(budget.consumedAmount)}</p>
+                  </div>
+                  <div>
+                    <p className="text-ink-dim">Reste</p>
+                    <p className="font-semibold text-emerald-300">{money.format(budget.remainingAmount)}</p>
+                  </div>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+                  <div className={`h-full rounded-full ${budget.utilization >= 100 ? "bg-gradient-to-r from-red-500 to-orange-400" : "bg-gradient-to-r from-brand-500 to-cyan-400"}`} style={{ width: barWidth(budget.utilization) }} />
+                </div>
+                <p className="mt-2 text-xs text-ink-dim">Utilisation: {formatPercent(budget.utilization)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          <div className="card glass border border-white/10 shadow-lg">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-display text-2xl font-bold text-white">Paie et obligations RH</h2>
+                <p className="mt-1 text-sm text-ink-dim">Profils salariaux, historiques de run et engagements restant a payer.</p>
+              </div>
+              <TrendingUp className="h-6 w-6 text-brand-100" />
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Profils</p>
+                <p className="mt-2 text-xl font-bold text-white">{expenseOverview.payroll.activeProfiles}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Runs</p>
+                <p className="mt-2 text-xl font-bold text-white">{expenseOverview.payroll.runCount}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Passif salarial</p>
+                <p className="mt-2 text-xl font-bold text-cyan-300">{money.format(expenseOverview.payroll.salaryLiability)}</p>
+              </div>
+            </div>
+            <div className="mt-4 space-y-3">
+              {expenseOverview.recentPayrollRuns.map((run) => (
+                <div key={run.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-white">{run.title}</p>
+                      <p className="mt-1 text-xs text-ink-dim">{run.department ?? "RH"} • {run.periodName ?? "Période non definie"}</p>
+                    </div>
+                    <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${payrollStatusTone[run.status] ?? payrollStatusTone.DRAFT}`}>
+                      {run.status}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-sm">
+                    <span className="text-ink-dim">Net a payer</span>
+                    <span className="font-mono font-bold text-white">{money.format(run.totalNet)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="card glass border border-white/10 shadow-lg">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="font-display text-2xl font-bold text-white">Dépenses recentes</h2>
+                <p className="mt-1 text-sm text-ink-dim">Pieces a valider, achats traces et statut d'execution comptable.</p>
+              </div>
+              <AlertTriangle className="h-6 w-6 text-amber-300" />
+            </div>
+            <div className="mt-5 space-y-3">
+              {expenseOverview.recentExpenses.map((expense) => (
+                <div key={expense.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-white">{expense.title}</p>
+                      <p className="mt-1 text-xs text-ink-dim">{expense.department} • {expense.categoryName}</p>
+                    </div>
+                    <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${expenseStatusTone[expense.status] ?? expenseStatusTone.PENDING}`}>
+                      {expense.status}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex items-center justify-between text-sm">
+                    <span className="text-ink-dim">Montant</span>
+                    <span className="font-mono font-bold text-white">{money.format(expense.amount)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="hidden grid gap-6 xl:grid-cols-[1fr_1fr]">
+        <div className="card glass border border-brand-500/10 shadow-lg">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-2xl font-bold text-white">Intelligence revenus et dettes parents</h2>
+              <p className="mt-1 text-sm text-ink-dim">Le moteur tuition existant reste intact et s'etend maintenant a la lecture globale de sante financiere.</p>
+            </div>
+            <ShieldAlert className="h-6 w-6 text-red-300" />
+          </div>
+          <div className="mt-5 space-y-3">
+            {revenueOverview.parentDebtAnalytics.slice(0, 5).map((row) => (
+              <div key={row.parentId} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-white">{row.parentName}</p>
+                    <p className="mt-1 text-xs text-ink-dim">{row.overdueInstallments} échéances en retard</p>
+                  </div>
+                  <span className="rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-xs font-semibold text-red-200">
+                    {money.format(row.totalDebt)}
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3 text-sm">
+                  <div>
+                    <p className="text-ink-dim">Paye</p>
+                    <p className="font-semibold text-emerald-300">{money.format(row.totalPaid)}</p>
+                  </div>
+                  <div>
+                    <p className="text-ink-dim">Report historique</p>
+                    <p className="font-semibold text-amber-300">{money.format(row.carriedOverDebt)}</p>
+                  </div>
+                  <div>
+                    <p className="text-ink-dim">Score comportemental</p>
+                    <p className="font-semibold text-cyan-300">{formatPercent(row.paymentBehaviorScore)}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card glass border border-white/10 shadow-lg">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-2xl font-bold text-white">Analytique scolaire et réductions</h2>
+              <p className="mt-1 text-sm text-ink-dim">Encaissement par classe, charge de reduction et pression dette par segment academique.</p>
+            </div>
+            <HandCoins className="h-6 w-6 text-cyan-300" />
+          </div>
+          <div className="mt-5 space-y-3">
+            {revenueOverview.classAnalytics.slice(0, 4).map((row) => (
+              <div key={row.className} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-white">{row.className}</p>
+                    <p className="text-xs text-ink-dim">{row.students} élèves suivis</p>
+                  </div>
+                  <p className="font-mono font-bold text-emerald-300">{money.format(row.collected)}</p>
+                </div>
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+                  <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-cyan-400" style={{ width: barWidth(row.collectionRate) }} />
+                </div>
+                <div className="mt-3 grid gap-3 sm:grid-cols-3 text-sm">
+                  <div>
+                    <p className="text-ink-dim">Couverture</p>
+                    <p className="font-semibold text-white">{formatPercent(row.collectionRate)}</p>
+                  </div>
+                  <div>
+                    <p className="text-ink-dim">Dette</p>
+                    <p className="font-semibold text-red-300">{money.format(row.debt)}</p>
+                  </div>
+                  <div>
+                    <p className="text-ink-dim">Reductions</p>
+                    <p className="font-semibold text-cyan-300">{money.format(row.réductions)}</p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 rounded-2xl border border-cyan-500/20 bg-cyan-500/10 p-4">
+            <p className="text-xs uppercase tracking-[0.14em] text-ink-dim">Période d'analyse réductions</p>
+            <p className="mt-2 font-display text-2xl font-bold text-white">{revenueOverview.reductionStatistics.periodLabel}</p>
+            <p className="mt-1 text-sm text-cyan-100">{revenueOverview.reductionStatistics.reductionCount} reduction(s) tracee(s) pour {money.format(revenueOverview.reductionStatistics.totalReductions)}.</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="hidden card glass border border-brand-500/10 shadow-lg">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="font-display text-2xl font-bold text-white">Cadre officiel de facturation parentale</h2>
+            <p className="mt-1 text-sm text-ink-dim">
+              Le referentiel KCS reste une logique metier interne qui structure automatiquement la facturation des parents lors des inscriptions, reinscriptions et suivis multi-enfants.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-ink-dim">
+            Le dashboard ERP n'expose pas les cas d'inscription en detail; il consolide seulement leurs effets sur les encaissements, ajustements, réductions et échéances.
+          </div>
+        </div>
+        <div className="mt-6 grid gap-4 lg:grid-cols-3">
+          <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-brand-300">Role du referentiel</p>
+            <p className="mt-3 text-sm text-ink-dim">
+              Il alimente les calculs de tuition, réductions, échéances et reports sans surcharger l'interface opérationnelle.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-brand-300">Portee parentale</p>
+            <p className="mt-3 text-sm text-ink-dim">
+              La logique couvre les foyers avec un ou plusieurs enfants, puis consolide automatiquement les obligations de paiement au niveau parent.
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-brand-300">Vision ERP</p>
+            <p className="mt-3 text-sm text-ink-dim">
+              Le cockpit conserve une vue de pilotage: dettes, encaissements, réductions et impacts sur la trésorerie, sans exposer la mécanique d'inscription.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {activeModule && activeModuleMeta && (
+        <FinanceErpDialog title={activeModuleMeta.title} subtitle={activeModuleMeta.subtitle} onClose={() => setActiveModule(null)}>
+          {activeModule !== "scholarships" && (
+            <div className="mb-4 rounded-2xl border border-cyan-300/20 bg-slate-950/45 p-4">
+              <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                <label className="min-w-0 flex-1 space-y-1.5">
+                  <span className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-100">Recherche du module</span>
+                  <input
+                    value={financeModuleSearch}
+                    onChange={(event) => setFinanceModuleSearch(event.target.value)}
+                    placeholder="Rechercher par parent, classe, budget, departement, statut, montant ou indicateur"
+                    className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-300/40"
+                  />
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => printFinanceModuleReport(activeModule)} className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/15">
+                    <Printer className="h-4 w-4" /> PDF / Imprimer
+                  </button>
+                  <button type="button" onClick={() => exportFinanceModuleExcel(activeModule)} className="inline-flex items-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/15">
+                    <FileSpreadsheet className="h-4 w-4" /> Excel
+                  </button>
+                </div>
+              </div>
+              <p className="mt-3 text-xs text-ink-dim">{activeFinanceModuleRows.length} ligne(s) retenue(s) pour le rapport.</p>
+            </div>
+          )}
+          {activeModule === "health" && (
+            <div className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
+              <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-5">
+                <p className="text-xs uppercase tracking-[0.16em] text-ink-dim">Diagnostic global</p>
+                <p className={`mt-3 font-display text-5xl font-bold ${healthTone}`}>{healthScore.toFixed(1)}</p>
+                <p className="mt-2 text-lg font-semibold text-white">{healthLabel}</p>
+                <p className="mt-3 text-sm leading-relaxed text-ink-dim">
+                  L'indice combine la performance de recouvrement, l'exposition aux dettes, la pression budgetaire, les alertes,
+                  la liquidite et le comportement de paiement des parents. Il donne une lecture rapide de la capacite de l'ecole
+                  a financer ses opérations sans tension excessive.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <ScienceIndicator label="Collection efficiency" value={formatPercent(revenueOverview.financialHealthIndicators.collectionEfficiency)} detail="Capacite a transformer le revenu attendu en cash reel." tone="text-emerald-300" />
+                <ScienceIndicator label="Debt exposure" value={formatPercent(revenueOverview.financialHealthIndicators.debtExposure)} detail="Poids des dettes parentales dans le revenu attendu." tone="text-red-300" />
+                <ScienceIndicator label="Reduction load" value={formatPercent(revenueOverview.financialHealthIndicators.reductionLoad)} detail="Impact des réductions sur le revenu net." tone="text-cyan-300" />
+                <ScienceIndicator label="Alert pressure" value={formatPercent(revenueOverview.financialHealthIndicators.alertPressure)} detail="Densite des alertes ouvertes dans le portefeuille parents." tone="text-amber-300" />
+                <ScienceIndicator label="Average behavior score" value={formatPercent(revenueOverview.financialHealthIndicators.averageBehaviorScore)} detail="Qualite moyenne de paiement des familles suivies." tone="text-brand-100" />
+                <ScienceIndicator label="Spend coverage" value={formatPercent(spendCoverage)} detail="Part des encaissements déjà consommée par les depenses." tone={spendCoverage <= 70 ? "text-emerald-300" : "text-amber-300"} />
+              </div>
+            </div>
+          )}
+
+          {activeModule === "forecast" && (
+            <div className="space-y-4">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <ScienceIndicator label="Revenus prevus" value={money.format(forecastRevenue)} detail="Moyenne mobile des derniers mois disponibles." tone="text-emerald-300" />
+                <ScienceIndicator label="Charges prevues" value={money.format(forecastExpenses)} detail="Projection des sorties reçurrentes." tone="text-red-300" />
+                <ScienceIndicator label="Cash projete J+30" value={money.format(predictedCash30)} detail="Trésorerie si la tendance continue." tone={predictedCash30 >= 0 ? "text-emerald-300" : "text-red-300"} />
+                <ScienceIndicator label="Runway" value={`${runwayMonths.toFixed(1)} mois`} detail="Mois couverts par le cash actuel." tone={runwayMonths >= 2 ? "text-emerald-300" : "text-amber-300"} />
+              </div>
+              <div className="h-80 rounded-2xl border border-white/10 bg-slate-950/35 p-3">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={performanceChart}>
+                    <CartesianGrid stroke="rgba(148,163,184,0.14)" vertical={false} />
+                    <XAxis dataKey="label" stroke="#94a3b8" tickLine={false} axisLine={false} />
+                    <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid rgba(125,232,255,0.18)", borderRadius: 12 }} formatter={(value: number) => money.format(Number(value))} />
+                    <Bar dataKey="revenue" radius={[8, 8, 0, 0]} fill="#22c55e" />
+                    <Bar dataKey="expenses" radius={[8, 8, 0, 0]} fill="#f97316" />
+                    <Bar dataKey="profitLoss" radius={[8, 8, 0, 0]} fill="#38bdf8" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+
+          {activeModule === "revenue" && (
+            <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+              <div className="space-y-3">
+                {filteredRevenueParents.slice(0, 8).map((row) => (
+                  <div key={row.parentId} className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-white">{row.parentName}</p>
+                        <p className="text-xs text-ink-dim">{row.overdueInstallments} échéance(s) en retard · score {formatPercent(row.paymentBehaviorScore)}</p>
+                      </div>
+                      <span className="rounded-full border border-red-500/20 bg-red-500/10 px-3 py-1 text-xs font-bold text-red-200">{money.format(row.totalDebt)}</span>
+                    </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-3 text-sm">
+                      <span className="text-emerald-300">Paye: {money.format(row.totalPaid)}</span>
+                      <span className="text-amber-300">Historique: {money.format(row.carriedOverDebt)}</span>
+                      <span className="text-cyan-300">Dette: {money.format(row.totalDebt)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-3">
+                {filteredRevenueClasses.slice(0, 8).map((row) => (
+                  <div key={row.className} className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-white">{row.className}</p>
+                        <p className="text-xs text-ink-dim">{row.students} élèves · attendu {money.format(row.expected)}</p>
+                      </div>
+                      <p className="font-mono text-sm font-bold text-emerald-300">{formatPercent(row.collectionRate)}</p>
+                    </div>
+                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+                      <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-cyan-400" style={{ width: barWidth(row.collectionRate) }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeModule === "scholarships" && (
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-cyan-300/20 bg-slate-950/45 p-4">
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-end xl:justify-between">
+                  <div className="grid flex-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-100">Recherche ciblée</span>
+                      <input
+                        value={scholarshipSearch}
+                        onChange={(event) => setScholarshipSearch(event.target.value)}
+                        placeholder="Famille, élève, bourse, source..."
+                        className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-300/40"
+                      />
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-100">Scope</span>
+                      <select value={scholarshipScopeFilter} onChange={(event) => setScholarshipScopeFilter(event.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-300/40">
+                        <option value="ALL">Tous les scopes</option>
+                        {scholarshipScopeOptions.map((scope) => <option key={scope} value={scope}>{formatCodeLabel(scope)}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-100">Origine</span>
+                      <select value={scholarshipOriginFilter} onChange={(event) => setScholarshipOriginFilter(event.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-300/40">
+                        <option value="ALL">Toutes les origines</option>
+                        {scholarshipOriginOptions.map((origin) => <option key={origin} value={origin}>{origin}</option>)}
+                      </select>
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-100">Date min</span>
+                      <input type="date" value={scholarshipDateFrom} onChange={(event) => setScholarshipDateFrom(event.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-300/40" />
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-100">Date max</span>
+                      <input type="date" value={scholarshipDateTo} onChange={(event) => setScholarshipDateTo(event.target.value)} className="w-full rounded-xl border border-white/10 bg-slate-950/60 px-3 py-2 text-sm text-white outline-none transition focus:border-cyan-300/40" />
+                    </label>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => printScholarshipReport(buildScholarshipReportHtml({
+                        rows: filteredScholarshipRows,
+                        title: "Etat filtré des bourses et réductions",
+                        scopeLabel: scholarshipFilterScopeLabel,
+                        locale
+                      }))}
+                      className="inline-flex items-center gap-2 rounded-xl border border-cyan-300/25 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-100 transition hover:bg-cyan-500/15"
+                    >
+                      <Printer className="h-4 w-4" /> PDF / Imprimer
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => exportScholarshipRowsExcel(`bourses-filtrées-${slugifyScholarshipFilename(scholarshipSearch || scholarshipOriginFilter || scholarshipScopeFilter)}-${new Date().toISOString().slice(0, 10)}`, filteredScholarshipRows, scholarshipFilterScopeLabel, locale)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/15"
+                    >
+                      <FileSpreadsheet className="h-4 w-4" /> Excel
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-ink-dim">
+                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">{filteredScholarshipRows.length} ligne(s) visibles</span>
+                  <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1">Montant visible: {money.format(filteredScholarshipTotal)}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setScholarshipSearch("");
+                      setScholarshipScopeFilter("ALL");
+                      setScholarshipOriginFilter("ALL");
+                      setScholarshipDateFrom("");
+                      setScholarshipDateTo("");
+                    }}
+                    className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 font-semibold text-white transition hover:bg-white/[0.08]"
+                  >
+                    Réinitialiser les filtres
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <ScienceIndicator label="Total bourses" value={money.format(scholarshipTotal)} detail="Somme de toutes les réductions du systeme." tone="text-cyan-300" />
+                <ScienceIndicator label="Lignes visibles" value={String(filteredScholarshipRows.length)} detail={`Sur ${scholarshipCount} reduction(s) analysee(s).`} tone="text-brand-100" />
+                <ScienceIndicator label="Accords manuels visibles" value={money.format(filteredManualScholarshipRows.reduce((sum, row) => sum + Number(row.amount || 0), 0))} detail={`${filteredManualScholarshipRows.length} arrangement(s) owner-parent.`} tone="text-emerald-300" />
+                <ScienceIndicator label="Impact revenu filtre" value={formatPercent(revenueOverview.expectedRevenue > 0 ? (filteredScholarshipTotal / revenueOverview.expectedRevenue) * 100 : 0)} detail="Poids du sous-ensemble visible sur le revenu attendu." tone="text-amber-300" />
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-2">
+                <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-100">Provenance par type</p>
+                  <div className="mt-4 space-y-3">
+                    {filteredReductionsByOrigin.map((entry) => (
+                      <div key={entry.origin}>
+                        <div className="flex items-center justify-between gap-3 text-sm">
+                          <span className="font-semibold text-white">{entry.origin}</span>
+                          <span className="font-mono text-cyan-200">{money.format(entry.amount)} · {entry.count}</span>
+                        </div>
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800">
+                          <div className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-brand-400" style={{ width: barWidth((entry.amount / Math.max(filteredScholarshipTotal, 1)) * 100) }} />
+                        </div>
+                      </div>
+                    ))}
+                    {filteredReductionsByOrigin.length === 0 ? <p className="text-sm text-ink-dim">Aucune provenance disponible pour ce filtre.</p> : null}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-slate-950/45 p-4">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-cyan-100">Ventilation comptable</p>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {filteredScholarshipsByScope.map((entry) => (
+                      <div key={entry.scope} className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                        <p className="text-xs uppercase tracking-[0.12em] text-ink-dim">{entry.scope}</p>
+                        <p className="mt-2 font-mono text-sm font-bold text-white">{money.format(entry.amount)}</p>
+                      </div>
+                    ))}
+                    {filteredScholarshipsByScope.length === 0 ? <p className="text-sm text-ink-dim sm:col-span-2">Aucune ventilation disponible pour ce filtre.</p> : null}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {filteredScholarshipRows.length === 0 && (
+                  <div className="rounded-xl border border-white/10 bg-slate-950/45 p-4 text-sm text-ink-dim">
+                    {L("Aucune reduction ne correspond au filtre courant.", "No reduction matches the current filter.")}
+                  </div>
+                )}
+                {filteredScholarshipRows.map((row) => (
+                  <div key={row.id} className="rounded-xl border border-cyan-300/20 bg-cyan-500/10 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.14em] text-cyan-100">{reductionOrigin(row.scope, row.title)}</p>
+                        <p className="mt-1 font-semibold text-white">{row.title}</p>
+                        <p className="mt-1 text-xs text-ink-dim">
+                          {row.parentName || L("Parent non precise", "Parent not specified")} · {row.studentName || L("Compte parent", "Parent account")}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2 text-[11px] font-semibold text-ink-dim">
+                          <span className="rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1">Scope: {formatCodeLabel(row.scope)}</span>
+                          <span className="rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1">Plan: {formatCodeLabel(row.paymentOptionType)}</span>
+                          <span className="rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1">Niveau: {formatCodeLabel(row.gradeGroup)}</span>
+                          {row.percentage ? <span className="rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1">Taux: {formatPercent(row.percentage)}</span> : null}
+                          <span className="rounded-full border border-white/10 bg-slate-950/45 px-2.5 py-1">Poids: {formatPercent((Number(row.amount || 0) / Math.max(filteredScholarshipTotal, 1)) * 100)}</span>
+                        </div>
+                        {row.effectiveDate ? <p className="mt-1 text-xs text-cyan-100">{new Date(row.effectiveDate).toLocaleDateString(locale)}</p> : null}
+                      </div>
+                      <span className="rounded-full border border-cyan-300/25 bg-slate-950/40 px-3 py-1 text-xs font-bold text-cyan-100">{money.format(row.amount)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeModule === "expenses" && (
+            <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+              <div className="h-80 rounded-2xl border border-white/10 bg-slate-950/35 p-3">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={expenseOverview.categorySpending.slice(0, 8)}>
+                    <CartesianGrid stroke="rgba(148,163,184,0.14)" vertical={false} />
+                    <XAxis dataKey="categoryName" stroke="#94a3b8" tickLine={false} axisLine={false} interval={0} angle={-15} textAnchor="end" height={76} />
+                    <YAxis stroke="#94a3b8" tickLine={false} axisLine={false} />
+                    <Tooltip contentStyle={{ backgroundColor: "#020617", border: "1px solid rgba(125,232,255,0.18)", borderRadius: 12 }} formatter={(value: number) => money.format(Number(value))} />
+                    <Area type="monotone" dataKey="total" stroke="#38bdf8" fill="rgba(56,189,248,0.34)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="space-y-3">
+                {filteredErpExpenses.slice(0, 8).map((expense) => (
+                  <div key={expense.id} className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-white">{expense.title}</p>
+                        <p className="text-xs text-ink-dim">{expense.department} · {expense.categoryName}</p>
+                      </div>
+                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${expenseStatusTone[expense.status] ?? expenseStatusTone.PENDING}`}>{expense.status}</span>
+                    </div>
+                    <p className="mt-3 font-mono text-sm font-bold text-white">{money.format(expense.amount)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {activeModule === "budgets" && (
+            <div className="space-y-3">
+              {filteredErpBudgets.map((budget) => (
+                <div key={budget.id} className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="font-semibold text-white">{budget.name}</p>
+                      <p className="text-xs text-ink-dim">{budget.department} · {budget.periodName} · {budget.categoryName ?? "Global"}</p>
+                    </div>
+                    <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${budgetStatusTone[budget.status] ?? budgetStatusTone.ACTIVE}`}>{budget.status}</span>
+                  </div>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-4 text-sm">
+                    <span className="text-ink-dim">Prevu: <b className="text-white">{money.format(budget.plannedAmount)}</b></span>
+                    <span className="text-ink-dim">Consomme: <b className="text-amber-200">{money.format(budget.consumedAmount)}</b></span>
+                    <span className="text-ink-dim">Reste: <b className="text-emerald-300">{money.format(budget.remainingAmount)}</b></span>
+                    <span className="text-ink-dim">Utilisation: <b className="text-cyan-200">{formatPercent(budget.utilization)}</b></span>
+                  </div>
+                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-800">
+                    <div className={`h-full rounded-full ${budget.utilization >= 100 ? "bg-gradient-to-r from-red-500 to-orange-400" : "bg-gradient-to-r from-brand-500 to-cyan-400"}`} style={{ width: barWidth(budget.utilization) }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeModule === "payroll" && (
+            <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                <ScienceIndicator label="Profils salaries" value={String(expenseOverview.payroll.activeProfiles)} detail="Employes actifs dans le perimetre RH financier." />
+                <ScienceIndicator label="Masse salariale" value={money.format(expenseOverview.payroll.totalPayroll)} detail="Total net traite dans les runs de paie." tone="text-brand-100" />
+                <ScienceIndicator label="Passif salarial" value={money.format(expenseOverview.payroll.salaryLiability)} detail="Obligation RH restant a couvrir." tone="text-amber-300" />
+                <ScienceIndicator label="Passifs institutionnels" value={money.format(totalInstitutionalLiabilities)} detail="Fournisseurs, paie et obligations cumulees." tone="text-red-300" />
+              </div>
+              <div className="space-y-3">
+                {filteredErpPayrollRuns.slice(0, 8).map((run) => (
+                  <div key={run.id} className="rounded-xl border border-white/10 bg-slate-950/45 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-white">{run.title}</p>
+                        <p className="text-xs text-ink-dim">{run.department ?? "RH"} · {run.periodName ?? "Période non definie"}</p>
+                      </div>
+                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${payrollStatusTone[run.status] ?? payrollStatusTone.DRAFT}`}>{run.status}</span>
+                    </div>
+                    <p className="mt-3 font-mono text-sm font-bold text-white">{money.format(run.totalNet)}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </FinanceErpDialog>
+      )}
+    </div>
+  );
+}

@@ -1,9 +1,11 @@
+import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { LanguageSwitch } from "./LanguageSwitch";
 import { FontSwitch } from "./FontSwitch";
 import { schoolBranding } from "../config/branding";
 import { useI18n } from "../i18n";
 import { api } from "../services/api";
 import { useAuthStore } from "../store/auth";
+import { useUiStore } from "../store/ui";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 
 function imageFileToAvatar(file: File): Promise<string> {
@@ -39,7 +41,7 @@ function imageFileToAvatar(file: File): Promise<string> {
   });
 }
 
-function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+function ChangePasswordModal({ onClose, onChanged, required = false }: { onClose: () => void; onChanged?: () => void; required?: boolean }) {
   const { t } = useI18n();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -70,6 +72,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
+      onChanged?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : t("passwordChangeFailed"));
     } finally {
@@ -78,12 +81,12 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4" onClick={required ? undefined : onClose}>
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <form onSubmit={submit} className="glass relative w-full max-w-sm rounded-2xl p-7 space-y-4 animate-fadeInUp" onClick={(e) => e.stopPropagation()}>
+      <form onSubmit={submit} className="edupay-dialog-panel-sm glass relative w-full rounded-2xl p-8 space-y-5 animate-fadeInUp sm:p-9" onClick={(e) => e.stopPropagation()}>
         <div>
           <h3 className="font-display text-xl font-bold text-white">{t("changePasswordTitle")}</h3>
-          <p className="mt-1 text-sm text-ink-dim">{t("changePasswordSubtitle")}</p>
+          <p className="mt-1 text-sm text-ink-dim">{required ? "Pour sécuriser ce compte réel, changez le mot de passe temporaire avant de continuer." : t("changePasswordSubtitle")}</p>
         </div>
         <input
           type="password"
@@ -112,7 +115,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
           <button disabled={saving} className="flex-1 btn-primary py-3 text-sm font-bold disabled:opacity-60">
             {saving ? t("pmSaving") : t("pmSave")}
           </button>
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-600 px-4 py-3 text-sm font-semibold text-ink-dim hover:text-white">
+          <button type="button" onClick={onClose} disabled={required} className="rounded-lg border border-slate-600 px-4 py-3 text-sm font-semibold text-ink-dim hover:text-white disabled:cursor-not-allowed disabled:opacity-40">
             {t("close")}
           </button>
         </div>
@@ -123,7 +126,13 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 
 export function Navbar() {
   const { t } = useI18n();
-  const { fullName, role, photoUrl, setPhotoUrl, logout } = useAuthStore();
+  const { fullName, role, photoUrl, mustChangePassword, setPhotoUrl, setMustChangePassword, logout } = useAuthStore();
+  const isDesktopSidebarOpen = useUiStore((s) => s.isDesktopSidebarOpen);
+  const isMobileNavOpen = useUiStore((s) => s.isMobileNavOpen);
+  const toggleDesktopSidebar = useUiStore((s) => s.toggleDesktopSidebar);
+  const toggleMobileNav = useUiStore((s) => s.toggleMobileNav);
+  const requiresImmediatePasswordChange = mustChangePassword && role !== "PARENT";
+  const hasDeferredPasswordReminder = mustChangePassword && role === "PARENT";
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [photoError, setPhotoError] = useState("");
@@ -149,6 +158,10 @@ export function Navbar() {
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [isUserMenuOpen]);
+
+  useEffect(() => {
+    if (requiresImmediatePasswordChange) setShowPasswordModal(true);
+  }, [requiresImmediatePasswordChange]);
 
   const updatePhoto = async (file?: File) => {
     if (!file) return;
@@ -183,12 +196,36 @@ export function Navbar() {
   };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-brand-300/20 bg-slate-950/70 shadow-[0_18px_60px_rgba(0,0,0,0.22)] backdrop-blur-2xl">
-      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
-      <div className="mx-auto max-w-[1440px] px-3 py-2.5 sm:px-6 sm:py-3 lg:px-8">
-        <div className="flex items-center justify-between gap-2">
+    <header className="sticky top-0 z-50 bg-[linear-gradient(180deg,rgba(2,6,23,0.92),rgba(5,16,24,0.78))] shadow-[0_18px_60px_rgba(0,0,0,0.22)] backdrop-blur-2xl">
+      {showPasswordModal && <ChangePasswordModal required={requiresImmediatePasswordChange} onChanged={() => {
+        setMustChangePassword(false);
+        setShowPasswordModal(false);
+      }} onClose={() => {
+        if (requiresImmediatePasswordChange) return;
+        setShowPasswordModal(false);
+      }} />}
+      <div className="relative w-full px-3 py-2.5 sm:px-5 sm:py-3 lg:px-6 xl:px-8">
+        <div className="flex items-center justify-between gap-2 rounded-[2rem] bg-white/[0.04] px-2.5 py-2 shadow-[0_20px_45px_rgba(2,6,23,0.18)] sm:px-3">
           {/* Logo Section */}
           <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+            <button
+              type="button"
+              onClick={toggleMobileNav}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-brand-300/20 bg-white/[0.07] text-brand-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition-all duration-200 hover:border-brand-300/40 hover:bg-brand-500/10 md:hidden"
+              aria-label={isMobileNavOpen ? "Masquer la navigation mobile" : "Afficher la navigation mobile"}
+              title={isMobileNavOpen ? "Masquer la navigation" : "Afficher la navigation"}
+            >
+              {isMobileNavOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={toggleDesktopSidebar}
+              className="hidden h-10 w-10 items-center justify-center rounded-2xl border border-brand-300/20 bg-white/[0.07] text-brand-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition-all duration-200 hover:border-brand-300/40 hover:bg-brand-500/10 md:inline-flex"
+              aria-label={isDesktopSidebarOpen ? "Masquer la navigation latérale" : "Afficher la navigation latérale"}
+              title={isDesktopSidebarOpen ? "Masquer la navigation" : "Afficher la navigation"}
+            >
+              {isDesktopSidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeftOpen className="h-4 w-4" />}
+            </button>
             <div className="relative">
               <div className="absolute -inset-1 rounded-full bg-brand-300/20 blur-md" />
               <img 
@@ -198,15 +235,17 @@ export function Navbar() {
               />
             </div>
             <div className="hidden sm:block">
-              <p className="font-display text-base font-semibold text-white leading-tight">{schoolBranding.appName}</p>
-              <p className="text-xs font-semibold text-brand-300 uppercase tracking-[0.18em]">{schoolBranding.shortName} - Excellence</p>
+              <p className="font-display text-base font-semibold leading-tight text-white">{schoolBranding.appName}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-brand-300/95">{schoolBranding.shortName} - Excellence</p>
             </div>
           </div>
 
           {/* Center - Branding */}
-          <div className="hidden md:flex items-center justify-center flex-1 mx-8">
+          <div className="mx-8 hidden flex-1 items-center justify-center md:flex">
             <div className="text-center">
-              <p className="rounded-full border border-brand-300/20 bg-white/[0.06] px-4 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-brand-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">{schoolBranding.schoolName}</p>
+              <p className="rounded-full border border-brand-300/20 bg-[linear-gradient(135deg,rgba(125,232,255,0.09),rgba(255,255,255,0.05))] px-5 py-1.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-brand-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.16),0_10px_30px_rgba(20,184,222,0.08)]">
+                {schoolBranding.schoolName}
+              </p>
             </div>
           </div>
 
@@ -225,6 +264,7 @@ export function Navbar() {
                 aria-haspopup="menu"
                 className="flex items-center gap-2 rounded-full border border-brand-300/20 bg-white/[0.07] px-2 py-1.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] transition-all duration-200 hover:border-brand-300/40 hover:bg-brand-500/10 sm:gap-3 sm:px-3"
               >
+                {hasDeferredPasswordReminder && <span className="h-2.5 w-2.5 rounded-full bg-amber-300 shadow-[0_0_12px_rgba(252,211,77,0.9)]" aria-hidden="true" />}
                 <div className="hidden sm:block text-right">
                   <p className="text-sm font-semibold text-white">{fullName || t("user")}</p>
                   <p className="text-xs text-ink-dim capitalize">{role || t("guest")}</p>
@@ -255,6 +295,11 @@ export function Navbar() {
                         <p className="text-xs text-ink-dim">{role || t("guest")}</p>
                       </div>
                     </div>
+                    {hasDeferredPasswordReminder && (
+                      <p className="mt-3 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-xs font-medium text-amber-100">
+                        Mot de passe temporaire détecté. Vous pouvez le changer maintenant ou plus tard depuis ce menu.
+                      </p>
+                    )}
                     {photoError && <p className="mt-2 text-xs text-danger">{photoError}</p>}
                   </div>
                   <label className="block w-full cursor-pointer px-4 py-2 text-sm text-ink-dim transition-all duration-200 hover:bg-brand-500/10 hover:text-white">
@@ -276,7 +321,7 @@ export function Navbar() {
                     }}
                     className="w-full text-left px-4 py-2 text-sm text-ink-dim transition-all duration-200 hover:bg-brand-500/10 hover:text-white"
                   >
-                    {t("changePassword")}
+                    {t("changePassword")}{hasDeferredPasswordReminder ? " · recommandé" : ""}
                   </button>
                   <button
                     onClick={() => {

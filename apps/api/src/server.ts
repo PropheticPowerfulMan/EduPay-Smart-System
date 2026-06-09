@@ -13,12 +13,26 @@ import { analyticsRouter } from "./modules/analytics/router";
 import { aiRouter } from "./modules/ai/router";
 import { classRouter } from "./modules/classes/router";
 import { exportRouter } from "./modules/exports/router";
+import { financeRouter } from "./modules/finance/router";
+import { expenseRouter } from "./modules/expenses/router";
+import { sharedDirectoryRouter } from "./modules/shared-directory/router";
+import { startOrbitOutboxWorker } from "./integrations/orbit";
 
 const app = express();
+
+if (env.NODE_ENV === "production") {
+  const weakJwtSecret = !env.JWT_SECRET || env.JWT_SECRET.includes("CHANGE_ME") || env.JWT_SECRET.includes("dev-secret");
+  const missingDatabase = !env.DATABASE_URL;
+  if (weakJwtSecret || missingDatabase || env.ENABLE_DEMO_AUTH_FALLBACK === "true" || env.ENABLE_DEMO_DATA_FALLBACK === "true") {
+    throw new Error("EduPay production configuration is unsafe. Set DATABASE_URL/JWT_SECRET and disable demo fallbacks.");
+  }
+}
 
 const allowedOrigins = new Set([
   "http://localhost:5173",
   "http://127.0.0.1:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:5174",
   "https://edupay-web.onrender.com"
 ]);
 
@@ -62,7 +76,23 @@ app.use("/api/analytics", analyticsRouter);
 app.use("/api/ai", aiRouter);
 app.use("/api/classes", classRouter);
 app.use("/api/export", exportRouter);
+app.use("/api/finance", financeRouter);
+app.use("/api/expenses", expenseRouter);
+app.use("/api/shared-directory", sharedDirectoryRouter);
 
-app.listen(Number(process.env.PORT ?? env.API_PORT), "0.0.0.0", () => {
+const stopOrbitOutboxWorker = startOrbitOutboxWorker();
+
+const server = app.listen(Number(process.env.PORT ?? env.API_PORT), "0.0.0.0", () => {
   console.log(`API running on port ${process.env.PORT ?? env.API_PORT}`);
 });
+
+function shutdown(signal: string) {
+  console.log(`Received ${signal}, shutting down EduPay API`);
+  stopOrbitOutboxWorker();
+  server.close(() => {
+    process.exit(0);
+  });
+}
+
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));

@@ -1,6 +1,26 @@
 import { create } from "zustand";
 
-export type Role = "ADMIN" | "ACCOUNTANT" | "PARENT";
+export type Role =
+  | "SUPER_ADMIN"
+  | "OWNER"
+  | "ADMIN"
+  | "FINANCIAL_MANAGER"
+  | "ACCOUNTANT"
+  | "CASHIER"
+  | "HR_MANAGER"
+  | "AUDITOR"
+  | "PARENT";
+
+export const STAFF_ROLES: Role[] = [
+  "SUPER_ADMIN",
+  "OWNER",
+  "ADMIN",
+  "FINANCIAL_MANAGER",
+  "ACCOUNTANT",
+  "CASHIER",
+  "HR_MANAGER",
+  "AUDITOR"
+];
 
 const TOKEN_STORAGE_KEY = "edupay_token";
 const ROLE_STORAGE_KEY = "edupay_role";
@@ -8,6 +28,7 @@ const NAME_STORAGE_KEY = "edupay_name";
 const PARENT_ID_STORAGE_KEY = "edupay_parent_id";
 const PHOTO_STORAGE_KEY = "edupay_photo_url";
 const SESSION_ACTIVE_KEY = "edupay_session_active";
+const MUST_CHANGE_PASSWORD_KEY = "edupay_must_change_password";
 
 function clearStoredAuth() {
   localStorage.removeItem(TOKEN_STORAGE_KEY);
@@ -15,12 +36,14 @@ function clearStoredAuth() {
   localStorage.removeItem(NAME_STORAGE_KEY);
   localStorage.removeItem(PARENT_ID_STORAGE_KEY);
   localStorage.removeItem(PHOTO_STORAGE_KEY);
+  localStorage.removeItem(MUST_CHANGE_PASSWORD_KEY);
   localStorage.removeItem("edupay_fullName");
 }
 
 export function normalizeRole(value: unknown, parentId?: string | null): Role | null {
   const role = String(value ?? "").trim().toUpperCase();
-  if (role === "ADMIN" || role === "ACCOUNTANT" || role === "PARENT") return role;
+  if (role === "PARENT") return role;
+  if (STAFF_ROLES.includes(role as Role)) return role as Role;
   return parentId ? "PARENT" : null;
 }
 
@@ -34,8 +57,10 @@ type AuthState = {
   fullName: string | null;
   parentId: string | null;
   photoUrl: string | null;
-  setAuth: (token: string, role: Role | string | null | undefined, fullName: string, parentId?: string | null, photoUrl?: string | null) => void;
+  mustChangePassword: boolean;
+  setAuth: (token: string, role: Role | string | null | undefined, fullName: string, parentId?: string | null, photoUrl?: string | null, mustChangePassword?: boolean) => void;
   setPhotoUrl: (photoUrl: string | null) => void;
+  setMustChangePassword: (mustChangePassword: boolean) => void;
   logout: () => void;
 };
 
@@ -47,7 +72,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   fullName: localStorage.getItem(NAME_STORAGE_KEY),
   parentId: storedParentId,
   photoUrl: localStorage.getItem(PHOTO_STORAGE_KEY),
-  setAuth: (token, role, fullName, parentId = null, photoUrl = null) => {
+  mustChangePassword: localStorage.getItem(MUST_CHANGE_PASSWORD_KEY) === "true",
+  setAuth: (token, role, fullName, parentId = null, photoUrl = null, mustChangePassword = false) => {
     const normalizedRole = normalizeRole(role, parentId);
     if (!normalizedRole) {
       clearStoredAuth();
@@ -69,7 +95,12 @@ export const useAuthStore = create<AuthState>((set) => ({
     } else if (normalizedRole === "PARENT") {
       localStorage.removeItem(PHOTO_STORAGE_KEY);
     }
-    set({ token, role: normalizedRole, fullName, parentId, photoUrl: photoUrl || localStorage.getItem(PHOTO_STORAGE_KEY) });
+    if (mustChangePassword) {
+      localStorage.setItem(MUST_CHANGE_PASSWORD_KEY, "true");
+    } else {
+      localStorage.removeItem(MUST_CHANGE_PASSWORD_KEY);
+    }
+    set({ token, role: normalizedRole, fullName, parentId, photoUrl: photoUrl || localStorage.getItem(PHOTO_STORAGE_KEY), mustChangePassword });
   },
   setPhotoUrl: (photoUrl) => {
     if (photoUrl) {
@@ -78,6 +109,14 @@ export const useAuthStore = create<AuthState>((set) => ({
       localStorage.removeItem(PHOTO_STORAGE_KEY);
     }
     set({ photoUrl });
+  },
+  setMustChangePassword: (mustChangePassword) => {
+    if (mustChangePassword) {
+      localStorage.setItem(MUST_CHANGE_PASSWORD_KEY, "true");
+    } else {
+      localStorage.removeItem(MUST_CHANGE_PASSWORD_KEY);
+    }
+    set({ mustChangePassword });
   },
   logout: () => {
     sessionStorage.removeItem(SESSION_ACTIVE_KEY);

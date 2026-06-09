@@ -735,7 +735,7 @@ export function ParentTrackingPage() {
                   </div>
                 </div>
 
-                <div className="-mx-2 max-w-[calc(100%+1rem)] overflow-x-auto px-2">
+                <div className="edupay-scrollbar -mx-2 max-w-[calc(100%+1rem)] overflow-x-auto px-2">
                   <table className="w-full min-w-[430px] text-sm sm:min-w-[520px]">
                     <thead>
                       <tr className="border-b border-slate-700/50">

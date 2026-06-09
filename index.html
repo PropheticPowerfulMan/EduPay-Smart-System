@@ -473,25 +473,22 @@
     <div id="dashboard" class="section active">
       <h2 data-i18n="dashboardTitle">Dashboard</h2>
       <div class="grid">
-        <div class="card"><h3 data-i18n="kpiTotalRevenue">Revenu Total</h3><div class="value">240,000 FC</div></div>
-        <div class="card"><h3 data-i18n="kpiMonthlyRevenue">Revenu Mensuel</h3><div class="value">72,000 FC</div></div>
-        <div class="card"><h3 data-i18n="kpiSuccessRate">Taux Succes</h3><div class="value">87%</div></div>
-        <div class="card"><h3 data-i18n="kpiDebt">Dette</h3><div class="value">445,000 FC</div></div>
+        <div class="card"><h3 data-i18n="kpiTotalRevenue">Revenu Total</h3><div class="value" id="kpiTotalRevenueValue">-</div></div>
+        <div class="card"><h3 data-i18n="kpiMonthlyRevenue">Revenu Mensuel</h3><div class="value" id="kpiMonthlyRevenueValue">-</div></div>
+        <div class="card"><h3 data-i18n="kpiSuccessRate">Taux Succes</h3><div class="value" id="kpiSuccessRateValue">-</div></div>
+        <div class="card"><h3 data-i18n="kpiDebt">Dette</h3><div class="value" id="kpiDebtValue">-</div></div>
       </div>
       <h3 style="color:#0b2e59; margin-bottom:0.4rem;" data-i18n="recentPayments">Paiements Recents</h3>
       <table>
         <thead><tr><th data-i18n="colTransaction">Transaction</th><th data-i18n="colParent">Parent</th><th data-i18n="colAmount">Montant</th><th data-i18n="colDate">Date</th><th data-i18n="colStatus">Statut</th></tr></thead>
-        <tbody>
-          <tr><td>TX-1000000-1234</td><td>Marie Dupont</td><td>25,000 FC</td><td>2026-04-20</td><td><span class="status completed" data-i18n="statusCompleted">Complété</span></td></tr>
-          <tr><td>TX-1000001-5678</td><td>Jean Pierre</td><td>30,000 FC</td><td>2026-04-19</td><td><span class="status pending" data-i18n="statusPending">Attente</span></td></tr>
-        </tbody>
+        <tbody id="recentPaymentsBody"></tbody>
       </table>
     </div>
 
     <div id="payments" class="section">
       <h2 data-i18n="paymentsTitle">Enregistrer un Paiement</h2>
       <div class="card">
-        <div class="form-group"><label data-i18n="parentLabel">Parent</label><select id="paymentParent"><option>Marie Dupont</option><option>Jean Pierre</option></select></div>
+        <div class="form-group"><label data-i18n="parentLabel">Parent</label><select id="paymentParent"></select></div>
         <div class="form-group"><label data-i18n="reasonLabel">Motif</label><input id="paymentReason" type="text" data-i18n-placeholder="reasonPlaceholder" placeholder="Scolarite mensuelle" /></div>
         <div class="form-group"><label data-i18n="amountLabel">Montant (FC)</label><input id="paymentAmount" type="number" placeholder="25000" oninput="updateAmountWords()" /></div>
         <div class="form-group"><label data-i18n="methodLabel">Methode</label><select id="paymentMethod"><option data-i18n="methodCash">Cash</option><option>Airtel Money</option><option>M-Pesa</option></select></div>
@@ -554,18 +551,7 @@
 
     <div id="parents" class="section">
       <h2 data-i18n="parentsTitle">Suivi des Parents</h2>
-      <div class="card" style="margin-bottom:1.5rem;">
-        <h3>Marie Dupont</h3>
-        <p style="color:#666;margin:0.5rem 0;">📞 +243 999 123 456 | 📧 marie@example.com</p>
-        <table style="margin-top:1rem;"><tr><td data-i18n="annualFee">Frais annuels</td><td>50,000 FC</td></tr><tr><td data-i18n="paidLabel">Payé</td><td style="color:#22c55e;">25,000 FC</td></tr><tr><td data-i18n="remainingLabel">Restant</td><td style="color:#ef4444;">25,000 FC</td></tr></table>
-        <p style="margin-top:0.5rem;font-size:0.9rem;"><span data-i18n="childrenLabel">Enfants:</span> Alice Dupont, Bob Dupont</p>
-      </div>
-      <div class="card">
-        <h3>Jean Pierre</h3>
-        <p style="color:#666;margin:0.5rem 0;">📞 +243 999 234 567 | 📧 jean@example.com</p>
-        <table style="margin-top:1rem;"><tr><td data-i18n="annualFee">Frais annuels</td><td>55,000 FC</td></tr><tr><td data-i18n="paidLabel">Payé</td><td style="color:#22c55e;">0 FC</td></tr><tr><td data-i18n="remainingLabel">Restant</td><td style="color:#ef4444;">55,000 FC</td></tr></table>
-        <p style="margin-top:0.5rem;font-size:0.9rem;"><span data-i18n="childrenLabel">Enfants:</span> Charlie Pierre</p>
-      </div>
+      <div id="parentsList"></div>
     </div>
 
     <div id="ai" class="section">
@@ -588,6 +574,48 @@
 
 <script>
 var currentLang = localStorage.getItem('edupay_lang') || 'fr';
+
+function buildUnifiedDemoParents() {
+  var parentNames = [
+    ['Kabongo', 'Rachel'], ['Mbuyi', 'Mireille'], ['Lukusa', 'Cedric'], ['Ilunga', 'Nadine'], ['Tshibangu', 'Patrick'],
+    ['Mavungu', 'Aline'], ['Kalala', 'Samuel'], ['Moke', 'Sarah'], ['Banza', 'Grace'], ['Kanku', 'David'],
+    ['Mukendi', 'Chantal'], ['Tshomba', 'Daniel'], ['Mbala', 'Esther'], ['Kasongo', 'Joel'], ['Ngoy', 'Carine'],
+    ['Kitenge', 'Fabrice'], ['Mulumba', 'Ruth'], ['Nkulu', 'Benedicte'], ['Beya', 'Jonathan'], ['Lunda', 'Prisca'],
+    ['Tshimanga', 'Arnaud'], ['Kayembe', 'Rose'], ['Mutombo', 'Lionel'], ['Kabasele', 'Diane'], ['Nsimba', 'Marc'],
+    ['Mpoyi', 'Sandrine'], ['Lwamba', 'Eric'], ['Makiese', 'Gloria'], ['Kalonji', 'Herve']
+  ];
+  var studentNames = ['Elise', 'David', 'Amani', 'Noah', 'Naomi', 'Ethan', 'Sarah', 'Joshua', 'Deborah', 'Samuel', 'Rebecca', 'Nathan', 'Esther', 'Daniel', 'Merveille', 'Joanna', 'Grace', 'Aaron', 'Rachelle', 'Jonathan', 'Prisca', 'Emmanuel', 'Christelle', 'Benjamin', 'Ruth', 'Joel', 'Benedicte', 'Isaac', 'Naomie', 'Joseph', 'Judith', 'Caleb', 'Hadassa', 'Ezekiel', 'Miriam', 'Levi', 'Rachel', 'Elie', 'Abigail', 'Matthieu', 'Anne', 'Simeon', 'Tabitha', 'Timothee'];
+  var classes = ['K3', 'K4', 'K5', 'Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'];
+  var studentIndex = 0;
+  return parentNames.map(function (entry, parentIndex) {
+    var studentCount = parentIndex < 15 ? 2 : 1;
+    var students = Array.from({ length: studentCount }, function () {
+      var current = studentIndex++;
+      return { name: studentNames[current] + ' ' + entry[0], className: classes[current % classes.length], annualFee: 1800 + ((current % 6) * 120) };
+    });
+    return {
+      id: 'PAR-KCS-' + String(parentIndex + 1).padStart(3, '0'),
+      name: entry[1] + ' ' + entry[0],
+      phone: '+243 812 45' + String(parentIndex + 1).padStart(4, '0'),
+      email: entry[1].toLowerCase() + '.' + entry[0].toLowerCase() + '@kcs.local',
+      students: students
+    };
+  });
+}
+
+var edupayParents = buildUnifiedDemoParents();
+
+var edupayPayments = edupayParents.slice(0, 12).map(function (parent, index) {
+  var completed = index % 4 !== 3;
+  return {
+    txNumber: 'TXN-202604' + String(index + 10).padStart(2, '0') + '-' + String(10001 + index),
+    parentId: parent.id,
+    parent: parent.name,
+    amount: completed ? Math.round(parent.students.reduce(function (sum, student) { return sum + student.annualFee; }, 0) * (0.35 + (index % 3) * 0.12)) : 0,
+    date: '2026-04-' + String(index + 10).padStart(2, '0'),
+    status: completed ? 'COMPLETED' : 'PENDING'
+  };
+});
 
 var translations = {
   fr: {
@@ -637,10 +665,10 @@ var translations = {
     aiDefaultAnswer: 'Requete comprise. Consultez le dashboard pour les details.',
     aiSuggestionOne: 'Essayer une autre question',
     aiSuggestionTwo: 'Consulter les statistiques',
-    aiPayAnswer: '8 parents n\'ont pas paye ce mois.',
+    aiPayAnswer: '{{count}} parent(s) ont encore un solde a regler ce mois. Solde total: {{debt}} FC.',
     aiPaySuggestionOne: 'Envoyer rappel doux',
     aiPaySuggestionTwo: 'Escalader hauts risques',
-    aiRevenueAnswer: 'Revenu total: 240,000 FC. +12% vs mois dernier.',
+    aiRevenueAnswer: 'Revenu total calcule depuis EduPay: {{revenue}} FC. Paiements completes: {{completed}}/{{payments}}.',
     aiRevenueSuggestionOne: 'Comparer trimestre',
     aiRevenueSuggestionTwo: 'Analyser par classe',
     amountInWordsLabel: 'Montant en toutes lettres:',
@@ -700,10 +728,10 @@ var translations = {
     aiDefaultAnswer: 'Request understood. Check the dashboard for details.',
     aiSuggestionOne: 'Try another question',
     aiSuggestionTwo: 'Review statistics',
-    aiPayAnswer: '8 parents did not pay this month.',
+    aiPayAnswer: '{{count}} parent(s) still have a balance to settle this month. Total balance: {{debt}} FC.',
     aiPaySuggestionOne: 'Send gentle reminders',
     aiPaySuggestionTwo: 'Escalate high-risk cases',
-    aiRevenueAnswer: 'Total revenue: 240,000 FC. +12% vs last month.',
+    aiRevenueAnswer: 'Total revenue calculated from EduPay: {{revenue}} FC. Completed payments: {{completed}}/{{payments}}.',
     aiRevenueSuggestionOne: 'Compare quarters',
     aiRevenueSuggestionTwo: 'Analyze by class',
     amountInWordsLabel: 'Amount in words:',
@@ -720,6 +748,86 @@ var translations = {
 
 function t(key) {
   return (translations[currentLang] && translations[currentLang][key]) || key;
+}
+
+function escapeHtml(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char];
+  });
+}
+
+function formatMoney(value) {
+  return Number(value || 0).toLocaleString(currentLang === 'fr' ? 'fr-FR' : 'en-US');
+}
+
+function getParentFinancials(parent) {
+  var expected = parent.students.reduce(function (sum, student) { return sum + Number(student.annualFee || 0); }, 0);
+  var paid = edupayPayments
+    .filter(function (payment) { return payment.parentId === parent.id && payment.status === 'COMPLETED'; })
+    .reduce(function (sum, payment) { return sum + Number(payment.amount || 0); }, 0);
+  return { expected: expected, paid: paid, debt: Math.max(expected - paid, 0) };
+}
+
+function computeEduPayMetrics() {
+  var parentMetrics = edupayParents.map(function (parent) {
+    return Object.assign({ parent: parent }, getParentFinancials(parent));
+  });
+  var totalExpected = parentMetrics.reduce(function (sum, row) { return sum + row.expected; }, 0);
+  var totalRevenue = edupayPayments
+    .filter(function (payment) { return payment.status === 'COMPLETED'; })
+    .reduce(function (sum, payment) { return sum + Number(payment.amount || 0); }, 0);
+  var currentMonth = new Date().toISOString().slice(0, 7);
+  var monthlyRevenue = edupayPayments
+    .filter(function (payment) { return payment.status === 'COMPLETED' && String(payment.date || '').slice(0, 7) === currentMonth; })
+    .reduce(function (sum, payment) { return sum + Number(payment.amount || 0); }, 0);
+  var completedPayments = edupayPayments.filter(function (payment) { return payment.status === 'COMPLETED'; }).length;
+  var successRate = edupayPayments.length ? Math.round((completedPayments / edupayPayments.length) * 100) : 0;
+  var debt = Math.max(totalExpected - totalRevenue, 0);
+  var unpaidParents = parentMetrics.filter(function (row) { return row.debt > 0; });
+  var classDebts = {};
+  parentMetrics.forEach(function (row) {
+    row.parent.students.forEach(function (student) {
+      var className = student.className || 'Non assignee';
+      classDebts[className] = classDebts[className] || { className: className, debt: 0, students: 0 };
+      classDebts[className].students += 1;
+      classDebts[className].debt += row.parent.students.length ? row.debt / row.parent.students.length : 0;
+    });
+  });
+  var highestDebtClass = Object.values(classDebts).sort(function (a, b) { return b.debt - a.debt; })[0] || null;
+  return { parentMetrics: parentMetrics, totalExpected: totalExpected, totalRevenue: totalRevenue, monthlyRevenue: monthlyRevenue, completedPayments: completedPayments, successRate: successRate, debt: debt, unpaidParents: unpaidParents, highestDebtClass: highestDebtClass };
+}
+
+function renderEduPayData() {
+  var metrics = computeEduPayMetrics();
+  document.getElementById('kpiTotalRevenueValue').textContent = formatMoney(metrics.totalRevenue) + ' FC';
+  document.getElementById('kpiMonthlyRevenueValue').textContent = formatMoney(metrics.monthlyRevenue) + ' FC';
+  document.getElementById('kpiSuccessRateValue').textContent = metrics.successRate + '%';
+  document.getElementById('kpiDebtValue').textContent = formatMoney(metrics.debt) + ' FC';
+
+  document.getElementById('recentPaymentsBody').innerHTML = edupayPayments.map(function (payment) {
+    var statusKey = payment.status === 'COMPLETED' ? 'statusCompleted' : 'statusPending';
+    var statusClass = payment.status === 'COMPLETED' ? 'completed' : 'pending';
+    return '<tr><td>' + escapeHtml(payment.txNumber) + '</td><td>' + escapeHtml(payment.parent) + '</td><td>' + formatMoney(payment.amount) + ' FC</td><td>' + escapeHtml(payment.date) + '</td><td><span class="status ' + statusClass + '">' + t(statusKey) + '</span></td></tr>';
+  }).join('');
+
+  document.getElementById('paymentParent').innerHTML = edupayParents.map(function (parent) {
+    return '<option value="' + escapeHtml(parent.id) + '">' + escapeHtml(parent.name) + '</option>';
+  }).join('');
+
+  document.getElementById('parentsList').innerHTML = metrics.parentMetrics.map(function (row) {
+    return '<div class="card" style="margin-bottom:1.5rem;">'
+      + '<h3>' + escapeHtml(row.parent.name) + '</h3>'
+      + '<p style="color:#666;margin:0.5rem 0;">' + escapeHtml(row.parent.phone) + ' | ' + escapeHtml(row.parent.email) + '</p>'
+      + '<table style="margin-top:1rem;"><tr><td>' + t('annualFee') + '</td><td>' + formatMoney(row.expected) + ' FC</td></tr><tr><td>' + t('paidLabel') + '</td><td style="color:#22c55e;">' + formatMoney(row.paid) + ' FC</td></tr><tr><td>' + t('remainingLabel') + '</td><td style="color:#ef4444;">' + formatMoney(row.debt) + ' FC</td></tr></table>'
+      + '<p style="margin-top:0.5rem;font-size:0.9rem;"><span>' + t('childrenLabel') + '</span> ' + escapeHtml(row.parent.students.map(function (student) { return student.name; }).join(', ')) + '</p>'
+      + '</div>';
+  }).join('');
+}
+
+function interpolate(template, values) {
+  return template.replace(/\{\{(\w+)\}\}/g, function (_match, key) {
+    return values[key] == null ? '' : String(values[key]);
+  });
 }
 
 function applyTranslations() {
@@ -740,6 +848,7 @@ function applyTranslations() {
   var enBtn = document.getElementById('langEn');
   frBtn.classList.toggle('active', currentLang === 'fr');
   enBtn.classList.toggle('active', currentLang === 'en');
+  renderEduPayData();
 }
 
 function setLanguage(lang) {
@@ -818,12 +927,13 @@ function updateAmountWords() {
 }
 
 function registerPayment() {
-  var parent = document.getElementById('paymentParent').value;
+  var parentId = document.getElementById('paymentParent').value;
+  var parentRecord = edupayParents.find(function (parent) { return parent.id === parentId; });
   var reason = document.getElementById('paymentReason').value.trim();
   var amount = Number(document.getElementById('paymentAmount').value || 0);
   var method = document.getElementById('paymentMethod').value;
 
-  if (!parent || !reason || amount <= 0) {
+  if (!parentRecord || !reason || amount <= 0) {
     alert(t('missingPaymentFields'));
     return;
   }
@@ -831,15 +941,24 @@ function registerPayment() {
   var now = new Date();
   var receiptNo = 'RCPT-' + now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0') + '-' + String(Math.floor(Math.random() * 9000) + 1000);
   var amountWords = numberToWords(Math.floor(amount)) + ' ' + t('fcSuffix');
+  edupayPayments.unshift({
+    txNumber: 'TX-' + now.getTime(),
+    parentId: parentRecord.id,
+    parent: parentRecord.name,
+    amount: amount,
+    date: now.toISOString().slice(0, 10),
+    status: 'COMPLETED'
+  });
 
   document.getElementById('receiptNumberValue').textContent = receiptNo;
-  document.getElementById('receiptParentValue').textContent = parent;
+  document.getElementById('receiptParentValue').textContent = parentRecord.name;
   document.getElementById('receiptDateValue').textContent = now.toLocaleString(currentLang === 'fr' ? 'fr-FR' : 'en-US');
   document.getElementById('receiptReasonValue').textContent = reason;
   document.getElementById('receiptMethodValue').textContent = method;
   document.getElementById('receiptAmountValue').textContent = amount.toLocaleString() + ' FC';
   document.getElementById('receiptAmountWordsValue').textContent = amountWords;
   document.getElementById('receiptSection').style.display = 'block';
+  renderEduPayData();
 }
 
 function printReceipt() {
@@ -956,10 +1075,25 @@ function switchPage(p,btn) {
 
 function askAI() {
   var q=document.querySelector('textarea').value.toLowerCase();
+  var metrics = computeEduPayMetrics();
   var ans=t('aiDefaultAnswer');
   var sugg=[t('aiSuggestionOne'), t('aiSuggestionTwo')];
-  if(q.includes('pay') || q.includes('paye')) { ans=t('aiPayAnswer'); sugg=[t('aiPaySuggestionOne'), t('aiPaySuggestionTwo')]; }
-  else if(q.includes('revenu') || q.includes('revenue')) { ans=t('aiRevenueAnswer'); sugg=[t('aiRevenueSuggestionOne'), t('aiRevenueSuggestionTwo')]; }
+  if(q.includes('pay') || q.includes('paye')) {
+    ans=interpolate(t('aiPayAnswer'), { count: metrics.unpaidParents.length, debt: formatMoney(metrics.debt) });
+    sugg=[t('aiPaySuggestionOne'), t('aiPaySuggestionTwo')];
+  }
+  else if(q.includes('revenu') || q.includes('revenue')) {
+    ans=interpolate(t('aiRevenueAnswer'), { revenue: formatMoney(metrics.totalRevenue), completed: metrics.completedPayments, payments: edupayPayments.length });
+    sugg=[t('aiRevenueSuggestionOne'), t('aiRevenueSuggestionTwo')];
+  }
+  else if(q.includes('dette') || q.includes('debt') || q.includes('classe') || q.includes('class')) {
+    ans = metrics.highestDebtClass
+      ? (currentLang === 'fr'
+        ? 'Classe avec la dette la plus elevee: ' + metrics.highestDebtClass.className + ' avec ' + formatMoney(Math.round(metrics.highestDebtClass.debt)) + ' FC, calcule depuis les parents et eleves EduPay charges.'
+        : 'Class with the highest debt: ' + metrics.highestDebtClass.className + ' with ' + formatMoney(Math.round(metrics.highestDebtClass.debt)) + ' FC, calculated from loaded EduPay parents and students.')
+      : ans;
+    sugg=[t('aiSuggestionOne'), t('aiSuggestionTwo')];
+  }
   document.getElementById('aiText').textContent=ans;
   document.getElementById('aiSuggestions').innerHTML=sugg.map(s=>'<li>'+s+'</li>').join('');
   document.getElementById('aiResult').style.display='block';

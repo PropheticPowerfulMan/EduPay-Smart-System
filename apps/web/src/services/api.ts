@@ -1,66 +1,348 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/$/, "");
+import {
+  buildDemoFinanceCatalog,
+  buildDemoFinanceOverview,
+  buildDemoParentFinanceProfile,
+  buildDemoReductionAnalytics,
+  setDemoFinanceOverrides
+} from "./demoFinance";
+
+const RAW_API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "").trim().replace(/\/$/, "");
+const API_BASE_URL = RAW_API_BASE_URL || (import.meta.env.DEV ? "http://localhost:4000" : "");
 const TOKEN_STORAGE_KEY = "edupay_token";
 const ROLE_STORAGE_KEY = "edupay_role";
 const NAME_STORAGE_KEY = "edupay_name";
 const PARENT_ID_STORAGE_KEY = "edupay_parent_id";
 const SESSION_ACTIVE_KEY = "edupay_session_active";
-const DEMO_PARENTS_KEY = "edupay_demo_parents_v1";
-const DEMO_PAYMENTS_KEY = "edupay_payments_v2";
+const DEMO_PARENTS_KEY = "edupay_demo_parents_v3";
+const DEMO_PAYMENTS_KEY = "edupay_payments_v4";
 const DEMO_NOTIFICATIONS_KEY = "edupay-payment-notifications-enabled";
+const DEMO_MANUAL_MESSAGES_KEY = "edupay_manual_messages_v1";
 const DEMO_PARENT_CREDENTIALS_KEY = "edupay_demo_parent_credentials_v1";
+const DEMO_ADMIN_PASSWORD_KEY = "edupay_demo_admin_password_v1";
+const DEMO_PARENT_PASSWORD_KEY = "edupay_demo_parent_password_v1";
+const DEMO_PASSWORD_RESET_TOKENS_KEY = "edupay_demo_password_reset_tokens_v1";
+const DEMO_FINANCE_OVERRIDES_KEY = "edupay_demo_finance_overrides_v1";
+const DEMO_EXPENSE_CATEGORIES_KEY = "edupay_demo_expense_categories_v1";
+const DEMO_EXPENSE_VENDORS_KEY = "edupay_demo_expense_vendors_v1";
+const DEMO_EXPENSE_BUDGETS_KEY = "edupay_demo_expense_budgets_v1";
+const DEMO_EXPENSE_ITEMS_KEY = "edupay_demo_expense_items_v1";
+const DEMO_SALARY_PROFILES_KEY = "edupay_demo_salary_profiles_v2";
+const DEMO_PAYROLL_RUNS_KEY = "edupay_demo_payroll_runs_v1";
+const DEMO_EMPLOYEES_KEY = "edupay_demo_employees_v2";
+const API_RESPONSE_CACHE_PREFIX = "edupay_api_cache_v1:";
+const OFFLINE_MUTATION_QUEUE_KEY = "edupay_offline_mutation_queue_v1";
 const DEMO_FALLBACK_ENABLED = (import.meta.env.VITE_ENABLE_DEMO_FALLBACK ?? "").trim().toLowerCase() === "true";
-const STATIC_APP_FALLBACK_ENABLED = ["demo", "github-pages", "pages"].includes((import.meta.env.VITE_ENVIRONMENT ?? "").trim().toLowerCase());
+const RUNTIME_STATIC_APP_FALLBACK_ENABLED = typeof window !== "undefined" && (
+  window.location.hostname.endsWith(".github.io") ||
+  window.location.pathname.startsWith("/EduPay-Smart-System/")
+);
+const STATIC_APP_FALLBACK_ENABLED =
+  RUNTIME_STATIC_APP_FALLBACK_ENABLED ||
+  ["demo", "github-pages", "pages"].includes((import.meta.env.VITE_ENVIRONMENT ?? "").trim().toLowerCase());
 const PLACEHOLDER_API_URL = /MON-BACKEND|example\.com/i.test(API_BASE_URL);
+const PRODUCTION_MODE = import.meta.env.PROD && !STATIC_APP_FALLBACK_ENABLED && !DEMO_FALLBACK_ENABLED;
 const LOCAL_API_FALLBACK_ENABLED =
-  DEMO_FALLBACK_ENABLED ||
-  STATIC_APP_FALLBACK_ENABLED ||
-  PLACEHOLDER_API_URL ||
-  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(API_BASE_URL);
+  !PRODUCTION_MODE && (
+    DEMO_FALLBACK_ENABLED ||
+    STATIC_APP_FALLBACK_ENABLED ||
+    PLACEHOLDER_API_URL
+  );
+const LOCAL_AUTH_RECOVERY_FALLBACK_PATHS = new Set([
+  "/api/auth/login",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/api/auth/recover-admin-password"
+]);
 
-type DemoStudent = { id: string; fullName: string; classId: string; className: string; annualFee: number; payments?: DemoPayment[] };
-type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; photoUrl?: string; students: DemoStudent[]; createdAt: string };
-type DemoPayment = { id: string; transactionNumber: string; parentId?: string; parentFullName: string; reason: string; method: string; amount: number; status: string; createdAt: string; date: string };
-type DemoParentCredential = { parentId: string; email: string; password: string };
+type DemoSpecialAgreement = {
+  title?: string;
+  customTotal?: number;
+  reductionAmount?: number;
+  notes?: string;
+  installmentMode?: "ONE_TIME" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS";
+};
+type DemoStudent = { id: string; fullName: string; gender?: "F" | "M" | "O" | ""; classId: string; className: string; annualFee: number; createdAt?: string; payments?: DemoPayment[]; paymentOptionType?: DemoPaymentOptionType; specialAgreement?: DemoSpecialAgreement };
+type DemoParent = { id: string; nom: string; postnom: string; prenom: string; fullName: string; phone: string; email: string; physicalAddress?: string; photoUrl?: string; accessCode?: string; students: DemoStudent[]; createdAt: string };
+type DemoTuitionAllocationLine = {
+  installmentId: string;
+  studentId: string;
+  studentName: string;
+  label: string;
+  dueDate: string;
+  dueBucket: "OVERDUE" | "CURRENT" | "FUTURE";
+  amountDue: number;
+  alreadyPaid: number;
+  outstandingBefore: number;
+  allocated: number;
+  outstandingAfter: number;
+};
+type DemoTuitionAllocationSummary = {
+  mode: "AUTO" | "MANUAL";
+  message: string;
+  totalReceived: number;
+  allocatedTotal: number;
+  missingAmount: number;
+  advanceBalance: number;
+  perChild: Array<{
+    studentName: string;
+    allocated: number;
+    remaining: number;
+    lines: Array<{ label: string; dueBucket: string; outstandingBefore: number; allocated: number; outstandingAfter: number }>;
+  }>;
+};
+type DemoPayment = { id: string; transactionNumber: string; parentId?: string; parentFullName: string; paymentSubjectName?: string; studentIds?: string[]; studentNames?: string[]; reason: string; method: string; amount: number; status: string; createdAt: string; date: string; tuitionAllocationSummary?: DemoTuitionAllocationSummary; bankTransferDetails?: { bankName: string; referenceNumber: string; transferDate: string; senderAccountNumber?: string; beneficiaryAccountNumber: string } | null };
+type DemoManualMessage = { id: string; parentId: string; parentName: string; parentPhone?: string; parentEmail?: string; type: "MANUAL_MESSAGE"; language: "fr" | "en"; channel: "DASHBOARD" | "EMAIL" | "SMS"; content: string; status: string; createdAt: string };
+type DemoParentCredential = { parentId: string; email: string; password: string; accessCode?: string };
+type DemoPasswordResetToken = { token: string; email: string; expiresAt: string; usedAt?: string };
+type DemoPaymentOptionType = "FULL_PRESEPTEMBER" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS" | "STANDARD_MONTHLY" | "SPECIAL_OWNER_AGREEMENT";
+type DemoFinanceOverride =
+  | { mode: "OFFICIAL"; paymentOptionType: DemoPaymentOptionType }
+  | {
+      mode: "AGREEMENT";
+      agreement: {
+        title: string;
+        customTotal: number;
+        reductionAmount: number;
+        status: string;
+        privateNotes: string;
+        notes: string;
+        installments: Array<{ label: string; dueDate: string; amountDue: number; notes?: string }>;
+      };
+    };
+
+type DemoExpenseCategory = {
+  id: string;
+  name: string;
+  slug: string;
+  type: string;
+  parentCategoryId: string | null;
+  ownerApprovalRequired: boolean;
+  description?: string;
+};
+
+type DemoVendor = {
+  id: string;
+  name: string;
+  contactName?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  notes?: string;
+  createdAt: string;
+};
+
+type DemoBudget = {
+  id: string;
+  name: string;
+  department: string;
+  plannedAmount: number;
+  consumedAmount: number;
+  remainingAmount: number;
+  utilization: number;
+  status: string;
+  alertThreshold: number;
+  notes?: string;
+  categoryId?: string;
+  period: { id: string; name: string };
+  category: { id: string; name: string } | null;
+  createdAt: string;
+};
+
+type OfflineMutation = {
+  id: string;
+  path: string;
+  method: string;
+  body?: string;
+  headers: Record<string, string>;
+  queuedAt: string;
+  replayAttempts: number;
+};
+
+type DemoExpenseApprovalStep = {
+  stage: number;
+  role: string;
+  status: string;
+  comments?: string;
+  decidedAt?: string | null;
+};
+
+type DemoExpenseItem = {
+  id: string;
+  title: string;
+  subcategory?: string;
+  description?: string;
+  department: string;
+  amount: number;
+  currency: string;
+  paymentMethod?: string;
+  supplierName?: string;
+  status: string;
+  categoryId: string;
+  budgetId?: string;
+  vendorId?: string;
+  financialPeriodLabel: string;
+  expenseDate: string;
+  requiresOwnerApproval: boolean;
+  comments?: string;
+  createdAt: string;
+  category: { id: string; name: string; type: string; parentCategoryId: string | null };
+  vendor: DemoVendor | null;
+  budget: DemoBudget | null;
+  period: { id: string; name: string };
+  attachments: Array<{ id: string; kind: string; fileName: string; fileUrl: string; mimeType?: string; notes?: string }>;
+  approvalSteps: DemoExpenseApprovalStep[];
+};
+
+type DemoSalaryProfile = {
+  id: string;
+  employeeCode: string;
+  fullName: string;
+  department: string;
+  position: string;
+  baseSalary: number;
+  currency: string;
+  frequency: string;
+  defaultBonus: number;
+  defaultDeduction: number;
+  advanceBalance: number;
+  debtRecoveryRate: number;
+  notes?: string;
+  isActive: boolean;
+  createdAt: string;
+};
+
+type DemoPayrollRun = {
+  id: string;
+  title: string;
+  department?: string;
+  frequency: string;
+  status: string;
+  totalGross: number;
+  totalBonuses: number;
+  totalDeductions: number;
+  totalNet: number;
+  notes?: string;
+  processedAt: string | null;
+  createdAt: string;
+  period: { id: string; name: string };
+  items: Array<{
+    id: string;
+    baseSalary: number;
+    bonuses: number;
+    deductions: number;
+    advancesRecovered: number;
+    debtRecovered: number;
+    netSalary: number;
+    salarySlipNumber: string;
+    salaryProfile: DemoSalaryProfile;
+  }>;
+};
+
+type DemoEmployee = {
+  id: string;
+  orbitId: string;
+  displayId: string;
+  fullName: string;
+  phone?: string | null;
+  email?: string | null;
+  physicalAddress?: string | null;
+  accessCode?: string | null;
+  subject?: string | null;
+  employeeId?: string | null;
+  employeeType?: string | null;
+  department?: string | null;
+  jobTitle?: string | null;
+  mustChangePassword?: boolean;
+  organizationId?: string | null;
+  externalIds: Array<{ appSlug: string; externalId: string }>;
+};
 
 const demoClasses = [
-  ...Array.from({ length: 5 }, (_v, index) => ({ id: `section-k${index + 1}`, name: `K${index + 1}` })),
+  ...Array.from({ length: 3 }, (_v, index) => ({ id: `section-k${index + 3}`, name: `K${index + 3}` })),
   ...Array.from({ length: 12 }, (_v, index) => ({ id: `section-grade-${index + 1}`, name: `Grade ${index + 1}` }))
 ];
 
-const seedParents: DemoParent[] = [
-  {
-    id: "PAR-2025-0001",
-    nom: "Dupont",
-    postnom: "",
-    prenom: "Marie",
-    fullName: "Dupont Marie",
-    phone: "+243 999 123 456",
-    email: "marie@example.com",
-    createdAt: new Date().toISOString(),
-    students: [
-      { id: "STU-001", fullName: "Alice Dupont", classId: "section-grade-4", className: "Grade 4", annualFee: 1800 },
-      { id: "STU-002", fullName: "Kevin Dupont", classId: "section-grade-2", className: "Grade 2", annualFee: 1500 }
-    ]
-  },
-  {
-    id: "PAR-2025-0002",
-    nom: "Pierre",
-    postnom: "Kalamba",
-    prenom: "Jean",
-    fullName: "Pierre Kalamba Jean",
-    phone: "+243 999 234 567",
-    email: "jean@example.com",
-    createdAt: new Date().toISOString(),
-    students: [
-      { id: "STU-003", fullName: "Sarah Kalamba", classId: "section-grade-6", className: "Grade 6", annualFee: 2200 }
-    ]
-  }
-];
+const OFFICIAL_DEMO_COUNTS = { parents: 29, students: 44, employees: 10 };
+const parentSeedNames = [
+  ["Kabongo", "Rachel"], ["Mbuyi", "Mireille"], ["Lukusa", "Cedric"], ["Ilunga", "Nadine"], ["Tshibangu", "Patrick"],
+  ["Mavungu", "Aline"], ["Kalala", "Samuel"], ["Moke", "Sarah"], ["Banza", "Grace"], ["Kanku", "David"],
+  ["Mukendi", "Chantal"], ["Tshomba", "Daniel"], ["Mbala", "Esther"], ["Kasongo", "Joel"], ["Ngoy", "Carine"],
+  ["Kitenge", "Fabrice"], ["Mulumba", "Ruth"], ["Nkulu", "Benedicte"], ["Beya", "Jonathan"], ["Lunda", "Prisca"],
+  ["Tshimanga", "Arnaud"], ["Kayembe", "Rose"], ["Mutombo", "Lionel"], ["Kabasele", "Diane"], ["Nsimba", "Marc"],
+  ["Mpoyi", "Sandrine"], ["Lwamba", "Eric"], ["Makiese", "Gloria"], ["Kalonji", "Herve"]
+] as const;
+const studentGivenNames = [
+  "Elise", "David", "Amani", "Noah", "Naomi", "Ethan", "Sarah", "Joshua", "Deborah", "Samuel", "Rebecca",
+  "Nathan", "Esther", "Daniel", "Merveille", "Joanna", "Grace", "Aaron", "Rachelle", "Jonathan", "Prisca",
+  "Emmanuel", "Christelle", "Benjamin", "Ruth", "Joel", "Benedicte", "Isaac", "Naomie", "Joseph", "Judith",
+  "Caleb", "Hadassa", "Ezekiel", "Miriam", "Levi", "Rachel", "Elie", "Abigail", "Matthieu", "Anne", "Simeon",
+  "Tabitha", "Timothee"
+] as const;
 
-const seedPayments: DemoPayment[] = [
-  { id: "pay-1", transactionNumber: "TXN-20260420-10001", parentId: "PAR-2025-0001", parentFullName: "Dupont Marie", reason: "Frais scolaires - 1er trimestre", method: "CASH", amount: 1200, status: "COMPLETED", createdAt: new Date().toISOString(), date: new Date().toLocaleString("fr-FR") },
-  { id: "pay-2", transactionNumber: "TXN-20260421-10002", parentId: "PAR-2025-0002", parentFullName: "Pierre Kalamba Jean", reason: "Frais scolaires - 1er trimestre", method: "MPESA", amount: 800, status: "PENDING", createdAt: new Date().toISOString(), date: new Date().toLocaleString("fr-FR") }
-];
+function demoClassForStudent(index: number) {
+  const classEntry = demoClasses[index % demoClasses.length];
+  return { classId: classEntry.id, className: classEntry.name };
+}
+
+function buildUnifiedDemoParents(): DemoParent[] {
+  let studentIndex = 0;
+  return parentSeedNames.map(([nom, prenom], parentIndex) => {
+    const studentCount = parentIndex < 15 ? 2 : 1;
+    const students = Array.from({ length: studentCount }, () => {
+      const current = studentIndex;
+      studentIndex += 1;
+      const { classId, className } = demoClassForStudent(current);
+      return {
+        id: `STU-KCS-${String(current + 1).padStart(3, "0")}`,
+        fullName: `${studentGivenNames[current]} ${nom}`,
+        gender: current % 2 === 0 ? "F" : "M",
+        classId,
+        className,
+        annualFee: 1800 + ((current % 6) * 120),
+        createdAt: `2026-01-${String((current % 24) + 2).padStart(2, "0")}T08:00:00.000Z`
+      } satisfies DemoStudent;
+    });
+
+    return {
+      id: `PAR-KCS-${String(parentIndex + 1).padStart(3, "0")}`,
+      nom,
+      postnom: "",
+      prenom,
+      fullName: `${prenom} ${nom}`,
+      phone: `+243 812 45${String(parentIndex + 1).padStart(4, "0")}`,
+      email: `${prenom.toLowerCase()}.${nom.toLowerCase()}@kcs.local`,
+      accessCode: `ACC-PAR-${String(parentIndex + 1).padStart(4, "0")}`,
+      physicalAddress: `Commune ${["Gombe", "Ngaliema", "Limete", "Lemba", "Kintambo"][parentIndex % 5]}, Kinshasa`,
+      createdAt: `2026-01-${String((parentIndex % 24) + 2).padStart(2, "0")}T07:30:00.000Z`,
+      students
+    };
+  });
+}
+
+const seedParents: DemoParent[] = buildUnifiedDemoParents();
+
+function buildUnifiedDemoPayments(parents: DemoParent[]): DemoPayment[] {
+  return parents.slice(0, 12).map((parent, index) => {
+    const student = parent.students[0];
+    const completed = index % 4 !== 3;
+    return {
+      id: `pay-${String(index + 1).padStart(3, "0")}`,
+      transactionNumber: `TXN-202604${String(index + 10).padStart(2, "0")}-${String(10001 + index)}`,
+      parentId: parent.id,
+      parentFullName: parent.fullName,
+      paymentSubjectName: student?.fullName,
+      studentNames: parent.students.map((item) => item.fullName),
+      reason: `Frais scolaires - ${student?.fullName ?? parent.fullName}`,
+      method: ["CASH", "MPESA", "AIRTEL_MONEY"][index % 3],
+      amount: completed ? Math.round(parent.students.reduce((sum, item) => sum + item.annualFee, 0) * (0.35 + (index % 3) * 0.12)) : 0,
+      status: completed ? "COMPLETED" : "PENDING",
+      createdAt: `2026-04-${String(index + 10).padStart(2, "0")}T10:00:00.000Z`,
+      date: `2026-04-${String(index + 10).padStart(2, "0")}`
+    };
+  });
+}
+
+const seedPayments: DemoPayment[] = buildUnifiedDemoPayments(seedParents);
 
 function clearLocalSession() {
   sessionStorage.removeItem(SESSION_ACTIVE_KEY);
@@ -71,7 +353,7 @@ function clearLocalSession() {
   localStorage.removeItem("edupay_fullName");
 }
 
-function resolveApiUrl(path: string): string {
+export function resolveApiUrl(path: string): string {
   if (/^https?:\/\//i.test(path)) return path;
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return API_BASE_URL ? `${API_BASE_URL}${normalizedPath}` : normalizedPath;
@@ -91,8 +373,148 @@ function writeJson(key: string, value: unknown) {
   localStorage.setItem(key, JSON.stringify(value));
 }
 
+function isCacheableRequest(path: string, init?: RequestInit) {
+  return path.startsWith("/api/") && (init?.method ?? "GET").toUpperCase() === "GET";
+}
+
+function cacheKeyFor(path: string) {
+  return `${API_RESPONSE_CACHE_PREFIX}${path}`;
+}
+
+function readCachedResponse<T>(path: string): T | null {
+  try {
+    const raw = localStorage.getItem(cacheKeyFor(path));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { value: T };
+    return parsed.value;
+  } catch {
+    return null;
+  }
+}
+
+export function getCachedApiResponse<T>(path: string): T | null {
+  return readCachedResponse<T>(path);
+}
+
+function writeCachedResponse(path: string, value: unknown) {
+  try {
+    localStorage.setItem(cacheKeyFor(path), JSON.stringify({ cachedAt: new Date().toISOString(), value }));
+  } catch {
+    // Storage may be full or unavailable; live API response still wins.
+  }
+}
+
+function isOfflineQueueableRequest(path: string, init?: RequestInit) {
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (!path.startsWith("/api/")) return false;
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return false;
+  if (path.startsWith("/api/auth/")) return false;
+  return typeof init?.body === "string" || init?.body === undefined;
+}
+
+function readOfflineQueue() {
+  return readJson<OfflineMutation[]>(OFFLINE_MUTATION_QUEUE_KEY, []);
+}
+
+function writeOfflineQueue(queue: OfflineMutation[]) {
+  writeJson(OFFLINE_MUTATION_QUEUE_KEY, queue.slice(-100));
+}
+
+function queueOfflineMutation(path: string, init?: RequestInit) {
+  if (!isOfflineQueueableRequest(path, init)) return null;
+  const mutation: OfflineMutation = {
+    id: `offline-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    path,
+    method: (init?.method ?? "POST").toUpperCase(),
+    body: typeof init?.body === "string" ? init.body : undefined,
+    headers: Object.fromEntries(new Headers(init?.headers || {}).entries()),
+    queuedAt: new Date().toISOString(),
+    replayAttempts: 0
+  };
+  writeOfflineQueue([...readOfflineQueue(), mutation]);
+  return mutation;
+}
+
+export async function flushOfflineMutationQueue() {
+  const queue = readOfflineQueue();
+  if (!queue.length) return { attempted: 0, sent: 0, remaining: 0 };
+
+  const token = localStorage.getItem(TOKEN_STORAGE_KEY) ?? "";
+  const remaining: OfflineMutation[] = [];
+  let sent = 0;
+
+  for (const item of queue) {
+    try {
+      const response = await fetch(resolveApiUrl(item.path), {
+        method: item.method,
+        body: item.body,
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...item.headers
+        }
+      });
+      if (response.ok || response.status === 409) {
+        sent += 1;
+      } else {
+        remaining.push({ ...item, replayAttempts: item.replayAttempts + 1 });
+      }
+    } catch {
+      remaining.push({ ...item, replayAttempts: item.replayAttempts + 1 });
+    }
+  }
+
+  writeOfflineQueue(remaining.filter((item) => item.replayAttempts < 10));
+  return { attempted: queue.length, sent, remaining: readOfflineQueue().length };
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => {
+    void flushOfflineMutationQueue();
+  });
+}
+
+function buildReadableEntityId(prefix: "PAR" | "STU", fullName: string) {
+  const tokens = fullName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 4);
+
+  const safeTokens = tokens.length ? tokens : [prefix === "PAR" ? "PARENT" : "STUDENT"];
+  return `${prefix}-KCS-${safeTokens.join("-")}`;
+}
+
+function buildUniqueDemoEntityId(prefix: "PAR" | "STU", fullName: string, existingIds: string[]) {
+  const baseId = buildReadableEntityId(prefix, fullName);
+  if (!existingIds.includes(baseId)) return baseId;
+
+  for (let attempt = 2; attempt < 100; attempt += 1) {
+    const candidateId = `${baseId}-${String(attempt).padStart(2, "0")}`;
+    if (!existingIds.includes(candidateId)) return candidateId;
+  }
+
+  return `${baseId}-${Date.now().toString().slice(-6)}`;
+}
+
 function getDemoParents() {
-  const parents = readJson<DemoParent[]>(DEMO_PARENTS_KEY, seedParents);
+  const storedParents = readJson<DemoParent[]>(DEMO_PARENTS_KEY, seedParents);
+  const storedStudentCount = storedParents.reduce((sum, parent) => sum + (parent.students?.length ?? 0), 0);
+  const sourceParents =
+    storedParents.length < OFFICIAL_DEMO_COUNTS.parents || storedStudentCount < OFFICIAL_DEMO_COUNTS.students
+      ? seedParents
+      : storedParents;
+  const parents = sourceParents.map((parent) => ({
+    ...parent,
+    students: parent.students.map((student) => ({
+      ...student,
+      createdAt: student.createdAt || parent.createdAt || new Date().toISOString(),
+    }))
+  }));
   writeJson(DEMO_PARENTS_KEY, parents);
   return parents;
 }
@@ -111,8 +533,75 @@ function getDemoParentCredentials() {
 
 function saveDemoParentCredential(credential: DemoParentCredential) {
   const email = credential.email.trim().toLowerCase();
-  const credentials = getDemoParentCredentials().filter((item) => item.email.trim().toLowerCase() !== email);
-  writeJson(DEMO_PARENT_CREDENTIALS_KEY, [{ ...credential, email }, ...credentials]);
+  const accessCode = credential.accessCode?.trim().toUpperCase();
+  const credentials = getDemoParentCredentials().filter((item) =>
+    item.email.trim().toLowerCase() !== email &&
+    (!accessCode || item.accessCode?.trim().toUpperCase() !== accessCode)
+  );
+  writeJson(DEMO_PARENT_CREDENTIALS_KEY, [{ ...credential, email, accessCode }, ...credentials]);
+}
+
+function generateDemoTemporaryPassword() {
+  const values = new Uint32Array(1);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(values);
+    return `KCS-${String(values[0] % 1_000_000).padStart(6, "0")}`;
+  }
+
+  return `KCS-${String(Math.floor(Math.random() * 1_000_000)).padStart(6, "0")}`;
+}
+
+function generateDemoPasswordResetToken() {
+  const values = new Uint32Array(4);
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    crypto.getRandomValues(values);
+    return Array.from(values).map((value) => value.toString(36).padStart(7, "0")).join("");
+  }
+
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 24)}`.padEnd(28, "0");
+}
+
+function getDemoPasswordResetTokens() {
+  const now = Date.now();
+  const tokens = readJson<DemoPasswordResetToken[]>(DEMO_PASSWORD_RESET_TOKENS_KEY, [])
+    .filter((token) => !token.usedAt && new Date(token.expiresAt).getTime() > now);
+  writeJson(DEMO_PASSWORD_RESET_TOKENS_KEY, tokens);
+  return tokens;
+}
+
+function saveDemoPasswordResetToken(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const token = generateDemoPasswordResetToken();
+  const tokens = getDemoPasswordResetTokens().filter((item) => item.email !== normalizedEmail);
+  writeJson(DEMO_PASSWORD_RESET_TOKENS_KEY, [
+    { token, email: normalizedEmail, expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString() },
+    ...tokens
+  ]);
+  return token;
+}
+
+function resolveDemoResetEmail(identifier: string) {
+  const normalized = identifier.trim().toLowerCase();
+  const accessCode = identifier.trim().toUpperCase();
+  if (normalized === "admin@school.com") return "admin@school.com";
+  if (normalized === "parent@school.com") return "parent@school.com";
+  const credential = getDemoParentCredentials().find((item) =>
+    item.email.trim().toLowerCase() === normalized ||
+    item.accessCode?.trim().toUpperCase() === accessCode ||
+    getDemoParents().find((parent) => parent.id === item.parentId)?.id === accessCode
+  );
+  return credential?.email.trim().toLowerCase() || null;
+}
+
+function getDemoFinanceOverrides() {
+  const overrides = readJson<Record<string, DemoFinanceOverride>>(DEMO_FINANCE_OVERRIDES_KEY, {});
+  setDemoFinanceOverrides(overrides);
+  return overrides;
+}
+
+function saveDemoFinanceOverrides(overrides: Record<string, DemoFinanceOverride>) {
+  writeJson(DEMO_FINANCE_OVERRIDES_KEY, overrides);
+  setDemoFinanceOverrides(overrides);
 }
 
 function parseBody(init?: RequestInit) {
@@ -131,6 +620,896 @@ function overview() {
     paymentSuccessRate: payments.length ? (payments.filter((p) => p.status === "COMPLETED").length / payments.length) * 100 : 0,
     outstandingDebt: Math.max(totalExpected - completed, 0)
   };
+}
+
+function financeCatalog() {
+  getDemoFinanceOverrides();
+  return buildDemoFinanceCatalog();
+}
+
+function financeOverview() {
+  getDemoFinanceOverrides();
+  return buildDemoFinanceOverview(getDemoParents(), getDemoPayments());
+}
+
+function buildAcademicDueDate(month: number, day: number) {
+  const now = new Date();
+  const startYear = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+  const year = month >= 8 ? startYear : startYear + 1;
+  return new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999)).toISOString();
+}
+
+function buildOwnerAgreementInstallments(customTotal: number) {
+  const safeTotal = Math.max(Number(customTotal || 0), 0);
+  const first = Math.round((safeTotal * 0.4) * 100) / 100;
+  const second = Math.round((safeTotal * 0.3) * 100) / 100;
+  const third = Math.round((safeTotal - first - second) * 100) / 100;
+  return [
+    { label: "Engagement initial", dueDate: buildAcademicDueDate(8, 31), amountDue: first, notes: "Created during parent onboarding" },
+    { label: "Régularisation mi-année", dueDate: buildAcademicDueDate(1, 31), amountDue: second, notes: "Created during parent onboarding" },
+    { label: "Solde final", dueDate: buildAcademicDueDate(5, 31), amountDue: third, notes: "Created during parent onboarding" }
+  ];
+}
+
+function buildDemoSpecialAgreementInstallments(customTotal: number, reductionAmount = 0, installmentMode: DemoSpecialAgreement["installmentMode"] = "THREE_INSTALLMENTS") {
+  const safeTotal = Math.max(Number(customTotal || 0), 0);
+  const safeReduction = Math.max(Number(reductionAmount || 0), 0);
+  const balanceDue = roundAmount(Math.max(safeTotal - safeReduction, 0));
+  if (balanceDue <= 0) return [];
+
+  if (installmentMode === "ONE_TIME") {
+    return [{ label: "Versement unique", dueDate: buildAcademicDueDate(8, 31), amountDue: balanceDue, notes: "Created during parent onboarding" }];
+  }
+
+  if (installmentMode === "TWO_INSTALLMENTS") {
+    const first = roundAmount(balanceDue * 0.6);
+    const second = roundAmount(balanceDue - first);
+    return [
+      { label: "Premier versement", dueDate: buildAcademicDueDate(8, 31), amountDue: first, notes: "Created during parent onboarding" },
+      { label: "Solde", dueDate: buildAcademicDueDate(1, 31), amountDue: second, notes: "Created during parent onboarding" }
+    ];
+  }
+
+  return buildOwnerAgreementInstallments(balanceDue);
+}
+
+function buildDemoAgreementOverride(student: DemoStudent): DemoFinanceOverride {
+  const agreement = student.specialAgreement;
+  const customTotal = Number(agreement?.customTotal ?? student.annualFee ?? 0);
+  const reductionAmount = Number(agreement?.reductionAmount ?? 0);
+  return {
+    mode: "AGREEMENT",
+    agreement: {
+      title: agreement?.title?.trim() || `Accord spécial parent-école - ${student.fullName}`,
+      customTotal,
+      reductionAmount,
+      status: "APPROVED",
+      privateNotes: "",
+      notes: agreement?.notes?.trim() || "Created during parent onboarding",
+      installments: buildDemoSpecialAgreementInstallments(customTotal, reductionAmount, agreement?.installmentMode)
+    }
+  };
+}
+
+function resolveDemoClassName(classId: string, fallbackName = "") {
+  return demoClasses.find((entry) => entry.id === classId)?.name || fallbackName || classId;
+}
+
+function roundAmount(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
+function getDemoBaseAnnualTuition(className: string, annualFee: number) {
+  if (/grade\s*(9|10|11|12)/i.test(className)) return 5420;
+  if (/grade\s*(6|7|8)/i.test(className)) return 4595;
+  if (/^k|kindergarten/i.test(className)) return 3082.5;
+  if (/grade\s*(1|2|3|4|5)/i.test(className)) return 3770;
+  return roundAmount(Number(annualFee || 0));
+}
+
+function buildDemoTuitionSchedule(paymentOptionType: DemoPaymentOptionType, finalTuition: number) {
+  const split = (rows: Array<{ label: string; dueDate: string }>) => {
+    const base = Math.floor((finalTuition / rows.length) * 100) / 100;
+    let running = 0;
+    return rows.map((row, index) => {
+      const amountDue = index === rows.length - 1 ? roundAmount(finalTuition - running) : roundAmount(base);
+      running = roundAmount(running + amountDue);
+      return { sequence: index + 1, ...row, amountDue };
+    });
+  };
+
+  if (paymentOptionType === "FULL_PRESEPTEMBER") {
+    return split([{ label: "Full annual payment before September", dueDate: buildAcademicDueDate(8, 31) }]);
+  }
+  if (paymentOptionType === "TWO_INSTALLMENTS") {
+    return split([
+      { label: "Installment 1 - before September", dueDate: buildAcademicDueDate(8, 31) },
+      { label: "Installment 2 - before February", dueDate: buildAcademicDueDate(2, 28) }
+    ]);
+  }
+  if (paymentOptionType === "THREE_INSTALLMENTS") {
+    return split([
+      { label: "Installment 1 - before September", dueDate: buildAcademicDueDate(8, 31) },
+      { label: "Installment 2 - Dec/Jan/Feb period", dueDate: buildAcademicDueDate(2, 28) },
+      { label: "Installment 3 - Mar/Apr/May/June period", dueDate: buildAcademicDueDate(6, 30) }
+    ]);
+  }
+
+  const monthlyAmount = roundAmount(finalTuition / 10);
+  return [
+    { sequence: 1, label: "Initial 4-month payment", dueDate: buildAcademicDueDate(8, 31), amountDue: roundAmount(monthlyAmount * 4) },
+    { sequence: 2, label: "Month 5 payment", dueDate: buildAcademicDueDate(9, 30), amountDue: monthlyAmount },
+    { sequence: 3, label: "Month 6 payment", dueDate: buildAcademicDueDate(10, 31), amountDue: monthlyAmount },
+    { sequence: 4, label: "Month 7 payment", dueDate: buildAcademicDueDate(11, 30), amountDue: monthlyAmount },
+    { sequence: 5, label: "Month 8 payment", dueDate: buildAcademicDueDate(12, 31), amountDue: monthlyAmount },
+    { sequence: 6, label: "Month 9 payment", dueDate: buildAcademicDueDate(1, 31), amountDue: monthlyAmount },
+    { sequence: 7, label: "Month 10 payment", dueDate: buildAcademicDueDate(2, 28), amountDue: roundAmount(finalTuition - roundAmount(monthlyAmount * 9)) }
+  ];
+}
+
+function getDemoDueBucket(dueDate: string): DemoTuitionAllocationLine["dueBucket"] {
+  const due = new Date(dueDate).getTime();
+  const todayEnd = new Date();
+  todayEnd.setHours(23, 59, 59, 999);
+  const currentEnd = new Date(todayEnd);
+  currentEnd.setDate(currentEnd.getDate() + 30);
+  if (due < todayEnd.getTime()) return "OVERDUE";
+  if (due < currentEnd.getTime()) return "CURRENT";
+  return "FUTURE";
+}
+
+function buildDemoAllocationMessage(input: { amount: number; lines: DemoTuitionAllocationLine[]; advanceBalance: number }) {
+  const byStudent = input.lines.reduce<Record<string, number>>((acc, line) => {
+    acc[line.studentName] = roundAmount((acc[line.studentName] ?? 0) + line.allocated);
+    return acc;
+  }, {});
+  const unpaid = roundAmount(input.lines.reduce((sum, line) => sum + line.outstandingAfter, 0));
+  const next = input.lines
+    .filter((line) => line.outstandingAfter > 0)
+    .sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime())[0];
+  const overdue = roundAmount(input.lines
+    .filter((line) => line.dueBucket === "OVERDUE" && line.outstandingAfter > 0)
+    .reduce((sum, line) => sum + line.outstandingAfter, 0));
+
+  return [
+    `Total amount received: $ ${input.amount.toFixed(2)}.`,
+    Object.keys(byStudent).length
+      ? `Allocated: ${Object.entries(byStudent).map(([student, total]) => `${student} $ ${total.toFixed(2)}`).join("; ")}.`
+      : "No allocation was applied.",
+    unpaid > 0 ? `Remaining unpaid: $ ${unpaid.toFixed(2)}.` : "All targeted obligations are fully paid.",
+    next ? `Next required payment: ${next.studentName} - ${next.label}, $ ${next.outstandingAfter.toFixed(2)} by ${new Date(next.dueDate).toLocaleDateString("fr-FR")}.` : "No next payment is currently required.",
+    overdue > 0 ? `Overdue balance: $ ${overdue.toFixed(2)}.` : "No overdue balance remains in this allocation preview.",
+    input.advanceBalance > 0 ? `Advance payment balance: $ ${input.advanceBalance.toFixed(2)}.` : ""
+  ].filter(Boolean).join(" ");
+}
+
+function buildDemoTuitionAllocationSummary(mode: "AUTO" | "MANUAL", preview: { allocationPreview: { message: string; totalReceived: number; allocatedTotal: number; missingAmount: number; advanceBalance: number; lines: DemoTuitionAllocationLine[] } }): DemoTuitionAllocationSummary {
+  const perChild = preview.allocationPreview.lines.reduce<Record<string, DemoTuitionAllocationSummary["perChild"][number]>>((acc, line) => {
+    const current = acc[line.studentName] ?? { studentName: line.studentName, allocated: 0, remaining: 0, lines: [] };
+    current.allocated = roundAmount(current.allocated + line.allocated);
+    current.remaining = roundAmount(current.remaining + line.outstandingAfter);
+    current.lines.push({
+      label: line.label,
+      dueBucket: line.dueBucket,
+      outstandingBefore: line.outstandingBefore,
+      allocated: line.allocated,
+      outstandingAfter: line.outstandingAfter
+    });
+    acc[line.studentName] = current;
+    return acc;
+  }, {});
+
+  return {
+    mode,
+    message: preview.allocationPreview.message,
+    totalReceived: preview.allocationPreview.totalReceived,
+    allocatedTotal: preview.allocationPreview.allocatedTotal,
+    missingAmount: preview.allocationPreview.missingAmount,
+    advanceBalance: preview.allocationPreview.advanceBalance,
+    perChild: Object.values(perChild)
+  };
+}
+
+function expenseOverview() {
+  const finance = financeOverview();
+  const revenueBase = Math.max(Number(finance.collectedRevenue || 0), 6400);
+  const payrollTotal = roundAmount(revenueBase * 0.34);
+  const operationalExpenses = roundAmount(revenueBase * 0.29);
+  const totalExpenses = roundAmount(payrollTotal + operationalExpenses);
+  const months = Array.from({ length: 6 }, (_value, index) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() - (5 - index));
+    const period = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+    const revenueRatio = [0.74, 0.81, 0.86, 0.92, 0.96, 1][index] ?? 1;
+    const expenseRatio = [0.48, 0.56, 0.61, 0.65, 0.69, 0.63][index] ?? 0.63;
+    const monthlyRevenue = roundAmount(revenueBase * revenueRatio * 0.19);
+    const monthlyExpenses = roundAmount(revenueBase * expenseRatio * 0.18);
+    return {
+      period,
+      revenue: monthlyRevenue,
+      expenses: monthlyExpenses,
+      profitLoss: roundAmount(monthlyRevenue - monthlyExpenses)
+    };
+  });
+
+  const budgets = [
+    {
+      id: "budget-hr",
+      name: "Masse salariale annuelle",
+      department: "Ressources humaines",
+      plannedAmount: 4200,
+      consumedAmount: 3880,
+      remainingAmount: 320,
+      utilization: 92.38,
+      status: "ACTIVE",
+      periodName: `FY ${new Date().getFullYear()}`,
+      categoryName: "Human Resources"
+    },
+    {
+      id: "budget-ops",
+      name: "Opérations campus",
+      department: "Administration",
+      plannedAmount: 2100,
+      consumedAmount: 1875,
+      remainingAmount: 225,
+      utilization: 89.29,
+      status: "ACTIVE",
+      periodName: `FY ${new Date().getFullYear()}`,
+      categoryName: "Administrative Expenses"
+    },
+    {
+      id: "budget-tech",
+      name: "Modernisation IT",
+      department: "Technologie",
+      plannedAmount: 1350,
+      consumedAmount: 1420,
+      remainingAmount: 0,
+      utilization: 105.19,
+      status: "EXCEEDED",
+      periodName: `FY ${new Date().getFullYear()}`,
+      categoryName: "Technology & IT"
+    }
+  ];
+
+  return {
+    revenue: {
+      totalRevenue: roundAmount(Number(finance.collectedRevenue || 0)),
+      totalCompletedPayments: Math.max(2, finance.parentsTracked || 0)
+    },
+    expenses: {
+      totalExpenses,
+      approvedExpenses: 18,
+      pendingExpenses: 4,
+      rejectedExpenses: 1,
+      pendingApprovalSteps: 3
+    },
+    payroll: {
+      activeProfiles: 12,
+      runCount: 3,
+      totalPayroll: payrollTotal,
+      salaryLiability: roundAmount(payrollTotal * 0.22)
+    },
+    cashflow: {
+      availableCash: roundAmount(Number(finance.collectedRevenue || 0) - totalExpenses),
+      operationalBalance: roundAmount(Number(finance.collectedRevenue || 0) - totalExpenses),
+      profitLoss: roundAmount(Number(finance.collectedRevenue || 0) - totalExpenses)
+    },
+    liabilities: {
+      supplierDebt: 1240,
+      payrollLiability: roundAmount(payrollTotal * 0.22),
+      institutionalObligations: 980
+    },
+    budgets,
+    budgetAlerts: budgets.filter((budget) => budget.utilization >= 80 || budget.status === "EXCEEDED"),
+    categorySpending: [
+      { categoryId: "cat-hr", categoryName: "Human Resources", type: "HUMAN_RESOURCES", total: roundAmount(payrollTotal * 0.86) },
+      { categoryId: "cat-infra", categoryName: "Infrastructure & Maintenance", type: "INFRASTRUCTURE", total: 920 },
+      { categoryId: "cat-admin", categoryName: "Administrative Expenses", type: "ADMINISTRATIVE", total: 760 },
+      { categoryId: "cat-tech", categoryName: "Technology & IT", type: "TECHNOLOGY", total: 640 },
+      { categoryId: "cat-academic", categoryName: "Academic Expenses", type: "ACADEMIC", total: 510 }
+    ],
+    departmentSpending: [
+      { department: "Ressources humaines", total: roundAmount(payrollTotal) },
+      { department: "Administration", total: 1180 },
+      { department: "Maintenance", total: 920 },
+      { department: "Technologie", total: 640 },
+      { department: "Academique", total: 510 }
+    ],
+    monthlyPerformance: months,
+    recentExpenses: [
+      { id: "exp-1", title: "Electricite campus", department: "Maintenance", amount: 340, categoryName: "Infrastructure & Maintenance", status: "APPROVED", expenseDate: new Date().toISOString() },
+      { id: "exp-2", title: "Abonnement internet", department: "Administration", amount: 180, categoryName: "Administrative Expenses", status: "PENDING", expenseDate: new Date(Date.now() - 86400000 * 2).toISOString() },
+      { id: "exp-3", title: "Licences ERP", department: "Technologie", amount: 420, categoryName: "Technology & IT", status: "APPROVED", expenseDate: new Date(Date.now() - 86400000 * 4).toISOString() },
+      { id: "exp-4", title: "Achat fournitures", department: "Academique", amount: 210, categoryName: "Academic Expenses", status: "REJECTED", expenseDate: new Date(Date.now() - 86400000 * 6).toISOString() }
+    ],
+    recentPayrollRuns: [
+      { id: "payroll-1", title: "Paie avril", department: "Ressources humaines", totalNet: 1480, status: "PAID", periodName: "2026-04", processedAt: new Date(Date.now() - 86400000 * 8).toISOString() },
+      { id: "payroll-2", title: "Paie mai", department: "Ressources humaines", totalNet: 1525, status: "PROCESSED", periodName: "2026-05", processedAt: new Date(Date.now() - 86400000 * 2).toISOString() },
+      { id: "payroll-3", title: "Prime examens", department: "Academique", totalNet: 220, status: "DRAFT", periodName: "2026-05", processedAt: null }
+    ]
+  };
+}
+
+function getDemoCurrentPeriod() {
+  const now = new Date();
+  return {
+    id: `period-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`,
+    name: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+  };
+}
+
+function buildDefaultExpenseCategories(): DemoExpenseCategory[] {
+  const groups = [
+    {
+      id: "cat-charges-60",
+      name: "60 Achat",
+      slug: "charges-exploitation-60-achat",
+      type: "ADMINISTRATIVE",
+      children: [
+        ["cat-charges-60-60100-bureau-it", "60100 Achats fournitures de bureau et consommables informatiques"],
+        ["cat-charges-60-60101-entretiens", "60101 Achats fournitures d'entretiens"],
+        ["cat-charges-60-60102-non-stockables", "60102 Fournitures non stockables (eau, électricité et autres énergies)"],
+        ["cat-charges-60-60103-petit-materiel", "60103 Achats petit matériel et outillage"],
+        ["cat-charges-60-60104-carburant", "60104 Achats carburant et lubrifiant véhicule et générateur"]
+      ]
+    },
+    {
+      id: "cat-charges-61",
+      name: "61 Transports",
+      slug: "charges-exploitation-61-transports",
+      type: "TRANSPORT",
+      children: [
+        ["cat-charges-61-60100-voyage", "60100 Voyage et déplacement"]
+      ]
+    },
+    {
+      id: "cat-charges-62",
+      name: "62 Services extérieurs",
+      slug: "charges-exploitation-62-services-exterieurs",
+      type: "ADMINISTRATIVE",
+      children: [
+        ["cat-charges-62-62100-sous-traitance", "62100 Sous traitance générale"],
+        ["cat-charges-62-62101-location", "62101 Location et charge locative"],
+        ["cat-charges-62-62102-entretien", "62102 Entretien et réparation (véhicules et autres)"],
+        ["cat-charges-62-62103-assurance", "62103 Primes d'assurance (véhicules bâtiment)"],
+        ["cat-charges-62-62104-divers", "62104 Divers services extérieurs"]
+      ]
+    },
+    {
+      id: "cat-charges-63",
+      name: "63 Autres services extérieurs",
+      slug: "charges-exploitation-63-autres-services-exterieurs",
+      type: "ADMINISTRATIVE",
+      children: [
+        ["cat-charges-63-63100-avocat", "63100 Honoraire Avocat conseil"],
+        ["cat-charges-63-63101-audit", "63101 Honoraire Cabinet audit externe"],
+        ["cat-charges-63-63102-consultants", "63102 Honoraires Autres consultants"],
+        ["cat-charges-63-63105-telecom", "63105 Frais postaux et de télécommunications (courrier, téléphone, internet)"],
+        ["cat-charges-63-63106-bancaires", "63106 Services bancaires et autres"]
+      ]
+    },
+    {
+      id: "cat-charges-64",
+      name: "64 Impôts et taxes",
+      slug: "charges-exploitation-64-impots-taxes",
+      type: "ADMINISTRATIVE",
+      children: [
+        ["cat-charges-64-64100-vignettes", "64100 Vignettes, Assurances, contrôle technique..."],
+        ["cat-charges-64-64101-autres", "64101 Autres impôts et taxes"]
+      ]
+    },
+    {
+      id: "cat-charges-65",
+      name: "65 Autres charges de gestion courante",
+      slug: "charges-exploitation-65-autres-charges-gestion-courante",
+      type: "ADMINISTRATIVE",
+      children: [
+        ["cat-charges-65-65100-representation", "65100 Frais de représentation et des réunions"],
+        ["cat-charges-65-65101-jetons", "65101 Jetons de présence et autres rémunérations d'administrateurs"],
+        ["cat-charges-65-65102-tenue-ca", "65102 Autres frais tenue CA (location salle, rafraîchissement et autres)"]
+      ]
+    },
+    {
+      id: "cat-charges-66",
+      name: "66 Charges de personnel",
+      slug: "charges-exploitation-66-charges-personnel",
+      type: "HUMAN_RESOURCES",
+      children: [
+        ["cat-charges-66-remuneration", "66 Rémunération des personnels"],
+        ["cat-charges-66-66110-sociales", "66110 Charges sociales (INSS QPP, INPP, ONEM)"],
+        ["cat-charges-66-66111-soins", "66111 Soins médicaux personnel"],
+        ["cat-charges-66-66112-autres", "66112 Autres charges de personnel (Coût formation personnel)"]
+      ]
+    },
+    {
+      id: "cat-charges-67",
+      name: "67 Charges financières",
+      slug: "charges-financières-67",
+      type: "ADMINISTRATIVE",
+      children: [
+        ["cat-charges-67-67100-interets", "67100 Intérêts bancaires et sur opérations de trésorerie"]
+      ]
+    },
+    {
+      id: "cat-charges-83",
+      name: "83 Charges exceptionnelles",
+      slug: "charges-exceptionnelles-83",
+      type: "SPECIAL_INSTITUTIONAL",
+      ownerApprovalRequired: true,
+      children: [
+        ["cat-charges-83-83100-operations", "83100 Sur opérations de gestion (pénalités, amandes fiscales et penales)"],
+        ["cat-charges-83-83100-autres", "83100 Autres charges exceptionnelles"]
+      ]
+    },
+    {
+      id: "cat-investissement-2",
+      name: "2 Investissement",
+      slug: "investissement-2",
+      type: "INFRASTRUCTURE",
+      ownerApprovalRequired: true,
+      children: [
+        ["cat-investissement-2-20100-batiment", "20100 Bâtiment administratif propre"],
+        ["cat-investissement-2-20101-mobilier", "20101 Mobilier, matériels informatiques et autres matériels de Classe & bureau"],
+        ["cat-investissement-2-20102-telephone", "20102 Téléphone interne"]
+      ]
+    }
+  ];
+
+  return groups.flatMap((group) => {
+    const parent: DemoExpenseCategory = {
+      id: group.id,
+      name: group.name,
+      slug: group.slug,
+      type: group.type,
+      parentCategoryId: null,
+      ownerApprovalRequired: Boolean(group.ownerApprovalRequired)
+    };
+    const children = group.children.map(([id, name]) => ({
+      id,
+      name,
+      slug: `${group.slug}-${String(name).toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+      type: group.type,
+      parentCategoryId: group.id,
+      ownerApprovalRequired: Boolean(group.ownerApprovalRequired)
+    }));
+    return [parent, ...children];
+  });
+}
+
+function getDemoExpenseCategories() {
+  const defaults = buildDefaultExpenseCategories();
+  const stored = readJson<DemoExpenseCategory[]>(DEMO_EXPENSE_CATEGORIES_KEY, defaults);
+  const storedIds = new Set(stored.map((category) => category.id));
+  const categories = [...stored, ...defaults.filter((category) => !storedIds.has(category.id))];
+  writeJson(DEMO_EXPENSE_CATEGORIES_KEY, categories);
+  return categories;
+}
+
+function getDemoExpenseVendors() {
+  const vendors = readJson<DemoVendor[]>(DEMO_EXPENSE_VENDORS_KEY, [
+    {
+      id: "vendor-campus-net",
+      name: "Campus Net Services",
+      contactName: "Jean Mbuyi",
+      phone: "+243 810 001 122",
+      email: "contact@campusnet.local",
+      address: "Lubumbashi",
+      notes: "Internet et communication",
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: "vendor-city-power",
+      name: "City Power Utility",
+      contactName: "Utility Desk",
+      phone: "+243 810 889 221",
+      email: "service@citypower.local",
+      address: "Kasumbalesa",
+      notes: "Electricite campus",
+      createdAt: new Date().toISOString()
+    }
+  ]);
+  writeJson(DEMO_EXPENSE_VENDORS_KEY, vendors);
+  return vendors;
+}
+
+function getDemoExpenseBudgets() {
+  const budgets = readJson<DemoBudget[]>(DEMO_EXPENSE_BUDGETS_KEY, [
+    {
+      id: "budget-ops-1",
+      name: "Opérations campus",
+      department: "Administration",
+      plannedAmount: 2400,
+      consumedAmount: 1280,
+      remainingAmount: 1120,
+      utilization: 53.33,
+      status: "ACTIVE",
+      alertThreshold: 80,
+      notes: "Budget opérationnel général",
+      categoryId: "cat-admin",
+      category: { id: "cat-admin", name: "Administrative Expenses" },
+      period: getDemoCurrentPeriod(),
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: "budget-tech-1",
+      name: "Transformation numerique",
+      department: "Technologie",
+      plannedAmount: 1800,
+      consumedAmount: 960,
+      remainingAmount: 840,
+      utilization: 53.33,
+      status: "ACTIVE",
+      alertThreshold: 75,
+      notes: "Licences et equipements",
+      categoryId: "cat-tech",
+      category: { id: "cat-tech", name: "Technology & IT" },
+      period: getDemoCurrentPeriod(),
+      createdAt: new Date().toISOString()
+    }
+  ]);
+  writeJson(DEMO_EXPENSE_BUDGETS_KEY, budgets);
+  return budgets;
+}
+
+function buildUnifiedDemoSalaryProfiles(): DemoSalaryProfile[] {
+  return [
+    ["EMP-001", "Mireille Ilunga", "Academique", "Teacher", 420],
+    ["EMP-002", "Patrick Nsenga", "Administration", "Accountant", 360],
+    ["EMP-003", "Anita Mbuyi", "Academique", "Teacher", 430],
+    ["EMP-004", "Daniel Kayembe", "Finances", "Finance Officer", 390],
+    ["EMP-005", "Nadine Ilunga", "Administration", "Director", 650],
+    ["EMP-006", "Cedric Lukusa", "Academique", "Teacher", 410],
+    ["EMP-007", "Grace Banza", "Vie scolaire", "Student Life Officer", 340],
+    ["EMP-008", "Joel Kasongo", "Operations", "Logistics Officer", 330],
+    ["EMP-009", "Carine Ngoy", "Academique", "Teacher", 405],
+    ["EMP-010", "Herve Kalonji", "Technologie", "IT Officer", 380]
+  ].map(([employeeCode, fullName, department, position, baseSalary], index) => ({
+    id: `salary-${String(index + 1).padStart(3, "0")}`,
+    employeeCode: String(employeeCode),
+    fullName: String(fullName),
+    department: String(department),
+    position: String(position),
+    baseSalary: Number(baseSalary),
+    currency: "USD",
+    frequency: "MONTHLY",
+    defaultBonus: index % 2 === 0 ? 25 : 15,
+    defaultDeduction: index % 3 === 0 ? 10 : 5,
+    advanceBalance: 0,
+    debtRecoveryRate: 0,
+    notes: "Population demo unifiee KCS",
+    isActive: true,
+    createdAt: `2026-01-${String(index + 2).padStart(2, "0")}T07:00:00.000Z`
+  }));
+}
+
+function getDemoSalaryProfiles() {
+  const profiles = readJson<DemoSalaryProfile[]>(DEMO_SALARY_PROFILES_KEY, [
+    {
+      id: "salary-001",
+      employeeCode: "EMP-001",
+      fullName: "Mireille Ilunga",
+      department: "Academique",
+      position: "Teacher",
+      baseSalary: 420,
+      currency: "USD",
+      frequency: "MONTHLY",
+      defaultBonus: 25,
+      defaultDeduction: 10,
+      advanceBalance: 0,
+      debtRecoveryRate: 0,
+      notes: "Cycle secondaire",
+      isActive: true,
+      createdAt: new Date().toISOString()
+    },
+    {
+      id: "salary-002",
+      employeeCode: "EMP-002",
+      fullName: "Patrick Nsenga",
+      department: "Administration",
+      position: "Accountant",
+      baseSalary: 360,
+      currency: "USD",
+      frequency: "MONTHLY",
+      defaultBonus: 15,
+      defaultDeduction: 5,
+      advanceBalance: 0,
+      debtRecoveryRate: 0,
+      notes: "Contrôle des opérations",
+      isActive: true,
+      createdAt: new Date().toISOString()
+    }
+  ]);
+  const reconciledProfiles = profiles.filter((profile) => profile.isActive !== false).length < OFFICIAL_DEMO_COUNTS.employees
+    ? buildUnifiedDemoSalaryProfiles()
+    : profiles;
+  writeJson(DEMO_SALARY_PROFILES_KEY, reconciledProfiles);
+  return reconciledProfiles;
+}
+
+function getDemoEmployees() {
+  const seedEmployees = getDemoSalaryProfiles().map((profile) => ({
+    id: profile.id,
+    orbitId: profile.id,
+    displayId: profile.employeeCode,
+    fullName: profile.fullName,
+    phone: "",
+    email: "",
+    physicalAddress: "",
+    accessCode: `ACC-${profile.employeeCode}`,
+    subject: profile.position === "Teacher" ? "General" : "",
+    employeeId: profile.employeeCode,
+    employeeType: profile.position === "Teacher" ? "TEACHING" : "STAFF",
+    department: profile.department,
+    jobTitle: profile.position,
+    mustChangePassword: false,
+    organizationId: "demo-school",
+    externalIds: [{ appSlug: "SAVANEX", externalId: profile.employeeCode }],
+  }));
+  const employees = readJson<DemoEmployee[]>(DEMO_EMPLOYEES_KEY, seedEmployees);
+  const reconciledEmployees = employees.length < OFFICIAL_DEMO_COUNTS.employees ? seedEmployees : employees;
+  writeJson(DEMO_EMPLOYEES_KEY, reconciledEmployees);
+  return reconciledEmployees;
+}
+
+function saveDemoEmployees(employees: DemoEmployee[]) {
+  writeJson(DEMO_EMPLOYEES_KEY, employees);
+}
+
+function getDemoPayrollRuns() {
+  const runs = readJson<DemoPayrollRun[]>(DEMO_PAYROLL_RUNS_KEY, []);
+  writeJson(DEMO_PAYROLL_RUNS_KEY, runs);
+  return runs;
+}
+
+function getDemoAccountingEntries() {
+  const expenseEntries = getDemoExpenseItems()
+    .filter((expense) => expense.status === "APPROVED")
+    .map((expense) => ({
+      id: `ae-expense-${expense.id}`,
+      entryType: "EXPENSE",
+      direction: "OUTFLOW",
+      title: expense.title,
+      amount: expense.amount,
+      currency: expense.currency,
+      entryDate: expense.expenseDate,
+      department: expense.department,
+      expense: { id: expense.id, title: expense.title, department: expense.department, status: expense.status },
+      payrollRun: null,
+      payrollItem: null,
+      metadata: {
+        categoryId: expense.categoryId,
+        budgetId: expense.budgetId ?? null
+      },
+      createdAt: expense.createdAt
+    }));
+
+  const payrollEntries = getDemoPayrollRuns().map((run) => ({
+    id: `ae-payroll-${run.id}`,
+    entryType: "PAYROLL",
+    direction: "OUTFLOW",
+    title: run.title,
+    amount: run.totalNet,
+    currency: "USD",
+    entryDate: run.processedAt ?? run.createdAt,
+    department: run.department || "Human Resources",
+    expense: null,
+    payrollRun: { id: run.id, title: run.title, department: run.department, status: run.status },
+    payrollItem: null,
+    metadata: {
+      itemCount: run.items.length,
+      periodName: run.period.name
+    },
+    createdAt: run.createdAt
+  }));
+
+  return [...expenseEntries, ...payrollEntries].sort((left, right) => String(right.entryDate).localeCompare(String(left.entryDate)));
+}
+
+function getDemoCashflowEntries() {
+  const expenseEntries = getDemoExpenseItems()
+    .filter((expense) => expense.status === "APPROVED")
+    .map((expense) => ({
+      id: `cf-expense-${expense.id}`,
+      direction: "OUTFLOW",
+      sourceType: "EXPENSE",
+      amount: expense.amount,
+      currency: expense.currency,
+      method: expense.paymentMethod ?? null,
+      référenceDate: expense.expenseDate,
+      notes: expense.comments ?? "",
+      expense: { id: expense.id, title: expense.title, department: expense.department, status: expense.status },
+      payrollRun: null,
+      payrollItem: null,
+      createdAt: expense.createdAt
+    }));
+
+  const payrollEntries = getDemoPayrollRuns().map((run) => ({
+    id: `cf-payroll-${run.id}`,
+    direction: "OUTFLOW",
+    sourceType: "PAYROLL",
+    amount: run.totalNet,
+    currency: "USD",
+    method: null,
+    référenceDate: run.processedAt ?? run.createdAt,
+    notes: run.notes ?? "",
+    expense: null,
+    payrollRun: { id: run.id, title: run.title, department: run.department, status: run.status },
+    payrollItem: null,
+    createdAt: run.createdAt
+  }));
+
+  return [...expenseEntries, ...payrollEntries].sort((left, right) => String(right.référenceDate).localeCompare(String(left.référenceDate)));
+}
+
+function getDemoExpenseItems() {
+  const categories = getDemoExpenseCategories();
+  const budgets = getDemoExpenseBudgets();
+  const vendors = getDemoExpenseVendors();
+  const period = getDemoCurrentPeriod();
+  const expenses = readJson<DemoExpenseItem[]>(DEMO_EXPENSE_ITEMS_KEY, [
+    {
+      id: "expense-001",
+      title: "Electricite campus principal",
+      department: "Maintenance",
+      amount: 340,
+      currency: "USD",
+      paymentMethod: "BANK_TRANSFER",
+      supplierName: "City Power Utility",
+      status: "APPROVED",
+      categoryId: "cat-infra-electricity",
+      budgetId: "budget-ops-1",
+      vendorId: "vendor-city-power",
+      financialPeriodLabel: period.name,
+      expenseDate: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString(),
+      requiresOwnerApproval: false,
+      comments: "Consommation mensuelle campus principal",
+      createdAt: new Date().toISOString(),
+      category: { id: "cat-infra-electricity", name: "Electricity", type: "INFRASTRUCTURE", parentCategoryId: "cat-infra" },
+      vendor: vendors.find((item) => item.id === "vendor-city-power") || null,
+      budget: budgets.find((item) => item.id === "budget-ops-1") || null,
+      period,
+      attachments: [],
+      approvalSteps: [
+        { stage: 1, role: "FINANCIAL_OFFICER", status: "APPROVED", decidedAt: new Date().toISOString() },
+        { stage: 2, role: "ADMINISTRATION", status: "APPROVED", decidedAt: new Date().toISOString() }
+      ]
+    },
+    {
+      id: "expense-002",
+      title: "Renouvellement licence ERP",
+      department: "Technologie",
+      amount: 420,
+      currency: "USD",
+      paymentMethod: "BANK_TRANSFER",
+      supplierName: "Campus Net Services",
+      status: "PENDING",
+      categoryId: "cat-tech-licenses",
+      budgetId: "budget-tech-1",
+      vendorId: "vendor-campus-net",
+      financialPeriodLabel: period.name,
+      expenseDate: new Date().toISOString(),
+      requiresOwnerApproval: false,
+      comments: "Renouvellement annuel",
+      createdAt: new Date().toISOString(),
+      category: { id: "cat-tech-licenses", name: "Licenses", type: "TECHNOLOGY", parentCategoryId: "cat-tech" },
+      vendor: vendors.find((item) => item.id === "vendor-campus-net") || null,
+      budget: budgets.find((item) => item.id === "budget-tech-1") || null,
+      period,
+      attachments: [],
+      approvalSteps: [
+        { stage: 1, role: "FINANCIAL_OFFICER", status: "PENDING" },
+        { stage: 2, role: "ADMINISTRATION", status: "PENDING" }
+      ]
+    }
+  ]);
+  writeJson(DEMO_EXPENSE_ITEMS_KEY, expenses);
+  return expenses;
+}
+
+function saveDemoExpenseVendors(vendors: DemoVendor[]) {
+  writeJson(DEMO_EXPENSE_VENDORS_KEY, vendors);
+}
+
+function saveDemoExpenseBudgets(budgets: DemoBudget[]) {
+  writeJson(DEMO_EXPENSE_BUDGETS_KEY, budgets);
+}
+
+function saveDemoSalaryProfiles(profiles: DemoSalaryProfile[]) {
+  writeJson(DEMO_SALARY_PROFILES_KEY, profiles);
+}
+
+function saveDemoPayrollRuns(runs: DemoPayrollRun[]) {
+  writeJson(DEMO_PAYROLL_RUNS_KEY, runs);
+}
+
+function saveDemoExpenseItems(expenses: DemoExpenseItem[]) {
+  writeJson(DEMO_EXPENSE_ITEMS_KEY, expenses);
+}
+
+function updateBudgetConsumptionForDemo(expense: DemoExpenseItem) {
+  if (!expense.budgetId || expense.status !== "APPROVED") return;
+  const budgets = getDemoExpenseBudgets().map((budget) => {
+    if (budget.id !== expense.budgetId) return budget;
+    const consumedAmount = roundAmount(budget.consumedAmount + expense.amount);
+    const utilization = budget.plannedAmount > 0 ? roundAmount((consumedAmount / budget.plannedAmount) * 100) : 0;
+    return {
+      ...budget,
+      consumedAmount,
+      remainingAmount: roundAmount(Math.max(budget.plannedAmount - consumedAmount, 0)),
+      utilization,
+      status: consumedAmount > budget.plannedAmount ? "EXCEEDED" : budget.status
+    };
+  });
+  saveDemoExpenseBudgets(budgets);
+}
+
+function financeProfile(parentId?: string | null) {
+  getDemoFinanceOverrides();
+  const parents = getDemoParents();
+  const parent = parentId
+    ? parents.find((entry) => entry.id === parentId)
+    : parents[0];
+  if (!parent) {
+    throw new Error("Profil parent financier introuvable.");
+  }
+  const snapshot = buildDemoParentFinanceProfile(parent.id, parents, getDemoPayments()) as Record<string, unknown>;
+  const manualMessages = getDemoManualMessages()
+    .filter((message) => message.parentId === parent.id)
+    .map((message) => ({
+      id: message.id,
+      type: message.type,
+      channel: message.channel,
+      content: message.content,
+      status: message.status,
+      createdAt: message.createdAt
+    }));
+
+  return {
+    ...snapshot,
+    notificationHistory: [
+      ...(((snapshot.notificationHistory as Array<Record<string, unknown>> | undefined) ?? [])),
+      ...manualMessages
+    ].sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))
+  };
+}
+
+function getDemoManualMessages() {
+  const messages = readJson<DemoManualMessage[]>(DEMO_MANUAL_MESSAGES_KEY, []);
+  writeJson(DEMO_MANUAL_MESSAGES_KEY, messages);
+  return messages;
+}
+
+function saveDemoManualMessages(messages: DemoManualMessage[]) {
+  writeJson(DEMO_MANUAL_MESSAGES_KEY, messages);
+}
+
+function appendDemoParentNotification(input: {
+  parent: Pick<DemoParent, "id" | "fullName" | "phone" | "email">;
+  content: string;
+  channels?: Array<"DASHBOARD" | "EMAIL" | "SMS">;
+  status?: string;
+}) {
+  const createdAt = new Date().toISOString();
+  const channels: Array<"DASHBOARD" | "EMAIL" | "SMS"> = input.channels && input.channels.length > 0 ? input.channels : ["DASHBOARD"];
+  const entries = channels.map((channel, index): DemoManualMessage => ({
+    id: `auto-message-${Date.now()}-${index}-${input.parent.id}`,
+    parentId: input.parent.id,
+    parentName: input.parent.fullName,
+    parentPhone: input.parent.phone,
+    parentEmail: input.parent.email,
+    type: "MANUAL_MESSAGE",
+    language: "fr",
+    channel,
+    content: input.content,
+    status: input.status ?? (channel === "DASHBOARD" ? "OPEN" : "SIMULATED"),
+    createdAt
+  }));
+  saveDemoManualMessages([...entries, ...getDemoManualMessages()]);
+}
+
+function financeReductions() {
+  getDemoFinanceOverrides();
+  return buildDemoReductionAnalytics(getDemoParents(), getDemoPayments());
 }
 
 function parentMe() {
@@ -159,14 +1538,32 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
   await new Promise((resolve) => setTimeout(resolve, 80));
 
   if (normalizedPath === "/api/auth/login" && method === "POST") {
-    const email = String(body.email ?? "").toLowerCase();
+    const identifier = String(body.identifier ?? body.email ?? "").trim();
+    const email = identifier.toLowerCase();
+    const accessCode = identifier.toUpperCase();
     const password = String(body.password ?? "");
-    if (email === "parent@school.com" && password === "password123") {
-      const parent = getDemoParents().find((item) => item.id === "PAR-2025-0001");
-      return { token: "demo-parent-token", role: "PARENT", fullName: "Dupont Marie", parentId: "PAR-2025-0001", photoUrl: parent?.photoUrl || "" } as T;
+    const adminPassword = localStorage.getItem(DEMO_ADMIN_PASSWORD_KEY) || "password123";
+    const parentPassword = localStorage.getItem(DEMO_PARENT_PASSWORD_KEY) || "password123";
+    if (email === "parent@school.com" && password === parentPassword) {
+      const parent = getDemoParents().find((item) => item.id === "PAR-KCS-RACHEL-KABONGO");
+      return { token: "demo-parent-token", role: "PARENT", fullName: "Rachel Kabongo", parentId: "PAR-KCS-RACHEL-KABONGO", photoUrl: parent?.photoUrl || "" } as T;
     }
 
-    const credential = getDemoParentCredentials().find((item) => item.email === email && item.password === password);
+    const seededParent = getDemoParents().find((item) => item.accessCode?.trim().toUpperCase() === accessCode);
+    if (seededParent && password === parentPassword) {
+      return {
+        token: `demo-parent-token-${seededParent.id}`,
+        role: "PARENT",
+        fullName: seededParent.fullName,
+        parentId: seededParent.id,
+        photoUrl: seededParent.photoUrl || ""
+      } as T;
+    }
+
+    const credential = getDemoParentCredentials().find((item) =>
+      item.password === password &&
+      (item.email === email || item.accessCode?.trim().toUpperCase() === accessCode)
+    );
     if (credential) {
       const parent = getDemoParents().find((item) => item.id === credential.parentId);
       if (parent) {
@@ -180,14 +1577,50 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       }
     }
 
-    if (email === "admin@school.com" && password === "password123") {
+    if (email === "admin@school.com" && password === adminPassword) {
       return { token: "local-admin-token", role: "ADMIN", fullName: "Administrateur" } as T;
     }
 
     throw new Error("Identifiants invalides.");
   }
 
-  if (normalizedPath === "/api/auth/forgot-password") return { message: "OK" } as T;
+  if (normalizedPath === "/api/auth/forgot-password" && method === "POST") {
+    const identifier = String(body.identifier ?? body.email ?? "");
+    const email = resolveDemoResetEmail(identifier);
+    const token = email ? saveDemoPasswordResetToken(email) : "";
+    return {
+      message: email
+        ? "Mode local: code de reinitialisation genere pour tester le flux."
+        : "Si ce compte existe, un code de reinitialisation vient d'etre envoye.",
+      resetToken: token || undefined
+    } as T;
+  }
+
+  if (normalizedPath === "/api/auth/reset-password" && method === "POST") {
+    const token = String(body.token ?? "").trim();
+    const newPassword = String(body.newPassword ?? "");
+    const resetToken = getDemoPasswordResetTokens().find((item) => item.token === token);
+    if (!resetToken || newPassword.length < 8) {
+      throw new Error("Code de reinitialisation invalide ou expire.");
+    }
+
+    if (resetToken.email === "admin@school.com") {
+      localStorage.setItem(DEMO_ADMIN_PASSWORD_KEY, newPassword);
+    } else if (resetToken.email === "parent@school.com") {
+      localStorage.setItem(DEMO_PARENT_PASSWORD_KEY, newPassword);
+    } else {
+      const credentials = getDemoParentCredentials().map((item) =>
+        item.email.trim().toLowerCase() === resetToken.email ? { ...item, password: newPassword } : item
+      );
+      writeJson(DEMO_PARENT_CREDENTIALS_KEY, credentials);
+    }
+
+    writeJson(DEMO_PASSWORD_RESET_TOKENS_KEY, getDemoPasswordResetTokens().map((item) =>
+      item.token === token ? { ...item, usedAt: new Date().toISOString() } : item
+    ));
+    return { message: "Mot de passe reinitialise. Vous pouvez vous connecter." } as T;
+  }
+
   if (normalizedPath === "/api/auth/change-password") return { message: "OK" } as T;
   if (normalizedPath === "/api/auth/recover-admin-password" && method === "POST") {
     const email = String(body.email ?? "").trim().toLowerCase();
@@ -195,12 +1628,12 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const newPassword = String(body.newPassword ?? "");
     const configuredCode = String(import.meta.env.VITE_ADMIN_RECOVERY_CODE ?? "");
     if (!configuredCode || configuredCode.startsWith("CHANGE_ME")) {
-      throw new Error("La recuperation administrateur n'est pas configuree.");
+      throw new Error("La reçuperation administrateur n'est pas configuree.");
     }
     if (recoveryCode !== configuredCode || email !== "admin@school.com" || newPassword.length < 10) {
-      throw new Error("Informations de recuperation invalides.");
+      throw new Error("Informations de reçuperation invalides.");
     }
-    return { message: "Mot de passe administrateur reinitialise en mode local." } as T;
+    return { message: "Mot de passe administrateur réinitialisé en mode local." } as T;
   }
   if (normalizedPath === "/api/parents/me/photo" && method === "PUT") {
     const parentId = localStorage.getItem(PARENT_ID_STORAGE_KEY);
@@ -214,24 +1647,535 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const hasDebtQuestion = query.includes("impay") || query.includes("non pay") || query.includes("unpaid");
     return {
       answer: hasDebtQuestion
-        ? "Mode local actif : les donnees disponibles indiquent de prioriser les familles avec le plus grand solde restant et de relancer les paiements en attente."
-        : "Mode local actif : le diagnostic utilise les donnees stockees dans ce navigateur pendant que l'API distante est indisponible.",
+        ? "Mode local actif : les données disponibles indiquent de prioriser les familles avec le plus grand solde restant et de relancer les paiements en attente."
+        : "Mode local actif : le diagnostic utilise les données stockées dans ce navigateur pendant que l'API distante est indisponible.",
       suggestions: hasDebtQuestion
-        ? ["Voir les parents en retard", "Verifier les paiements en attente", "Preparer un echeancier"]
-        : ["Analyser le tableau de bord", "Controler les paiements recents", "Generer un rapport"]
+        ? ["Voir les parents en retard", "Vérifier les paiements en attente", "Préparer un échéancier"]
+        : ["Analyser le tableau de bord", "Contrôler les paiements récents", "Générer un rapport"]
     } as T;
   }
   if (normalizedPath === "/api/classes") return demoClasses as T;
   if (normalizedPath === "/api/parents/me") return parentMe() as T;
   if (normalizedPath === "/api/analytics/overview") return overview() as T;
+  if (normalizedPath === "/api/finance/catalog") return financeCatalog() as T;
+  if (normalizedPath === "/api/finance/overview") return financeOverview() as T;
+  if (normalizedPath === "/api/expenses/overview") return expenseOverview() as T;
+  if (normalizedPath === "/api/finance/me/profile") {
+    const parentId = localStorage.getItem(PARENT_ID_STORAGE_KEY);
+    return financeProfile(parentId) as T;
+  }
+  if (normalizedPath === "/api/finance/réductions") return financeReductions() as T;
   if (normalizedPath === "/api/analytics/overdue-parents") return { overdueParents: 1 } as T;
   if (normalizedPath === "/api/analytics/payment-anomalies") return { anomalies: 0 } as T;
   if (normalizedPath === "/api/analytics/system-health") return { dbOk: true, lastBackup: new Date().toLocaleDateString("fr-FR") } as T;
   if (normalizedPath === "/api/analytics/forecast") return { nextMonthRevenue: overview().monthlyRevenue, risk: 0.18 } as T;
+  if (normalizedPath === "/api/expenses/categories" && method === "GET") return getDemoExpenseCategories() as T;
+  if (normalizedPath === "/api/expenses/accounting-entries" && method === "GET") return getDemoAccountingEntries() as T;
+  if (normalizedPath === "/api/expenses/cashflow-entries" && method === "GET") return getDemoCashflowEntries() as T;
+  if (normalizedPath === "/api/expenses/vendors" && method === "GET") return getDemoExpenseVendors() as T;
+  if (normalizedPath === "/api/expenses/vendors" && method === "POST") {
+    const vendor: DemoVendor = {
+      id: `vendor-${Date.now()}`,
+      name: String(body.name ?? "Vendor"),
+      contactName: String(body.contactName ?? ""),
+      phone: String(body.phone ?? ""),
+      email: String(body.email ?? ""),
+      address: String(body.address ?? ""),
+      notes: String(body.notes ?? ""),
+      createdAt: new Date().toISOString()
+    };
+    saveDemoExpenseVendors([vendor, ...getDemoExpenseVendors()]);
+    return vendor as T;
+  }
+  if (normalizedPath === "/api/expenses/budgets" && method === "GET") return getDemoExpenseBudgets() as T;
+  if (normalizedPath === "/api/expenses/budgets" && method === "POST") {
+    const categories = getDemoExpenseCategories();
+    const categoryId = String(body.categoryId ?? "");
+    const category = categories.find((item) => item.id === categoryId) || null;
+    const period = getDemoCurrentPeriod();
+    const plannedAmount = roundAmount(Number(body.plannedAmount ?? 0));
+    const budget: DemoBudget = {
+      id: `budget-${Date.now()}`,
+      name: String(body.name ?? "Budget"),
+      department: String(body.department ?? "Administration"),
+      plannedAmount,
+      consumedAmount: 0,
+      remainingAmount: plannedAmount,
+      utilization: 0,
+      status: "ACTIVE",
+      alertThreshold: Number(body.alertThreshold ?? 80),
+      notes: String(body.notes ?? ""),
+      categoryId: category?.id,
+      category: category ? { id: category.id, name: category.name } : null,
+      period,
+      createdAt: new Date().toISOString()
+    };
+    saveDemoExpenseBudgets([budget, ...getDemoExpenseBudgets()]);
+    return budget as T;
+  }
+  if (normalizedPath === "/api/expenses" && method === "GET") return getDemoExpenseItems() as T;
+  if (normalizedPath === "/api/expenses" && method === "POST") {
+    const categories = getDemoExpenseCategories();
+    const vendors = getDemoExpenseVendors();
+    const budgets = getDemoExpenseBudgets();
+    const period = getDemoCurrentPeriod();
+    const category = categories.find((item) => item.id === String(body.categoryId ?? ""));
+    if (!category) throw new Error("Categorie de depense introuvable.");
+    const amount = roundAmount(Number(body.amount ?? 0));
+    const requiresOwnerApproval = Boolean(category.ownerApprovalRequired) || amount >= 5000 || category.type === "SPECIAL_INSTITUTIONAL";
+    const approvalSteps: DemoExpenseApprovalStep[] = [
+      { stage: 1, role: "FINANCIAL_OFFICER", status: "PENDING" },
+      { stage: 2, role: "ADMINISTRATION", status: "PENDING" }
+    ];
+    if (requiresOwnerApproval) approvalSteps.push({ stage: 3, role: "OWNER", status: "PENDING" });
+    const expense: DemoExpenseItem = {
+      id: `expense-${Date.now()}`,
+      title: String(body.title ?? "Depense"),
+      subcategory: String(body.subcategory ?? ""),
+      description: String(body.description ?? ""),
+      department: String(body.department ?? "Administration"),
+      amount,
+      currency: String(body.currency ?? "USD"),
+      paymentMethod: String(body.paymentMethod ?? "CASH"),
+      supplierName: String(body.supplierName ?? ""),
+      status: "PENDING",
+      categoryId: category.id,
+      budgetId: String(body.budgetId ?? "") || undefined,
+      vendorId: String(body.vendorId ?? "") || undefined,
+      financialPeriodLabel: String(body.financialPeriodLabel ?? period.name),
+      expenseDate: String(body.expenseDate ?? new Date().toISOString()),
+      requiresOwnerApproval,
+      comments: String(body.comments ?? ""),
+      createdAt: new Date().toISOString(),
+      category: { id: category.id, name: category.name, type: category.type, parentCategoryId: category.parentCategoryId },
+      vendor: vendors.find((item) => item.id === String(body.vendorId ?? "")) || null,
+      budget: budgets.find((item) => item.id === String(body.budgetId ?? "")) || null,
+      period,
+      attachments: Array.isArray(body.attachments)
+        ? body.attachments.map((attachment, index) => ({
+            id: `attachment-${Date.now()}-${index}`,
+            kind: String((attachment as Record<string, unknown>).kind ?? "EXPENSE_SUPPORT"),
+            fileName: String((attachment as Record<string, unknown>).fileName ?? "Document"),
+            fileUrl: String((attachment as Record<string, unknown>).fileUrl ?? ""),
+            mimeType: String((attachment as Record<string, unknown>).mimeType ?? ""),
+            notes: String((attachment as Record<string, unknown>).notes ?? "")
+          }))
+        : [],
+      approvalSteps
+    };
+    saveDemoExpenseItems([expense, ...getDemoExpenseItems()]);
+    return expense as T;
+  }
+  if (normalizedPath === "/api/expenses/payroll/profiles" && method === "GET") return getDemoSalaryProfiles() as T;
+  if (normalizedPath === "/api/expenses/payroll/profiles" && method === "POST") {
+    const profile: DemoSalaryProfile = {
+      id: `salary-${Date.now()}`,
+      employeeCode: String(body.employeeCode ?? `EMP-${Date.now()}`),
+      fullName: String(body.fullName ?? "Employe"),
+      department: String(body.department ?? "Administration"),
+      position: String(body.position ?? "Staff"),
+      baseSalary: roundAmount(Number(body.baseSalary ?? 0)),
+      currency: String(body.currency ?? "USD"),
+      frequency: String(body.frequency ?? "MONTHLY"),
+      defaultBonus: roundAmount(Number(body.defaultBonus ?? 0)),
+      defaultDeduction: roundAmount(Number(body.defaultDeduction ?? 0)),
+      advanceBalance: roundAmount(Number(body.advanceBalance ?? 0)),
+      debtRecoveryRate: roundAmount(Number(body.debtRecoveryRate ?? 0)),
+      notes: String(body.notes ?? ""),
+      isActive: true,
+      createdAt: new Date().toISOString()
+    };
+    saveDemoSalaryProfiles([profile, ...getDemoSalaryProfiles()]);
+    return profile as T;
+  }
+  if (normalizedPath === "/api/expenses/payroll/runs" && method === "GET") return getDemoPayrollRuns() as T;
+  if (normalizedPath === "/api/expenses/payroll/runs" && method === "POST") {
+    const profiles = getDemoSalaryProfiles().filter((profile) =>
+      profile.isActive && (!body.department || profile.department === String(body.department))
+    );
+    if (!profiles.length) throw new Error("Aucun profil salarial actif pour ce run.");
+    const period = getDemoCurrentPeriod();
+    const items = profiles.map((profile, index) => {
+      const bonuses = roundAmount(profile.defaultBonus || 0);
+      const deductions = roundAmount(profile.defaultDeduction || 0);
+      const debtRecovered = roundAmount((profile.baseSalary * profile.debtRecoveryRate) / 100);
+      const netSalary = roundAmount(profile.baseSalary + bonuses - deductions - debtRecovered);
+      return {
+        id: `payroll-item-${Date.now()}-${index}`,
+        baseSalary: profile.baseSalary,
+        bonuses,
+        deductions,
+        advancesRecovered: 0,
+        debtRecovered,
+        netSalary,
+        salarySlipNumber: `SLIP-${Date.now()}-${index + 1}`,
+        salaryProfile: profile
+      };
+    });
+    const run: DemoPayrollRun = {
+      id: `payroll-run-${Date.now()}`,
+      title: String(body.title ?? "Run de paie"),
+      department: String(body.department ?? ""),
+      frequency: String(body.frequency ?? "MONTHLY"),
+      status: "PROCESSED",
+      totalGross: roundAmount(items.reduce((sum, item) => sum + item.baseSalary, 0)),
+      totalBonuses: roundAmount(items.reduce((sum, item) => sum + item.bonuses, 0)),
+      totalDeductions: roundAmount(items.reduce((sum, item) => sum + item.deductions + item.debtRecovered + item.advancesRecovered, 0)),
+      totalNet: roundAmount(items.reduce((sum, item) => sum + item.netSalary, 0)),
+      notes: String(body.notes ?? ""),
+      processedAt: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+      period,
+      items
+    };
+    saveDemoPayrollRuns([run, ...getDemoPayrollRuns()]);
+    return run as T;
+  }
+
+  if (normalizedPath === "/api/finance/tuition-engine/preview-allocation" && method === "POST") {
+    const parentId = String(body.parentId ?? "");
+    const parent = getDemoParents().find((item) => item.id === parentId);
+    const requestedStudentIds = Array.from(new Set(Array.isArray(body.studentIds) ? (body.studentIds as string[]).filter(Boolean) : []));
+    const amount = roundAmount(Number(body.amount ?? 0));
+    const paymentOptionType = String(body.paymentOptionType ?? "STANDARD_MONTHLY") as DemoPaymentOptionType;
+    const allocationMode = String(body.allocationMode ?? "AUTO") === "MANUAL" ? "MANUAL" : "AUTO";
+    const manualAllocations = Array.isArray(body.manualAllocations)
+      ? (body.manualAllocations as Array<Record<string, unknown>>).map((row) => ({
+          installmentId: String(row.installmentId ?? ""),
+          amount: roundAmount(Number(row.amount ?? 0))
+        }))
+      : [];
+    const familyRate = (parent?.students.length ?? 0) >= 2 ? 10 : 0;
+    const planRate = paymentOptionType === "FULL_PRESEPTEMBER" ? 10 : paymentOptionType === "TWO_INSTALLMENTS" ? 5 : paymentOptionType === "THREE_INSTALLMENTS" ? 2 : 0;
+    const targetStudents = requestedStudentIds.length > 0
+      ? (parent?.students ?? []).filter((student) => requestedStudentIds.includes(student.id))
+      : (parent?.students ?? []);
+    if (parent && parent.students.length > 0 && targetStudents.length === 0) {
+      throw new Error("Selectionnez au moins un eleve pour previsualiser ce paiement.");
+    }
+    const calculations = targetStudents.map((student) => {
+      const baseAnnualTuition = getDemoBaseAnnualTuition(student.className, student.annualFee);
+      const familyDiscountAmount = roundAmount(baseAnnualTuition * familyRate / 100);
+      const familyAdjustedTuition = roundAmount(baseAnnualTuition - familyDiscountAmount);
+      const planDiscountAmount = roundAmount(familyAdjustedTuition * planRate / 100);
+      const finalTuition = roundAmount(familyAdjustedTuition - planDiscountAmount);
+      const schedule = buildDemoTuitionSchedule(paymentOptionType, finalTuition);
+      return {
+        studentId: student.id,
+        studentName: student.fullName,
+        gradeGroup: student.className,
+        paymentOptionType,
+        baseAnnualTuition,
+        familyDiscountRate: familyRate,
+        familyDiscountAmount,
+        familyAdjustedTuition,
+        planDiscountRate: planRate,
+        planDiscountAmount,
+        finalTuition,
+        monthlyAmount: paymentOptionType === "STANDARD_MONTHLY" ? roundAmount(finalTuition / 10) : null,
+        schedule
+      };
+    });
+    const candidates = calculations.flatMap((row) => row.schedule.map((installment) => ({
+      installmentId: `demo-installment-${row.studentId}-${installment.sequence}`,
+      studentId: row.studentId,
+      studentName: row.studentName,
+      label: installment.label,
+      dueDate: installment.dueDate,
+      dueBucket: getDemoDueBucket(installment.dueDate),
+      amountDue: installment.amountDue,
+      alreadyPaid: 0,
+      outstandingBefore: installment.amountDue
+    }))).filter((line) => line.outstandingBefore > 0);
+
+    const allocatedByInstallment = new Map<string, number>();
+    if (allocationMode === "MANUAL") {
+      for (const manual of manualAllocations) {
+        const candidate = candidates.find((line) => line.installmentId === manual.installmentId);
+        if (candidate) allocatedByInstallment.set(manual.installmentId, roundAmount(Math.max(0, Math.min(manual.amount, candidate.outstandingBefore))));
+      }
+    } else {
+      let remaining = amount;
+      for (const bucket of ["OVERDUE", "CURRENT", "FUTURE"] as const) {
+        const bucketRows = candidates
+          .filter((line) => line.dueBucket === bucket)
+          .sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime());
+        const dueDates = Array.from(new Set(bucketRows.map((line) => line.dueDate)));
+        for (const dueDate of dueDates) {
+          if (remaining <= 0) break;
+          const group = bucketRows.filter((line) => line.dueDate === dueDate);
+          const groupOutstanding = roundAmount(group.reduce((sum, line) => sum + line.outstandingBefore, 0));
+          if (remaining >= groupOutstanding) {
+            for (const line of group) allocatedByInstallment.set(line.installmentId, line.outstandingBefore);
+            remaining = roundAmount(remaining - groupOutstanding);
+          } else {
+            let distributed = 0;
+            group.forEach((line, index) => {
+              const allocated = index === group.length - 1
+                ? roundAmount(remaining - distributed)
+                : roundAmount((remaining * line.outstandingBefore) / groupOutstanding);
+              distributed = roundAmount(distributed + allocated);
+              allocatedByInstallment.set(line.installmentId, roundAmount(Math.min(allocated, line.outstandingBefore)));
+            });
+            remaining = 0;
+          }
+        }
+        if (remaining <= 0) break;
+      }
+    }
+
+    const lines: DemoTuitionAllocationLine[] = candidates.map((line) => {
+      const allocated = roundAmount(allocatedByInstallment.get(line.installmentId) ?? 0);
+      return {
+        ...line,
+        allocated,
+        outstandingAfter: roundAmount(Math.max(line.outstandingBefore - allocated, 0))
+      };
+    });
+    const allocatedTotal = roundAmount(lines.reduce((sum, line) => sum + line.allocated, 0));
+    const advanceBalance = roundAmount(Math.max(amount - allocatedTotal, 0));
+    const missingAmount = roundAmount(lines.reduce((sum, line) => sum + line.outstandingAfter, 0));
+    const manualTotal = roundAmount(manualAllocations.reduce((sum, row) => sum + row.amount, 0));
+    return {
+      parent: { id: parentId, fullName: parent?.fullName ?? "Parent" },
+      calculations,
+      allocationPreview: {
+        totalReceived: amount,
+        allocatedTotal,
+        advanceBalance,
+        missingAmount,
+        message: buildDemoAllocationMessage({ amount, lines, advanceBalance }),
+        warnings: [
+          allocationMode === "MANUAL" && manualTotal > amount ? "Manual allocation total cannot exceed the received payment amount." : "",
+          allocationMode === "MANUAL" && allocatedTotal < amount ? `Manual split leaves $ ${roundAmount(amount - allocatedTotal).toFixed(2)} as advance balance.` : "",
+          ...lines.filter((line) => line.allocated > 0 && line.outstandingAfter > 0).map((line) => `${line.studentName} remains underpaid for ${line.label}.`),
+          ...lines.filter((line) => line.dueBucket !== "FUTURE" && line.allocated === 0 && line.outstandingBefore > 0).map((line) => `${line.studentName} has an unpaid scheduled obligation: ${line.label}.`)
+        ].filter(Boolean),
+        lines
+      }
+    } as T;
+  }
+
+  if (normalizedPath === "/api/finance/tuition-engine/payments" && method === "POST") {
+    const preview = await demoApi<Record<string, unknown>>("/api/finance/tuition-engine/preview-allocation", {
+      method: "POST",
+      body: JSON.stringify(body)
+    });
+    const payment = {
+      id: `pay-${Date.now()}`,
+      transactionNumber: String(body.transactionNumber ?? `TXN-${Date.now()}`),
+      parentId: String(body.parentId ?? ""),
+      parentFullName: String((preview as any).parent?.fullName ?? "Parent"),
+      paymentSubjectName: Array.isArray((preview as any).calculations) ? (preview as any).calculations.map((row: any) => String(row.studentName ?? "")).filter(Boolean).join(" / ") : "Tuition",
+      studentIds: Array.isArray(body.studentIds) ? (body.studentIds as string[]).filter(Boolean) : [],
+      studentNames: Array.isArray((preview as any).calculations) ? (preview as any).calculations.map((row: any) => String(row.studentName ?? "")).filter(Boolean) : [],
+      reason: "Tuition payment",
+      amount: Number(body.amount ?? 0),
+      status: String(body.status ?? "COMPLETED"),
+      method: String(body.method ?? "CASH"),
+      createdAt: new Date().toISOString(),
+      date: new Date().toLocaleString("fr-FR"),
+      tuitionAllocationSummary: buildDemoTuitionAllocationSummary(String(body.allocationMode ?? "AUTO") === "MANUAL" ? "MANUAL" : "AUTO", preview as any)
+    };
+    writeJson(DEMO_PAYMENTS_KEY, [payment, ...getDemoPayments()]);
+    return { ...preview, payment, receipt: { receiptNumber: `REC-${payment.transactionNumber}` } } as T;
+  }
+
+  const financeParentProfileMatch = normalizedPath.match(/^\/api\/finance\/parents\/([^/]+)\/profile$/);
+  if (financeParentProfileMatch && method === "GET") {
+    return financeProfile(financeParentProfileMatch[1]) as T;
+  }
+
+  const expenseApprovalMatch = normalizedPath.match(/^\/api\/expenses\/([^/]+)\/approval$/);
+  if (expenseApprovalMatch && method === "POST") {
+    const expenseId = expenseApprovalMatch[1];
+    const nextStatus = String(body.status ?? "APPROVED");
+    const expenses = getDemoExpenseItems();
+    const updatedExpenses = expenses.map((expense) => {
+      if (expense.id !== expenseId) return expense;
+      const currentStep = expense.approvalSteps.find((step) => step.status === "PENDING");
+      if (!currentStep) return expense;
+      const approvalSteps = expense.approvalSteps.map((step) => step.stage === currentStep.stage
+        ? { ...step, status: nextStatus, comments: String(body.comments ?? ""), decidedAt: new Date().toISOString() }
+        : step);
+      if (nextStatus === "REJECTED") {
+        return { ...expense, status: "REJECTED", approvalSteps };
+      }
+      const hasRemaining = approvalSteps.some((step) => step.status === "PENDING");
+      const approvedExpense = { ...expense, status: hasRemaining ? "PENDING" : "APPROVED", approvalSteps };
+      if (!hasRemaining) updateBudgetConsumptionForDemo(approvedExpense);
+      return approvedExpense;
+    });
+    saveDemoExpenseItems(updatedExpenses);
+    return updatedExpenses.find((expense) => expense.id === expenseId) as T;
+  }
+  if (normalizedPath === "/api/finance/assignments" && method === "POST") {
+    const overrides = getDemoFinanceOverrides();
+    const parentId = String(body.parentId ?? "");
+    const studentId = String(body.studentId ?? "");
+    const paymentOptionType = String(body.paymentOptionType ?? "STANDARD_MONTHLY") as DemoPaymentOptionType;
+    const parents = getDemoParents();
+    const targetStudents = studentId
+      ? [studentId]
+      : (parents.find((parent) => parent.id === parentId)?.students ?? []).map((student) => student.id);
+
+    for (const targetStudentId of targetStudents) {
+      overrides[targetStudentId] = { mode: "OFFICIAL", paymentOptionType };
+    }
+    saveDemoFinanceOverrides(overrides);
+
+    return {
+      academicYear: financeCatalog().academicYear,
+      assignment: {
+        id: `demo-assignment-${Date.now()}`,
+        parentId,
+        studentId: studentId || null,
+        paymentOptionType,
+        notes: String(body.notes ?? "")
+      }
+    } as T;
+  }
+  if (normalizedPath === "/api/finance/agreements" && method === "POST") {
+    const overrides = getDemoFinanceOverrides();
+    const parentId = String(body.parentId ?? "");
+    const studentId = String(body.studentId ?? "");
+    const parents = getDemoParents();
+    const targetStudents = studentId
+      ? [studentId]
+      : (parents.find((parent) => parent.id === parentId)?.students ?? []).map((student) => student.id);
+    const rawInstallments = Array.isArray(body.installments)
+      ? body.installments.map((row) => ({
+          label: String((row as Record<string, unknown>).label ?? "Installment"),
+          dueDate: String((row as Record<string, unknown>).dueDate ?? new Date().toISOString()),
+          amountDue: Number((row as Record<string, unknown>).amountDue ?? 0),
+          notes: String((row as Record<string, unknown>).notes ?? "")
+        }))
+      : [];
+    const customTotal = Number(body.customTotal ?? 0);
+    const installmentTotal = rawInstallments.reduce((sum, row) => sum + Number(row.amountDue || 0), 0);
+    const reductionAmount = Number(body.reductionAmount ?? 0) || Math.max(customTotal - installmentTotal, 0);
+    const agreement = {
+      title: String(body.title ?? "Custom owner agreement"),
+      customTotal,
+      reductionAmount,
+      status: String(body.status ?? "PENDING_APPROVAL"),
+      privateNotes: String(body.privateNotes ?? ""),
+      notes: String(body.notes ?? ""),
+      installments: rawInstallments
+    };
+
+    for (const targetStudentId of targetStudents) {
+      overrides[targetStudentId] = { mode: "AGREEMENT", agreement };
+    }
+    saveDemoFinanceOverrides(overrides);
+
+    return {
+      academicYear: financeCatalog().academicYear,
+      agreementId: `demo-agreement-${Date.now()}`,
+      status: agreement.status,
+      profileId: `demo-profile-${parentId}`
+    } as T;
+  }
 
   if (normalizedPath === "/api/payments/settings/notifications") {
     if (method === "PUT") localStorage.setItem(DEMO_NOTIFICATIONS_KEY, String(Boolean(body.paymentNotificationsEnabled)));
     return { paymentNotificationsEnabled: localStorage.getItem(DEMO_NOTIFICATIONS_KEY) !== "false" } as T;
+  }
+
+  if (normalizedPath === "/api/notifications/status" && method === "GET") {
+    return {
+      email: { configured: true, host: "demo-local", port: "0", from: "demo@edupay.local", userConfigured: true },
+      sms: { configured: true, providerUrl: "demo-local", usernameConfigured: true, sender: "EduPay" }
+    } as T;
+  }
+
+  if (normalizedPath === "/api/notifications/messages" && method === "GET") {
+    return getDemoManualMessages()
+      .slice()
+      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))) as T;
+  }
+
+  if (normalizedPath === "/api/notifications/messages" && method === "POST") {
+    const parentIds = Array.isArray(body.parentIds) ? body.parentIds.map((value) => String(value)) : [];
+    const parents = getDemoParents().filter((parent) => parentIds.includes(parent.id));
+    if (parents.length === 0) throw new Error("Aucun parent valide n'a été sélectionné.");
+
+    const subject = String(body.subject ?? "").trim();
+    const bodyText = String(body.body ?? "").trim();
+    const content = subject ? `Objet : ${subject}\n\n${bodyText}` : bodyText;
+    const channels = Array.isArray(body.channels) ? body.channels.map((value) => String(value)) : [];
+    const createdAt = new Date().toISOString();
+    const existing = getDemoManualMessages();
+    const messages = parents.map((parent) => {
+      const emailStatus = channels.includes("EMAIL") ? (parent.email ? "SIMULATED" : "SKIPPED") : "DISABLED";
+      const smsStatus = channels.includes("SMS") ? (parent.phone ? "SIMULATED" : "SKIPPED") : "DISABLED";
+      return {
+        id: `manual-message-${Date.now()}-${parent.id}`,
+        parentId: parent.id,
+        parentName: parent.fullName,
+        parentPhone: parent.phone,
+        parentEmail: parent.email,
+        type: "MANUAL_MESSAGE" as const,
+        language: (String(body.language ?? "fr").toLowerCase().startsWith("en") ? "en" : "fr") as "fr" | "en",
+        channel: "DASHBOARD" as const,
+        content,
+        status: `DASHBOARD:OPEN | EMAIL:${emailStatus} | SMS:${smsStatus}`,
+        createdAt,
+      };
+    });
+
+    saveDemoManualMessages([...messages, ...existing]);
+
+    return {
+      sentCount: messages.length,
+      parentIdsMissing: parentIds.filter((parentId) => !parents.some((parent) => parent.id === parentId)),
+      messages: messages.map((message) => ({
+        parentId: message.parentId,
+        parentName: message.parentName,
+        email: message.status.includes("EMAIL:SIMULATED") ? "SIMULATED" : (message.status.includes("EMAIL:SKIPPED") ? "SKIPPED" : "DISABLED"),
+        sms: message.status.includes("SMS:SIMULATED") ? "SIMULATED" : (message.status.includes("SMS:SKIPPED") ? "SKIPPED" : "DISABLED"),
+        dashboard: "OPEN",
+        logId: message.id,
+      }))
+    } as T;
+  }
+
+  const deleteManualMessageMatch = normalizedPath.match(/^\/api\/notifications\/messages\/([^/]+)$/);
+  if (deleteManualMessageMatch && method === "DELETE") {
+    const targetId = deleteManualMessageMatch[1];
+    const existing = getDemoManualMessages();
+    const message = existing.find((entry) => entry.id === targetId);
+    if (!message) throw new Error("Message introuvable.");
+    saveDemoManualMessages(existing.filter((entry) => entry.id !== targetId));
+    return { deletedId: targetId } as T;
+  }
+
+  const paymentVerifyMatch = normalizedPath.match(/^\/api\/payments\/verify\/([^/]+)$/);
+  if (paymentVerifyMatch && method === "GET") {
+    const tx = decodeURIComponent(paymentVerifyMatch[1]);
+    const payment = getDemoPayments().find((item) => item.transactionNumber === tx);
+    if (!payment) throw new Error("Paiement introuvable");
+    return {
+      source: "database",
+      payment: {
+        id: payment.id,
+        transactionNumber: payment.transactionNumber,
+        parentFullName: payment.parentFullName,
+        paymentSubjectName: payment.paymentSubjectName || payment.studentNames?.join(" / ") || payment.parentFullName,
+        studentNames: payment.studentNames ?? [],
+        reason: payment.reason,
+        amount: payment.amount,
+        amountInWords: "",
+        method: payment.method,
+        status: payment.status,
+        date: payment.date,
+        createdAt: payment.createdAt,
+        schoolName: "Kinshasa Christian School",
+        receiptNumber: `REC-${payment.transactionNumber}`,
+        tuitionAllocationSummary: payment.tuitionAllocationSummary ?? null,
+        downloads: null
+      }
+    } as T;
   }
 
   if (normalizedPath === "/api/payments" && method === "GET") return getDemoPayments() as T;
@@ -240,46 +2184,290 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const parent = parentId
       ? getDemoParents().find((item) => item.id === parentId)
       : getDemoParents().find((item) => item.fullName === String(body.parentFullName ?? ""));
+    const studentIds = Array.from(new Set(Array.isArray(body.studentIds) ? (body.studentIds as string[]).filter(Boolean) : []));
+    const studentNames = parent
+      ? parent.students.filter((student) => studentIds.includes(student.id)).map((student) => student.fullName)
+      : [];
+    if (String(body.paymentCategory ?? "TUITION") === "TUITION" && parent && parent.students.length > 0 && studentIds.length === 0) {
+      throw new Error("Selectionnez au moins un eleve pour enregistrer ce paiement de scolarite.");
+    }
+    const bankTransferDetails: Record<string, unknown> | null = typeof body.bankTransferDetails === "object" && body.bankTransferDetails !== null
+      ? (body.bankTransferDetails as Record<string, unknown>)
+      : null;
     const payment: DemoPayment = {
       id: `pay-${Date.now()}`,
       transactionNumber: `TXN-${Date.now()}`,
       parentId: parent?.id || parentId || undefined,
       parentFullName: parent?.fullName || String(body.parentFullName ?? "Parent"),
+      paymentSubjectName: String(body.studentDisplayName ?? "").trim() || studentNames.join(" / ") || parent?.fullName || String(body.parentFullName ?? "Parent"),
+      studentIds,
+      studentNames,
       reason: String(body.reason ?? "Paiement"),
       method: String(body.method ?? "CASH"),
       amount: Number(body.amount ?? 0),
       status: String(body.status ?? "COMPLETED"),
       createdAt: new Date().toISOString(),
-      date: new Date().toLocaleString("fr-FR")
+      date: new Date().toLocaleString("fr-FR"),
+      bankTransferDetails: bankTransferDetails ? {
+        bankName: String(bankTransferDetails.bankName ?? ""),
+        referenceNumber: String(bankTransferDetails.referenceNumber ?? ""),
+        transferDate: String(bankTransferDetails.transferDate ?? ""),
+        senderAccountNumber: String(bankTransferDetails.senderAccountNumber ?? ""),
+        beneficiaryAccountNumber: String(bankTransferDetails.beneficiaryAccountNumber ?? "")
+      } : null
     };
     writeJson(DEMO_PAYMENTS_KEY, [payment, ...getDemoPayments()]);
-    return { payment, receipt: { id: `receipt-${Date.now()}` }, notificationStatus: { email: "SIMULATED", sms: "SIMULATED" } } as T;
+    if (parent) {
+      appendDemoParentNotification({
+        parent,
+        channels: ["DASHBOARD", "EMAIL", "SMS"],
+        content: [
+          `Paiement EduPay enregistré pour ${payment.paymentSubjectName}.`,
+          `Transaction: ${payment.transactionNumber}.`,
+          `Motif: ${payment.reason}.`,
+          `Montant: ${payment.amount.toFixed(2)} $US.`,
+          studentNames.length > 0 ? `Élève(s): ${studentNames.join(", ")}.` : "",
+          "Le reçu et le détail du paiement sont disponibles dans votre espace parent."
+        ].filter(Boolean).join("\n")
+      });
+    }
+    return { payment, receipt: { id: `receipt-${Date.now()}` }, notificationStatus: { dashboard: parent ? "OPEN" : "SKIPPED", email: parent?.email ? "SIMULATED" : "SKIPPED", sms: parent?.phone ? "SIMULATED" : "SKIPPED" } } as T;
+  }
+
+  const cancelPaymentMatch = normalizedPath.match(/^\/api\/payments\/([^/]+)\/cancel$/);
+  if (cancelPaymentMatch && method === "POST") {
+    const payments = getDemoPayments();
+    const payment = payments.find((item) => item.id === cancelPaymentMatch[1]);
+    if (!payment) throw new Error("Paiement introuvable.");
+    const cancelled = { ...payment, status: "CANCELLED" };
+    writeJson(DEMO_PAYMENTS_KEY, payments.map((item) => item.id === payment.id ? cancelled : item));
+    const parent = getDemoParents().find((item) => item.id === payment.parentId);
+    if (parent) {
+      appendDemoParentNotification({
+        parent,
+        content: `Le paiement ${payment.transactionNumber} a été annulé dans EduPay. Vérifiez votre historique de paiements pour le solde mis à jour.`
+      });
+    }
+    return { payment: cancelled, snapshot: financeProfile(payment.parentId ?? null) } as T;
+  }
+
+  const receiptPrintedMatch = normalizedPath.match(/^\/api\/payments\/([^/]+)\/receipt\/printed$/);
+  if (receiptPrintedMatch && method === "POST") {
+    return { notificationStatus: { email: "SIMULATED", sms: "SIMULATED", dashboard: "SIMULATED" } } as T;
+  }
+
+  if (normalizedPath === "/api/shared-directory" && method === "GET") {
+    const parents = getDemoParents();
+    const teachers = getDemoEmployees();
+    const payments = getDemoPayments();
+    const financeProfilesByParentId = new Map(
+      parents.map((parent) => [parent.id, buildDemoParentFinanceProfile(parent.id, parents, payments)])
+    );
+    const students = parents.flatMap((parent) =>
+      parent.students.map((student) => {
+        const financeStudent = financeProfilesByParentId.get(parent.id)?.students.find((entry) => entry.id === student.id);
+        return {
+          id: student.id,
+          displayId: student.id,
+          studentNumber: student.id,
+          externalStudentId: student.id,
+          fullName: student.fullName,
+          gender: student.gender || "",
+          classId: student.classId,
+          className: student.className,
+          createdAt: student.createdAt,
+          parentId: parent.id,
+          annualFee: student.annualFee,
+          annualFeeDisplay: financeStudent?.expectedTotal ?? student.annualFee,
+          originalAnnualFee: financeStudent?.originalAmount ?? student.annualFee,
+          reductionTotal: financeStudent?.reductionTotal ?? 0,
+          paymentOptionType: financeStudent?.paymentOptionType ?? null,
+          tuitionPlanName: financeStudent?.planName ?? "",
+        };
+      })
+    );
+
+    return {
+      source: "demo",
+      visibility: "shared-directory",
+      counts: {
+        families: parents.length,
+        parents: parents.length,
+        students: students.length,
+        teachers: teachers.length,
+      },
+      families: parents.map((parent) => ({
+        id: parent.id,
+        displayId: parent.id,
+        familyLabel: `${parent.fullName} Family`,
+        parentIds: [parent.id],
+        studentIds: parent.students.map((student) => student.id),
+        organizationId: "demo-school",
+        externalIds: [],
+      })),
+      parents: parents.map((parent) => ({
+        id: parent.id,
+        displayId: parent.id,
+        fullName: parent.fullName,
+        phone: parent.phone,
+        email: parent.email,
+        students: students.filter((student) => student.parentId === parent.id),
+      })),
+      students,
+      teachers,
+    } as T;
+  }
+
+  if (normalizedPath === "/api/shared-directory/teachers" && method === "GET") {
+    return getDemoEmployees() as T;
+  }
+
+  const demoTeacherMatch = normalizedPath.match(/^\/api\/shared-directory\/teachers\/([^/]+)$/);
+  if (demoTeacherMatch && method === "PUT") {
+    const teacherId = demoTeacherMatch[1];
+    const employees = getDemoEmployees();
+    const nextEmployees = employees.map((employee) => employee.id === teacherId || employee.orbitId === teacherId
+      ? {
+          ...employee,
+          ...body,
+          id: employee.id,
+          orbitId: employee.orbitId,
+          employeeId: employee.employeeId,
+          displayId: String(employee.displayId ?? employee.employeeId ?? employee.id),
+        }
+      : employee);
+    saveDemoEmployees(nextEmployees);
+    return { orbitId: teacherId, updated: true } as T;
+  }
+
+  if (demoTeacherMatch && method === "DELETE") {
+    saveDemoEmployees(getDemoEmployees().filter((employee) => employee.id !== demoTeacherMatch[1] && employee.orbitId !== demoTeacherMatch[1]));
+    return { orbitId: demoTeacherMatch[1], deleted: true } as T;
+  }
+
+  if (normalizedPath === "/api/classes" && method === "GET") return demoClasses as T;
+
+  const studentMatch = normalizedPath.match(/^\/api\/students\/([^/]+)$/);
+  if (studentMatch && method === "PUT") {
+    const studentId = studentMatch[1];
+    const parents = getDemoParents();
+    const className = demoClasses.find((item) => item.id === body.classId)?.name || String(body.classId ?? "");
+    let updatedStudent: DemoStudent | null = null;
+
+    const nextParents = parents.map((parent) => {
+      const withoutStudent = parent.students.filter((student) => student.id !== studentId);
+      const currentStudent = parent.students.find((student) => student.id === studentId);
+      if (!currentStudent) return parent;
+
+      updatedStudent = {
+        ...currentStudent,
+        fullName: String(body.fullName ?? currentStudent.fullName),
+        gender: String(body.gender ?? currentStudent.gender ?? "") as DemoStudent["gender"],
+        classId: String(body.classId ?? currentStudent.classId),
+        className: className || currentStudent.className,
+        annualFee: Number(body.annualFee ?? currentStudent.annualFee)
+      };
+
+      return { ...parent, students: withoutStudent };
+    });
+
+    if (!updatedStudent) throw new Error("Eleve introuvable.");
+
+    const targetParentId = String(body.parentId ?? "");
+    const attachedParents = nextParents.map((parent) => parent.id === targetParentId
+      ? { ...parent, students: [...parent.students, updatedStudent as DemoStudent] }
+      : parent
+    );
+    writeJson(DEMO_PARENTS_KEY, attachedParents);
+    return updatedStudent as T;
+  }
+
+  if (studentMatch && method === "DELETE") {
+    const studentId = studentMatch[1];
+    const parents = getDemoParents().map((parent) => ({
+      ...parent,
+      students: parent.students.filter((student) => student.id !== studentId)
+    }));
+    writeJson(DEMO_PARENTS_KEY, parents);
+    return undefined as T;
   }
 
   if (normalizedPath === "/api/parents" && method === "GET") return getDemoParents() as T;
   if (normalizedPath === "/api/parents" && method === "POST") {
-    const id = `PAR-2025-${String(Date.now()).slice(-4)}`;
+    const existingParents = getDemoParents();
+    const overrides = getDemoFinanceOverrides();
+    const parentFullName = String(body.fullName ?? `${body.nom ?? ""} ${body.prenom ?? ""}`).trim() || "Nouveau parent";
+    const normalizedEmail = String(body.email ?? "").trim().toLowerCase();
+    const normalizedPhone = String(body.phone ?? "").replace(/\s+/g, "");
+    const duplicateParent = existingParents.find((parent) =>
+      (normalizedEmail && parent.email.trim().toLowerCase() === normalizedEmail)
+      || (normalizedPhone && parent.phone.replace(/\s+/g, "") === normalizedPhone)
+    );
+    if (duplicateParent) {
+      const reasons = [
+        duplicateParent.email.trim().toLowerCase() === normalizedEmail ? `email déjà utilisé (${duplicateParent.email})` : "",
+        duplicateParent.phone.replace(/\s+/g, "") === normalizedPhone ? `téléphone déjà utilisé (${duplicateParent.phone})` : ""
+      ].filter(Boolean);
+      throw new Error(`Cette famille existe déjà dans EduPay. Raison: ${reasons.join(", ") || "coordonnées parent déjà utilisées"}.`);
+    }
+    const id = buildUniqueDemoEntityId("PAR", parentFullName, existingParents.map((parent) => parent.id));
+    const existingStudentIds = existingParents.flatMap((parent) => parent.students.map((student) => student.id));
+    const accessCode = `ACC-${id.replace(/^PAR-/, "").slice(0, 12)}`;
     const parent: DemoParent = {
       id,
       nom: String(body.nom ?? ""),
       postnom: String(body.postnom ?? ""),
       prenom: String(body.prenom ?? ""),
-      fullName: String(body.fullName ?? `${body.nom ?? ""} ${body.prenom ?? ""}`).trim() || "Nouveau parent",
+      fullName: parentFullName,
       phone: String(body.phone ?? ""),
       email: String(body.email ?? ""),
+      physicalAddress: String(body.physicalAddress ?? ""),
       photoUrl: String(body.photoUrl ?? ""),
+      accessCode,
       createdAt: new Date().toISOString(),
-      students: Array.isArray(body.students) ? body.students as DemoStudent[] : []
+      students: Array.isArray(body.students)
+        ? (body.students as Array<DemoStudent>).map((student) => ({
+            ...student,
+            id: buildUniqueDemoEntityId("STU", student.fullName || "Student", existingStudentIds),
+            gender: student.gender || "",
+            createdAt: student.createdAt || new Date().toISOString(),
+            className: resolveDemoClassName(student.classId, student.className),
+            paymentOptionType: student.paymentOptionType ?? "STANDARD_MONTHLY",
+            specialAgreement: student.specialAgreement
+          }))
+        : []
     };
     const notifyEmail = body.notifyEmail !== false;
     const notifySms = body.notifySms !== false;
-    const temporaryPassword = `KCS-${String(Date.now()).slice(-4)}`;
+    const temporaryPassword = generateDemoTemporaryPassword();
     if (parent.email) {
-      saveDemoParentCredential({ parentId: parent.id, email: parent.email, password: temporaryPassword });
+      saveDemoParentCredential({ parentId: parent.id, email: parent.email, accessCode, password: temporaryPassword });
     }
-    writeJson(DEMO_PARENTS_KEY, [parent, ...getDemoParents()]);
+    for (const student of parent.students as Array<DemoStudent>) {
+      if (student.paymentOptionType === "SPECIAL_OWNER_AGREEMENT") {
+        overrides[student.id] = buildDemoAgreementOverride(student);
+      } else {
+        overrides[student.id] = {
+          mode: "OFFICIAL",
+          paymentOptionType: student.paymentOptionType ?? "STANDARD_MONTHLY"
+        };
+      }
+    }
+    saveDemoFinanceOverrides(overrides);
+    writeJson(DEMO_PARENTS_KEY, [parent, ...existingParents]);
+    appendDemoParentNotification({
+      parent,
+      channels: ["DASHBOARD", "EMAIL", "SMS"],
+      content: [
+        `Votre compte parent EduPay a été créé pour ${parent.fullName}.`,
+        `Code d'accès: ${accessCode}.`,
+        `Élève(s): ${parent.students.map((student) => student.fullName).join(", ") || "aucun élève renseigné"}.`,
+        "Connectez-vous avec le mot de passe temporaire transmis par l'administration."
+      ].join("\n")
+    });
     return {
       ...parent,
+      accessCode,
       temporaryPassword,
       notificationStatus: {
         email: notifyEmail && parent.email ? "SIMULATED" : "SKIPPED",
@@ -290,9 +2478,70 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
 
   const parentMatch = normalizedPath.match(/^\/api\/parents\/([^/]+)$/);
   if (parentMatch && method === "PUT") {
-    const parents = getDemoParents().map((parent) => parent.id === parentMatch[1] ? { ...parent, ...body } as DemoParent : parent);
+    const existingParents = getDemoParents();
+    const targetParent = existingParents.find((parent) => parent.id === parentMatch[1]);
+    if (!targetParent) throw new Error("Parent non trouvé.");
+
+    const usedStudentIds = existingParents
+      .filter((parent) => parent.id !== parentMatch[1])
+      .flatMap((parent) => parent.students.map((student) => student.id));
+
+    const nextStudents = Array.isArray(body.students)
+      ? (body.students as Array<DemoStudent>).map((student) => {
+          const existingStudent = targetParent.students.find((item) => item.id === student.id);
+          const studentId = existingStudent?.id || buildUniqueDemoEntityId("STU", student.fullName || "Student", usedStudentIds);
+          usedStudentIds.push(studentId);
+          return {
+            ...existingStudent,
+            ...student,
+            id: studentId,
+            gender: student.gender || existingStudent?.gender || "",
+            className: resolveDemoClassName(student.classId, existingStudent?.className || student.className),
+            annualFee: Number(student.annualFee ?? existingStudent?.annualFee ?? 0),
+            paymentOptionType: student.paymentOptionType ?? existingStudent?.paymentOptionType ?? "STANDARD_MONTHLY",
+            specialAgreement: student.specialAgreement,
+            createdAt: existingStudent?.createdAt || new Date().toISOString()
+          } satisfies DemoStudent;
+        })
+      : targetParent.students;
+
+    const updatedParent: DemoParent = {
+      ...targetParent,
+      ...body,
+      fullName: String(body.fullName ?? targetParent.fullName),
+      nom: String(body.nom ?? targetParent.nom),
+      postnom: String(body.postnom ?? targetParent.postnom),
+      prenom: String(body.prenom ?? targetParent.prenom),
+      phone: String(body.phone ?? targetParent.phone),
+      email: String(body.email ?? targetParent.email),
+      physicalAddress: String(body.physicalAddress ?? targetParent.physicalAddress ?? ""),
+      photoUrl: String(body.photoUrl ?? targetParent.photoUrl ?? ""),
+      students: nextStudents,
+    };
+
+    const parents = existingParents.map((parent) => parent.id === parentMatch[1] ? updatedParent : parent);
+    const overrides = getDemoFinanceOverrides();
+    for (const student of targetParent.students) {
+      delete overrides[student.id];
+    }
+    for (const student of updatedParent.students) {
+      overrides[student.id] = student.paymentOptionType === "SPECIAL_OWNER_AGREEMENT"
+        ? buildDemoAgreementOverride(student)
+        : { mode: "OFFICIAL", paymentOptionType: student.paymentOptionType ?? "STANDARD_MONTHLY" };
+    }
+    saveDemoFinanceOverrides(overrides);
     writeJson(DEMO_PARENTS_KEY, parents);
-    return parents.find((parent) => parent.id === parentMatch[1]) as T;
+    appendDemoParentNotification({
+      parent: updatedParent,
+      channels: ["DASHBOARD", "EMAIL", "SMS"],
+      content: [
+        "Votre dossier EduPay a été mis à jour.",
+        `Parent: ${updatedParent.fullName}.`,
+        `Élève(s): ${updatedParent.students.map((student) => student.fullName).join(", ") || "aucun élève renseigné"}.`,
+        "Consultez votre espace parent pour vérifier les informations et les plans de scolarité."
+      ].join("\n")
+    });
+    return updatedParent as T;
   }
   if (parentMatch && method === "DELETE") {
     writeJson(DEMO_PARENTS_KEY, getDemoParents().filter((parent) => parent.id !== parentMatch[1]));
@@ -302,15 +2551,23 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
   const resetMatch = normalizedPath.match(/^\/api\/parents\/([^/]+)\/reset-password$/);
   if (resetMatch) {
     const parent = getDemoParents().find((item) => item.id === resetMatch[1]);
-    const temporaryPassword = `KCS-${String(Date.now()).slice(-4)}`;
+    const temporaryPassword = generateDemoTemporaryPassword();
     const notifyEmail = body.notifyEmail !== false;
     const notifySms = body.notifySms !== false;
     if (parent?.email) {
-      saveDemoParentCredential({ parentId: resetMatch[1], email: parent.email, password: temporaryPassword });
+      saveDemoParentCredential({ parentId: resetMatch[1], email: parent.email, accessCode: parent.accessCode, password: temporaryPassword });
+    }
+    if (parent) {
+      appendDemoParentNotification({
+        parent,
+        channels: ["DASHBOARD", "EMAIL", "SMS"],
+        content: "Votre mot de passe EduPay a été réinitialisé. Utilisez le mot de passe temporaire fourni par l'administration, puis changez-le après connexion."
+      });
     }
     return {
       parentId: resetMatch[1],
       email: parent?.email ?? "parent@school.com",
+      accessCode: parent?.accessCode,
       temporaryPassword,
       notificationStatus: {
         email: notifyEmail && parent?.email ? "SIMULATED" : "SKIPPED",
@@ -323,19 +2580,60 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 function shouldUseDemoApi(path: string) {
-  return (!API_BASE_URL || PLACEHOLDER_API_URL) && path.startsWith("/api/");
+  if (!path.startsWith("/api/")) return false;
+  if (PRODUCTION_MODE) return false;
+  return (DEMO_FALLBACK_ENABLED || STATIC_APP_FALLBACK_ENABLED || PLACEHOLDER_API_URL || !API_BASE_URL);
+}
+
+function isLocalSessionToken(token: string | null) {
+  return Boolean(token && (token.startsWith("local-") || token.startsWith("demo-")));
 }
 
 function canFallbackToDemo(path: string, init?: RequestInit) {
   const method = (init?.method ?? "GET").toUpperCase();
   if (!path.startsWith("/api/")) return false;
-  return method === "GET" || path === "/api/auth/login" || path === "/api/ai/assistant";
+  if (path === "/api/parents" && ["GET", "POST"].includes(method)) return true;
+  if (/^\/api\/parents\/[^/]+$/.test(path) && ["GET", "PUT", "DELETE"].includes(method)) return true;
+  if (/^\/api\/parents\/[^/]+\/reset-password$/.test(path) && method === "POST") return true;
+  if (path === "/api/payments" && ["GET", "POST"].includes(method)) return true;
+  if (/^\/api\/payments\/[^/]+\/cancel$/.test(path) && method === "POST") return true;
+  if (/^\/api\/payments\/[^/]+\/receipt\/printed$/.test(path) && method === "POST") return true;
+  if (path === "/api/payments/settings/notifications" && ["GET", "PUT"].includes(method)) return true;
+  return method === "GET" ||
+    path === "/api/auth/login" ||
+    path === "/api/auth/forgot-password" ||
+    path === "/api/auth/reset-password" ||
+    path === "/api/auth/recover-admin-password" ||
+    path === "/api/auth/change-password" ||
+    path === "/api/ai/assistant" ||
+    path.startsWith("/api/finance") ||
+    path.startsWith("/api/expenses") ||
+    path.startsWith("/api/students") ||
+    path.startsWith("/api/parents/me");
+}
+
+function canUseParentSessionFallback(path: string, init?: RequestInit) {
+  const method = (init?.method ?? "GET").toUpperCase();
+  const hasParentSession = Boolean(localStorage.getItem(PARENT_ID_STORAGE_KEY));
+  return hasParentSession && method === "GET" && (
+    path === "/api/parents/me" ||
+    path === "/api/finance/me/profile"
+  );
 }
 
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (shouldUseDemoApi(path)) return demoApi<T>(path, init);
 
-  const token = localStorage.getItem(TOKEN_STORAGE_KEY);
+  const storedToken = localStorage.getItem(TOKEN_STORAGE_KEY);
+  if (isLocalSessionToken(storedToken) && canFallbackToDemo(path, init)) {
+    return demoApi<T>(path, init);
+  }
+
+  if ((init?.method ?? "GET").toUpperCase() === "GET") {
+    void flushOfflineMutationQueue();
+  }
+
+  const token = storedToken ?? "";
   const url = resolveApiUrl(path);
 
   let response: Response;
@@ -349,18 +2647,47 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
       }
     });
   } catch {
-    if (LOCAL_API_FALLBACK_ENABLED && path.startsWith("/api/")) return demoApi<T>(path, init);
+    const cached = isCacheableRequest(path, init) ? readCachedResponse<T>(path) : null;
+    if (cached !== null) return cached;
+    const queued = queueOfflineMutation(path, init);
+    if (queued) {
+      if (canFallbackToDemo(path, init)) return demoApi<T>(path, init);
+      return {
+        offlineQueued: true,
+        id: queued.id,
+        message: "Action enregistree hors ligne. Elle sera synchronisee automatiquement au retour de la connexion."
+      } as T;
+    }
+    if (
+      (LOCAL_API_FALLBACK_ENABLED || (!PRODUCTION_MODE && LOCAL_AUTH_RECOVERY_FALLBACK_PATHS.has(path))) &&
+      canFallbackToDemo(path, init)
+    ) {
+      return demoApi<T>(path, init);
+    }
     throw new Error("Impossible de joindre l'API. Verifiez que le backend est demarre.");
   }
 
   if (!response.ok) {
     if (response.status === 401) {
+      if (path === "/api/auth/login") {
+        const loginError = await response.json().catch(() => null) as { message?: string } | null;
+        throw new Error(loginError?.message || "Identifiants invalides.");
+      }
+
+      if ((LOCAL_API_FALLBACK_ENABLED && canFallbackToDemo(path, init)) || canUseParentSessionFallback(path, init)) {
+        return demoApi<T>(path, init);
+      }
       clearLocalSession();
       window.location.replace(`${import.meta.env.BASE_URL}#/login`);
       throw new Error("Session expiree. Veuillez vous reconnecter.");
     }
 
-    if (LOCAL_API_FALLBACK_ENABLED && response.status >= 500 && canFallbackToDemo(path, init)) {
+    if (isCacheableRequest(path, init) && response.status >= 500) {
+      const cached = readCachedResponse<T>(path);
+      if (cached !== null) return cached;
+    }
+
+    if (((LOCAL_API_FALLBACK_ENABLED && canFallbackToDemo(path, init)) || canUseParentSessionFallback(path, init)) && (response.status >= 500 || response.status === 404)) {
       return demoApi<T>(path, init);
     }
 
@@ -377,7 +2704,9 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (!text) return undefined as T;
 
   try {
-    return JSON.parse(text) as T;
+    const parsed = JSON.parse(text) as T;
+    if (isCacheableRequest(path, init)) writeCachedResponse(path, parsed);
+    return parsed;
   } catch {
     return undefined as T;
   }

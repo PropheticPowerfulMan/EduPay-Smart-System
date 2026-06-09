@@ -32,6 +32,9 @@ services:
           type: web
           property: url
 
+      - key: VITE_RECEIPT_VERIFICATION_BASE_URL
+        value: https://edupay-web.onrender.com/EduPay-Smart-System/
+
       - key: VITE_ENVIRONMENT
         value: production
 
@@ -47,8 +50,8 @@ services:
     buildCommand: >-
       corepack enable &&
       pnpm install &&
-      pnpm --filter "@edupay/api" run build &&
-      pnpm --filter "@edupay/api" run prisma:generate
+      pnpm --filter "@edupay/api" run prisma:generate &&
+      pnpm --filter "@edupay/api" run build
 
     startCommand: >-
       cd apps/api &&
@@ -68,8 +71,26 @@ services:
       - key: JWT_SECRET
         generateValue: true
 
+      - key: ENABLE_DEMO_AUTH_FALLBACK
+        value: "false"
+
+      - key: ENABLE_DEMO_DATA_FALLBACK
+        value: "false"
+
       - key: FRONTEND_URL
         fromService:
           name: edupay-web
           type: web
           property: url
+
+      - key: AFRIKTALK_API_URL
+        value: https://api.africastalking.com/version1/messaging
+
+      - key: AFRIKTALK_USERNAME
+        sync: false
+
+      - key: AFRIKTALK_API_KEY
+        sync: false
+
+      - key: AFRIKTALK_SENDER
+        value: ""

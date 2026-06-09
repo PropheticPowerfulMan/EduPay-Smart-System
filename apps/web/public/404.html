@@ -8,10 +8,15 @@
       (function () {
         var repoBase = "/EduPay-Smart-System/";
         var path = window.location.pathname;
+        var isReceiptVerification = /\/receipt\/verify\/?$/i.test(path);
         if (path.indexOf(repoBase) === 0) {
           var route = path.slice(repoBase.length);
           var hash = route ? "#/" + route.replace(/^\/+/, "") : "#/";
           window.location.replace(repoBase + hash + window.location.search);
+          return;
+        }
+        if (isReceiptVerification) {
+          window.location.replace(repoBase + "#/receipt/verify" + window.location.search);
           return;
         }
         window.location.replace(repoBase + "#/");

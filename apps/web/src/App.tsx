@@ -1,15 +1,44 @@
+import { Suspense, lazy, useEffect } from "react";
 import { Navigate, Outlet, Route, Routes } from "react-router-dom";
 import { Navbar } from "./components/Navbar";
 import { Sidebar } from "./components/Sidebar";
-import { AIAssistantPage } from "./pages/AIAssistantPage";
-import { AdminParentPaymentsPage } from "./pages/AdminParentPaymentsPage";
-import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
-import { ParentTrackingPage } from "./pages/ParentTrackingPage";
-import { ParentsManagementPage } from "./pages/ParentsManagementPage";
-import { PaymentsPage } from "./pages/PaymentsPage";
-import { useAuthStore } from "./store/auth";
+import { ReceiptVerificationPage } from "./pages/ReceiptVerificationPage";
+import { STAFF_ROLES, useAuthStore } from "./store/auth";
 import type { Role } from "./store/auth";
+
+const loadAIAssistantPage = () => import("./pages/AIAssistantPage");
+const loadFinanceDashboardPage = () => import("./pages/FinanceDashboardPage");
+const loadFinancialOperationsPage = () => import("./pages/FinancialOperationsPage");
+const loadReportsPage = () => import("./pages/ReportsPage");
+const loadFinanceParentAdminPage = () => import("./pages/FinanceParentAdminPage");
+
+const AIAssistantPage = lazy(() => loadAIAssistantPage().then((module) => ({ default: module.AIAssistantPage })));
+const FinanceDashboardPage = lazy(() => loadFinanceDashboardPage().then((module) => ({ default: module.FinanceDashboardPage })));
+const FinancialOperationsPage = lazy(() => loadFinancialOperationsPage().then((module) => ({ default: module.FinancialOperationsPage })));
+const EmployeesPage = lazy(() => import("./pages/EmployeesPage").then((module) => ({ default: module.EmployeesPage })));
+const FinanceParentAdminPage = lazy(() => import("./pages/FinanceParentAdminPage").then((module) => ({ default: module.FinanceParentAdminPage })));
+const FinanceParentPage = lazy(() => import("./pages/FinanceParentPage").then((module) => ({ default: module.FinanceParentPage })));
+const MessagesPage = lazy(() => import("./pages/MessagesPage").then((module) => ({ default: module.MessagesPage })));
+const ParentsManagementPage = lazy(() => import("./pages/ParentsManagementPage").then((module) => ({ default: module.ParentsManagementPage })));
+const PaymentsPage = lazy(() => import("./pages/PaymentsPage").then((module) => ({ default: module.PaymentsPage })));
+const ReportsPage = lazy(() => import("./pages/ReportsPage").then((module) => ({ default: module.ReportsPage })));
+const StudentsDirectoryPage = lazy(() => import("./pages/StudentsDirectoryPage").then((module) => ({ default: module.StudentsDirectoryPage })));
+
+function PageLoadingFallback() {
+  return (
+    <div className="flex min-h-[40vh] items-center justify-center px-4">
+      <div className="glass flex items-center gap-3 rounded-2xl border border-brand-300/20 px-5 py-4 text-sm font-semibold text-ink-dim shadow-xl">
+        <div className="h-3 w-3 animate-pulse rounded-full bg-brand-300" />
+        Chargement de l'espace EduPay...
+      </div>
+    </div>
+  );
+}
+
+function withPageLoader(element: React.ReactNode) {
+  return <Suspense fallback={<PageLoadingFallback />}>{element}</Suspense>;
+}
 
 function getHomePathByRole(role: Role | null) {
   if (!role) return "/login";
@@ -17,10 +46,25 @@ function getHomePathByRole(role: Role | null) {
 }
 
 function ProtectedLayout() {
+  const role = useAuthStore((s) => s.role);
+
+  useEffect(() => {
+    if (!role || role === "PARENT") return;
+
+    const warmupTimer = window.setTimeout(() => {
+      void loadFinancialOperationsPage();
+      void loadAIAssistantPage();
+    }, 2500);
+
+    return () => {
+      window.clearTimeout(warmupTimer);
+    };
+  }, [role]);
+
   return (
-    <div className="min-h-screen bg-slate-950 text-ink">
+    <div className="edupay-app-shell min-h-screen bg-slate-950 text-ink">
       <Navbar />
-      <main className="mx-auto flex w-full max-w-[1440px] gap-6 px-3 pb-28 pt-4 sm:px-6 sm:py-6 md:pb-6 lg:px-8">
+      <main className="flex w-full gap-6 px-3 pb-32 pt-4 sm:px-5 sm:py-6 md:pb-6 lg:px-6 xl:px-8">
         <Sidebar />
         <section className="min-w-0 flex-1">
           <Outlet />
@@ -50,8 +94,8 @@ function RoleHome() {
   if (role === "PARENT") {
     return <Navigate to="/parent" replace />;
   }
-  if (role === "ADMIN" || role === "ACCOUNTANT") {
-    return <DashboardPage />;
+  if (role && STAFF_ROLES.includes(role)) {
+    return withPageLoader(<FinanceDashboardPage />);
   }
   return <Navigate to="/login" replace />;
 }
@@ -84,17 +128,23 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={token && role ? <Navigate to={getHomePathByRole(role)} replace /> : <LoginPage />} />
+      <Route path="/receipt/verify" element={<ReceiptVerificationPage />} />
       <Route element={<ProtectedRoute />}>
         <Route path="/" element={<ProtectedLayout />}>
           <Route index element={<RoleHome />} />
-          <Route element={<RoleRoute allowedRoles={["ADMIN", "ACCOUNTANT"]} />}>
-            <Route path="payments" element={<PaymentsPage />} />
-            <Route path="parent-payments" element={<AdminParentPaymentsPage />} />
-            <Route path="ai" element={<AIAssistantPage />} />
-            <Route path="parents" element={<ParentsManagementPage />} />
+          <Route element={<RoleRoute allowedRoles={STAFF_ROLES} />}>
+            <Route path="operations" element={withPageLoader(<FinancialOperationsPage />)} />
+            <Route path="reports" element={withPageLoader(<ReportsPage />)} />
+            <Route path="payments" element={withPageLoader(<PaymentsPage />)} />
+            <Route path="messages" element={withPageLoader(<MessagesPage />)} />
+            <Route path="parent-payments" element={withPageLoader(<FinanceParentAdminPage />)} />
+            <Route path="students" element={withPageLoader(<StudentsDirectoryPage />)} />
+            <Route path="employees" element={withPageLoader(<EmployeesPage />)} />
+            <Route path="ai" element={withPageLoader(<AIAssistantPage />)} />
+            <Route path="parents" element={withPageLoader(<ParentsManagementPage />)} />
           </Route>
           <Route element={<RoleRoute allowedRoles={["PARENT"]} />}>
-            <Route path="parent" element={<ParentTrackingPage />} />
+            <Route path="parent" element={withPageLoader(<FinanceParentPage />)} />
           </Route>
           <Route path="*" element={<NotFoundPage />} />
         </Route>

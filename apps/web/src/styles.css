@@ -89,6 +89,8 @@ html[data-font="tech"] {
 
 html {
   scroll-behavior: smooth;
+  min-width: 320px;
+  background: var(--bg-main);
 }
 
 body {
@@ -107,6 +109,74 @@ body {
   font-weight: var(--font-body-weight);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+  min-width: 320px;
+  min-height: 100dvh;
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+.edupay-app-shell {
+  min-height: 100dvh;
+  overflow-x: clip;
+}
+
+.edupay-app-shell * {
+  min-width: 0;
+}
+
+.edupay-app-shell img,
+.edupay-app-shell video,
+.edupay-app-shell canvas,
+.edupay-app-shell svg {
+  max-width: 100%;
+}
+
+.edupay-app-shell p,
+.edupay-app-shell span,
+.edupay-app-shell h1,
+.edupay-app-shell h2,
+.edupay-app-shell h3,
+.edupay-app-shell h4,
+.edupay-app-shell button,
+.edupay-app-shell a,
+.edupay-app-shell label {
+  overflow-wrap: anywhere;
+}
+
+.edupay-mobile-nav {
+  scrollbar-width: none;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+
+.edupay-mobile-nav::-webkit-scrollbar {
+  display: none;
+}
+
+.edupay-mobile-nav > a {
+  scroll-snap-align: center;
+}
+
+.edupay-dialog-panel-sm {
+  width: min(96vw, 56rem);
+}
+
+.edupay-dialog-panel-md {
+  width: min(97vw, 72rem);
+}
+
+.edupay-dialog-panel-lg {
+  width: min(98vw, 88rem);
+}
+
+.edupay-dialog-panel-xl {
+  width: min(99vw, 104rem);
 }
 
 .font-display {
@@ -158,6 +228,61 @@ body::before {
     0 0 46px rgba(20, 184, 222, 0.14);
 }
 
+html,
+body,
+.sidebar-scroll,
+.edupay-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(125, 232, 255, 0.32) transparent;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+.sidebar-scroll::-webkit-scrollbar,
+.edupay-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track,
+.sidebar-scroll::-webkit-scrollbar-track,
+.edupay-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb,
+.sidebar-scroll::-webkit-scrollbar-thumb,
+.edupay-scrollbar::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background: linear-gradient(180deg, rgba(125, 232, 255, 0.34), rgba(20, 184, 222, 0.18));
+  background-clip: padding-box;
+}
+
+html::-webkit-scrollbar-thumb:hover,
+body::-webkit-scrollbar-thumb:hover,
+.sidebar-scroll::-webkit-scrollbar-thumb:hover,
+.edupay-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(125, 232, 255, 0.48), rgba(20, 184, 222, 0.26));
+  background-clip: padding-box;
+}
+
+input[type="date"] {
+  color-scheme: dark;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 1;
+  filter: invert(83%) sepia(32%) saturate(905%) hue-rotate(145deg) brightness(103%) contrast(96%);
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  filter: invert(93%) sepia(22%) saturate(955%) hue-rotate(161deg) brightness(106%) contrast(102%);
+}
+
 /* Brand surface avec gradient moderne */
 .brand-surface {
   background: linear-gradient(135deg, #031018 0%, #0786ad 45%, #14b8de 74%, #f8fbff 115%);
@@ -198,6 +323,210 @@ body::before {
     0 1px 0 rgba(255, 255, 255, 0.2) inset,
     0 24px 62px rgba(0, 0, 0, 0.34),
     0 0 48px rgba(20, 184, 222, 0.14);
+}
+
+.edupay-payment-modal-backdrop {
+  background:
+    radial-gradient(circle at 50% 16%, rgba(34, 211, 238, 0.16), transparent 34%),
+    rgba(2, 8, 23, 0.78);
+  backdrop-filter: blur(18px) saturate(1.16);
+  -webkit-backdrop-filter: blur(18px) saturate(1.16);
+}
+
+.edupay-payment-modal-panel {
+  position: relative;
+  max-height: min(86vh, 780px);
+  border-radius: 20px;
+  border: 1px solid rgba(34, 211, 238, 0.18);
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.94), rgba(6, 23, 34, 0.9)),
+    rgba(6, 23, 34, 0.86);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 0 0 1px rgba(148, 163, 184, 0.08),
+    0 28px 80px rgba(0, 0, 0, 0.62),
+    0 0 0 1px rgba(34, 211, 238, 0.06);
+  backdrop-filter: blur(24px) saturate(1.24);
+  -webkit-backdrop-filter: blur(24px) saturate(1.24);
+}
+
+.edupay-payment-modal-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  padding: 1px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.14), transparent 28%),
+    linear-gradient(315deg, rgba(34, 211, 238, 0.14), transparent 34%);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+}
+
+.edupay-operations,
+.edupay-operations-dialog {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.edupay-operations *,
+.edupay-operations-dialog * {
+  min-width: 0;
+}
+
+.edupay-operations .font-mono,
+.edupay-operations-dialog .font-mono {
+  font-size: clamp(0.76rem, 0.72rem + 0.2vw, 0.92rem);
+  line-height: 1.35;
+}
+
+.edupay-operations p,
+.edupay-operations span,
+.edupay-operations button,
+.edupay-operations-dialog p,
+.edupay-operations-dialog span,
+.edupay-operations-dialog button {
+  max-width: 100%;
+}
+
+.edupay-operations-modal {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 34px 90px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(34, 211, 238, 0.08);
+}
+
+.edupay-operations-submodal {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 28px 86px rgba(0, 0, 0, 0.74),
+    0 0 0 1px rgba(34, 211, 238, 0.1),
+    0 0 48px rgba(20, 184, 222, 0.1);
+}
+
+.edupay-parent-tracking-dialog,
+.edupay-parent-tracking-modal {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.edupay-parent-tracking-dialog *,
+.edupay-parent-tracking-modal * {
+  min-width: 0;
+}
+
+.edupay-parent-tracking-modal .font-mono {
+  font-size: clamp(0.76rem, 0.72rem + 0.2vw, 0.92rem);
+  line-height: 1.35;
+}
+
+.edupay-parent-admin {
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: none;
+}
+
+.edupay-parent-admin * {
+  min-width: 0;
+}
+
+.edupay-parent-admin p,
+.edupay-parent-admin span,
+.edupay-parent-admin button,
+.edupay-parent-admin label,
+.edupay-parent-admin input,
+.edupay-parent-admin textarea,
+.edupay-parent-admin select {
+  max-width: 100%;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+
+.edupay-parent-admin button {
+  white-space: normal;
+  line-height: 1.25;
+}
+
+.edupay-parent-admin th,
+.edupay-parent-admin td {
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+
+.edupay-parent-admin .font-mono {
+  font-size: clamp(0.76rem, 0.72rem + 0.2vw, 0.92rem);
+  line-height: 1.35;
+}
+
+.edupay-parent-admin input,
+.edupay-parent-admin textarea,
+.edupay-parent-admin select {
+  min-width: 0;
+}
+
+.edupay-finance-erp,
+.edupay-finance-erp-dialog,
+.edupay-finance-erp-modal {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.edupay-finance-erp *,
+.edupay-finance-erp-dialog *,
+.edupay-finance-erp-modal * {
+  min-width: 0;
+}
+
+.edupay-finance-erp .font-mono,
+.edupay-finance-erp-dialog .font-mono {
+  font-size: clamp(0.76rem, 0.72rem + 0.2vw, 0.92rem);
+  line-height: 1.35;
+}
+
+.edupay-finance-erp-modal {
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 34px 90px rgba(0, 0, 0, 0.72),
+    0 0 0 1px rgba(34, 211, 238, 0.08);
+}
+
+@media (max-width: 640px) {
+  .edupay-operations .card {
+    padding: 0.875rem;
+  }
+
+  .edupay-operations h1,
+  .edupay-operations h2,
+  .edupay-operations-dialog h2,
+  .edupay-parent-tracking-dialog h2,
+  .edupay-finance-erp h1,
+  .edupay-finance-erp h2,
+  .edupay-finance-erp-dialog h2 {
+    line-height: 1.12;
+  }
+
+  .edupay-finance-erp .glass,
+  .edupay-finance-erp .card {
+    padding: 0.875rem;
+  }
+
+  .edupay-parent-admin .card,
+  .edupay-parent-admin .glass {
+    padding: 0.875rem;
+  }
+
+  .edupay-parent-admin h1,
+  .edupay-parent-admin h2,
+  .edupay-parent-admin h3 {
+    line-height: 1.12;
+  }
 }
 
 /* Animation fade-in */
