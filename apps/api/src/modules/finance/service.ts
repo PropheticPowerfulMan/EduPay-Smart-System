@@ -3276,6 +3276,18 @@ export async function recordTuitionEnginePayment(input: {
       ? NotificationType.UNPAID_BALANCE
       : NotificationType.CONFIRMATION;
 
+    const dashboardLog = prisma.notificationLog.create({
+      data: {
+        schoolId: input.schoolId,
+        parentId: input.parentId,
+        type: notificationType,
+        language: normalizeMessageLanguage(parent.preferredLanguage),
+        channel: NotificationChannel.DASHBOARD,
+        content: messages.dashboardBody,
+        status: "OPEN"
+      }
+    }).catch((error) => console.error("Tuition parent dashboard notification log failed", error));
+
     if (parent.email) {
       const status = await sendEmail({ to: parent.email, subject: messages.subject, text: messages.emailBody });
       await prisma.notificationLog.create({
@@ -3304,17 +3316,7 @@ export async function recordTuitionEnginePayment(input: {
         }
       }).catch((error) => console.error("Tuition parent SMS notification log failed", error));
     }
-    await prisma.notificationLog.create({
-      data: {
-        schoolId: input.schoolId,
-        parentId: input.parentId,
-        type: notificationType,
-        language: normalizeMessageLanguage(parent.preferredLanguage),
-        channel: NotificationChannel.DASHBOARD,
-        content: messages.dashboardBody,
-        status: "OPEN"
-      }
-    }).catch((error) => console.error("Tuition parent dashboard notification log failed", error));
+    await dashboardLog;
   }
 
   return { ...setup, calculations: targetCalculations, ...result, snapshot };

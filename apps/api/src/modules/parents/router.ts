@@ -1048,7 +1048,8 @@ parentRouter.post("/:id/reset-password", authorize("ADMIN", "ACCOUNTANT"), async
       });
     }
 
-    const notificationStatus = await sendParentWelcomeNotifications(parent, temporaryPassword, req.user!.schoolId, preferences);
+    const parentWithAccess = { ...parent, accessCode: user.accessCode, user };
+    const notificationStatus = await sendParentWelcomeNotifications(parentWithAccess, temporaryPassword, req.user!.schoolId, preferences);
     return res.json({ parentId: parent.id, email: user.email, accessCode: user.accessCode, temporaryPassword, notificationStatus });
   } catch (error) {
     console.error("DB unavailable on parent password reset", error);

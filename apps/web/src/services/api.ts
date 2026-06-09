@@ -92,7 +92,7 @@ type DemoTuitionAllocationSummary = {
 };
 type DemoPayment = { id: string; transactionNumber: string; parentId?: string; parentFullName: string; paymentSubjectName?: string; studentIds?: string[]; studentNames?: string[]; reason: string; method: string; amount: number; status: string; createdAt: string; date: string; tuitionAllocationSummary?: DemoTuitionAllocationSummary; bankTransferDetails?: { bankName: string; referenceNumber: string; transferDate: string; senderAccountNumber?: string; beneficiaryAccountNumber: string } | null };
 type DemoManualMessage = { id: string; parentId: string; parentName: string; parentPhone?: string; parentEmail?: string; type: "MANUAL_MESSAGE"; language: "fr" | "en"; channel: "DASHBOARD" | "EMAIL" | "SMS"; content: string; status: string; createdAt: string };
-type DemoParentCredential = { parentId: string; email: string; password: string };
+type DemoParentCredential = { parentId: string; email: string; password: string; accessCode?: string };
 type DemoPasswordResetToken = { token: string; email: string; expiresAt: string; usedAt?: string };
 type DemoPaymentOptionType = "FULL_PRESEPTEMBER" | "TWO_INSTALLMENTS" | "THREE_INSTALLMENTS" | "STANDARD_MONTHLY" | "SPECIAL_OWNER_AGREEMENT";
 type DemoFinanceOverride =
@@ -311,6 +311,7 @@ function buildUnifiedDemoParents(): DemoParent[] {
       fullName: `${prenom} ${nom}`,
       phone: `+243 812 45${String(parentIndex + 1).padStart(4, "0")}`,
       email: `${prenom.toLowerCase()}.${nom.toLowerCase()}@kcs.local`,
+      accessCode: `ACC-PAR-${String(parentIndex + 1).padStart(4, "0")}`,
       physicalAddress: `Commune ${["Gombe", "Ngaliema", "Limete", "Lemba", "Kintambo"][parentIndex % 5]}, Kinshasa`,
       createdAt: `2026-01-${String((parentIndex % 24) + 2).padStart(2, "0")}T07:30:00.000Z`,
       students
@@ -532,8 +533,12 @@ function getDemoParentCredentials() {
 
 function saveDemoParentCredential(credential: DemoParentCredential) {
   const email = credential.email.trim().toLowerCase();
-  const credentials = getDemoParentCredentials().filter((item) => item.email.trim().toLowerCase() !== email);
-  writeJson(DEMO_PARENT_CREDENTIALS_KEY, [{ ...credential, email }, ...credentials]);
+  const accessCode = credential.accessCode?.trim().toUpperCase();
+  const credentials = getDemoParentCredentials().filter((item) =>
+    item.email.trim().toLowerCase() !== email &&
+    (!accessCode || item.accessCode?.trim().toUpperCase() !== accessCode)
+  );
+  writeJson(DEMO_PARENT_CREDENTIALS_KEY, [{ ...credential, email, accessCode }, ...credentials]);
 }
 
 function generateDemoTemporaryPassword() {
@@ -582,6 +587,7 @@ function resolveDemoResetEmail(identifier: string) {
   if (normalized === "parent@school.com") return "parent@school.com";
   const credential = getDemoParentCredentials().find((item) =>
     item.email.trim().toLowerCase() === normalized ||
+    item.accessCode?.trim().toUpperCase() === accessCode ||
     getDemoParents().find((parent) => parent.id === item.parentId)?.id === accessCode
   );
   return credential?.email.trim().toLowerCase() || null;
@@ -1532,7 +1538,9 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
   await new Promise((resolve) => setTimeout(resolve, 80));
 
   if (normalizedPath === "/api/auth/login" && method === "POST") {
-    const email = String(body.email ?? "").toLowerCase();
+    const identifier = String(body.identifier ?? body.email ?? "").trim();
+    const email = identifier.toLowerCase();
+    const accessCode = identifier.toUpperCase();
     const password = String(body.password ?? "");
     const adminPassword = localStorage.getItem(DEMO_ADMIN_PASSWORD_KEY) || "password123";
     const parentPassword = localStorage.getItem(DEMO_PARENT_PASSWORD_KEY) || "password123";
@@ -1541,7 +1549,21 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       return { token: "demo-parent-token", role: "PARENT", fullName: "Rachel Kabongo", parentId: "PAR-KCS-RACHEL-KABONGO", photoUrl: parent?.photoUrl || "" } as T;
     }
 
-    const credential = getDemoParentCredentials().find((item) => item.email === email && item.password === password);
+    const seededParent = getDemoParents().find((item) => item.accessCode?.trim().toUpperCase() === accessCode);
+    if (seededParent && password === parentPassword) {
+      return {
+        token: `demo-parent-token-${seededParent.id}`,
+        role: "PARENT",
+        fullName: seededParent.fullName,
+        parentId: seededParent.id,
+        photoUrl: seededParent.photoUrl || ""
+      } as T;
+    }
+
+    const credential = getDemoParentCredentials().find((item) =>
+      item.password === password &&
+      (item.email === email || item.accessCode?.trim().toUpperCase() === accessCode)
+    );
     if (credential) {
       const parent = getDemoParents().find((item) => item.id === credential.parentId);
       if (parent) {
@@ -2418,7 +2440,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const notifySms = body.notifySms !== false;
     const temporaryPassword = generateDemoTemporaryPassword();
     if (parent.email) {
-      saveDemoParentCredential({ parentId: parent.id, email: parent.email, password: temporaryPassword });
+      saveDemoParentCredential({ parentId: parent.id, email: parent.email, accessCode, password: temporaryPassword });
     }
     for (const student of parent.students as Array<DemoStudent>) {
       if (student.paymentOptionType === "SPECIAL_OWNER_AGREEMENT") {
@@ -2532,7 +2554,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     const notifyEmail = body.notifyEmail !== false;
     const notifySms = body.notifySms !== false;
     if (parent?.email) {
-      saveDemoParentCredential({ parentId: resetMatch[1], email: parent.email, password: temporaryPassword });
+      saveDemoParentCredential({ parentId: resetMatch[1], email: parent.email, accessCode: parent.accessCode, password: temporaryPassword });
     }
     if (parent) {
       appendDemoParentNotification({
@@ -2544,6 +2566,7 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     return {
       parentId: resetMatch[1],
       email: parent?.email ?? "parent@school.com",
+      accessCode: parent?.accessCode,
       temporaryPassword,
       notificationStatus: {
         email: notifyEmail && parent?.email ? "SIMULATED" : "SKIPPED",

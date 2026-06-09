@@ -306,7 +306,7 @@ export function LoginPage() {
     const result = await api<{ token: string; role?: string; fullName: string; parentId?: string; photoUrl?: string | null; mustChangePassword?: boolean }>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify({
-        email: values.email.trim().toLowerCase(),
+        identifier: values.email.trim(),
         password: values.password
       })
     });

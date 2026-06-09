@@ -18,7 +18,7 @@ function generateAccessCode(role: StaffRole) {
 }
 
 function normalizeAccessCode(value?: string | null) {
-  return (value || "").trim().toUpperCase();
+  return (value || "").trim().replace(/\s+/g, "").toUpperCase();
 }
 
 function savanexAuthIsEnabled() {
@@ -329,13 +329,14 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
   const payload = parsed.data;
   const identifier = normalizeIdentifier(payload.identifier || payload.email || "");
   const normalizedIdentifier = identifier.toLowerCase();
+  const normalizedAccessCode = normalizeAccessCode(identifier);
 
   try {
     const user = await prisma.user.findFirst({
       where: {
         OR: [
           { email: normalizedIdentifier },
-          { accessCode: identifier.toUpperCase() }
+          { accessCode: normalizedAccessCode }
         ]
       }
     });
@@ -412,7 +413,7 @@ authRouter.post("/forgot-password", recoveryLimiter, async (req, res) => {
       where: {
         OR: [
           { email: identifier.toLowerCase() },
-          { accessCode: identifier.toUpperCase() }
+          { accessCode: normalizeAccessCode(identifier) }
         ]
       }
     });
