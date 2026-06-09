@@ -190,11 +190,27 @@ function hasSmtpConfig() {
 
 function hasSmsConfig() {
   return Boolean(
-    env.AFRIKTALK_API_URL &&
-    env.AFRIKTALK_USERNAME &&
-    env.AFRIKTALK_API_KEY &&
-    env.AFRIKTALK_API_KEY !== "CHANGE_ME"
+    getSmsApiUrl() &&
+    getSmsUsername() &&
+    getSmsApiKey() &&
+    getSmsApiKey() !== "CHANGE_ME"
   );
+}
+
+function getSmsApiUrl() {
+  return env.AFRICASTALKING_API_URL || env.AFRIKTALK_API_URL;
+}
+
+function getSmsUsername() {
+  return env.AFRICASTALKING_USERNAME || env.AFRIKTALK_USERNAME;
+}
+
+function getSmsApiKey() {
+  return env.AFRICASTALKING_API_KEY || env.AFRIKTALK_API_KEY;
+}
+
+function getSmsSender() {
+  return env.AFRICASTALKING_SENDER || env.AFRIKTALK_SENDER;
 }
 
 export function getMessagingConfigStatus(): MessagingConfigStatus {
@@ -208,9 +224,9 @@ export function getMessagingConfigStatus(): MessagingConfigStatus {
     },
     sms: {
       configured: hasSmsConfig(),
-      providerUrl: env.AFRIKTALK_API_URL,
-      usernameConfigured: Boolean(env.AFRIKTALK_USERNAME),
-      sender: env.AFRIKTALK_SENDER
+      providerUrl: getSmsApiUrl(),
+      usernameConfigured: Boolean(getSmsUsername()),
+      sender: getSmsSender()
     }
   };
 }
@@ -243,7 +259,8 @@ function isSuccessfulAfrikTalkResponse(body: unknown) {
 
   return recipients.some((recipient) => {
     const status = String(recipient.status ?? recipient.Status ?? "").toLowerCase();
-    return status.includes("success") || status.includes("sent") || status.includes("submitted");
+    const statusCode = String(recipient.statusCode ?? recipient.StatusCode ?? "").toLowerCase();
+    return status.includes("success") || status.includes("sent") || status.includes("submitted") || statusCode === "101";
   });
 }
 
@@ -283,19 +300,22 @@ export async function sendSms(input: SmsInput): Promise<DeliveryStatus> {
   }
 
   try {
-    const endpoint = env.AFRIKTALK_API_URL;
+    const endpoint = getSmsApiUrl();
+    const username = getSmsUsername();
+    const apiKey = getSmsApiKey();
+    const sender = getSmsSender();
     const isAfricaTalking = isAfricaTalkingEndpoint(endpoint);
     const body = isAfricaTalking
       ? new URLSearchParams({
-        username: env.AFRIKTALK_USERNAME,
+        username,
         to,
         message: input.text,
-        ...(env.AFRIKTALK_SENDER ? { from: env.AFRIKTALK_SENDER } : {})
+        ...(sender ? { from: sender } : {})
       })
       : JSON.stringify({
-        username: env.AFRIKTALK_USERNAME,
-        sender: env.AFRIKTALK_SENDER,
-        from: env.AFRIKTALK_SENDER,
+        username,
+        sender,
+        from: sender,
         to,
         message: input.text
       });
@@ -306,13 +326,13 @@ export async function sendSms(input: SmsInput): Promise<DeliveryStatus> {
         ? {
           Accept: "application/json",
           "Content-Type": "application/x-www-form-urlencoded",
-          apiKey: env.AFRIKTALK_API_KEY
+          apiKey
         }
         : {
           Accept: "application/json",
           "Content-Type": "application/json",
-          Authorization: `Bearer ${env.AFRIKTALK_API_KEY}`,
-          apiKey: env.AFRIKTALK_API_KEY
+          Authorization: `Bearer ${apiKey}`,
+          apiKey
         },
       body
     });
