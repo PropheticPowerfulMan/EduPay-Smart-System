@@ -864,6 +864,83 @@ function buildDerivedPlanReduction(input: {
   };
 }
 
+function buildDerivedTuitionReductions(input: {
+  parentId: string;
+  studentId: string;
+  academicYearId: string;
+  academicYearName: string;
+  studentName: string;
+  gradeGroup: GradeGroup;
+  paymentOptionType: PaymentOptionType;
+  originalAmount: number;
+  reductionTotal: number;
+  childrenCount: number;
+  assignedAt?: Date;
+}) {
+  const reductions = [];
+  const effectiveDate = (input.assignedAt ?? new Date()).toISOString();
+  const baseAnnualTuition = roundCurrency(Number(input.originalAmount || 0));
+  const familyDiscountRate = input.childrenCount >= 2 ? 10 : 0;
+  const familyDiscountAmount = roundCurrency(baseAnnualTuition * (familyDiscountRate / 100));
+  const familyAdjustedTuition = roundCurrency(baseAnnualTuition - familyDiscountAmount);
+  const planDiscountRate = PLAN_DISCOUNT_RATES[input.paymentOptionType] ?? 0;
+  const planDiscountAmount = roundCurrency(familyAdjustedTuition * (planDiscountRate / 100));
+  const knownReduction = roundCurrency(Number(input.reductionTotal || 0));
+  const additionalReductionAmount = roundCurrency(Math.max(knownReduction - familyDiscountAmount - planDiscountAmount, 0));
+
+  const common = {
+    parentId: input.parentId,
+    studentId: input.studentId,
+    academicYearId: input.academicYearId,
+    academicYearName: input.academicYearName,
+    gradeGroup: input.gradeGroup,
+    paymentOptionType: input.paymentOptionType,
+    effectiveDate,
+    studentName: input.studentName
+  };
+
+  if (familyDiscountAmount > 0) {
+    reductions.push({
+      ...common,
+      id: `derived-family-${input.studentId}-${input.paymentOptionType}`,
+      source: "TUITION_ENGINE",
+      title: "Family account discount",
+      amount: familyDiscountAmount,
+      percentage: familyDiscountRate,
+      scope: ReductionScope.PARENT,
+      description: "10% family discount applied first because the parent has two or more children enrolled."
+    });
+  }
+
+  if (planDiscountAmount > 0) {
+    reductions.push({
+      ...common,
+      id: `derived-plan-${input.studentId}-${input.paymentOptionType}`,
+      source: "TUITION_ENGINE",
+      title: `${getPaymentOptionLabel(input.paymentOptionType)} discount`,
+      amount: planDiscountAmount,
+      percentage: planDiscountRate,
+      scope: ReductionScope.PAYMENT_OPTION,
+      description: "Payment plan discount applied after the family discount."
+    });
+  }
+
+  if (additionalReductionAmount > 0) {
+    reductions.push({
+      ...common,
+      id: `derived-additional-${input.studentId}-${input.paymentOptionType}`,
+      source: "TUITION_ENGINE",
+      title: "Additional approved reduction",
+      amount: additionalReductionAmount,
+      percentage: null,
+      scope: ReductionScope.MANUAL,
+      description: "Additional approved reduction applied after family and payment plan discounts."
+    });
+  }
+
+  return reductions;
+}
+
 function reductionDedupKey(reduction: {
   studentId?: string | null;
   scope?: ReductionScope | string | null;
@@ -1117,7 +1194,7 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
       include: { student: true, tuitionPlan: true, financialAgreement: true }
     }),
     prisma.discount.findMany({
-      where: { parentId: input.parentId },
+      where: { parentId: input.parentId, academicYearId: academicYear.id },
       orderBy: { effectiveDate: "desc" }
     }),
     prisma.debt.findMany({
@@ -1334,7 +1411,7 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
   );
 
   const derivedDiscounts = studentSummaries
-    .map((student) => buildDerivedPlanReduction({
+    .flatMap((student) => buildDerivedTuitionReductions({
       parentId: parent.id,
       studentId: student.id,
       academicYearId: academicYear.id,
@@ -1342,10 +1419,11 @@ export async function getParentFinancialSnapshot(input: { schoolId: string; pare
       studentName: student.fullName,
       gradeGroup: student.gradeGroup,
       paymentOptionType: student.paymentOptionType,
-      plan: student.planCode ? planLookup.get(`${student.gradeGroup}:${student.paymentOptionType}`) : null,
+      originalAmount: student.originalAmount,
+      reductionTotal: student.reductionTotal,
+      childrenCount: parent.students.length,
       assignedAt: assignmentsByStudent.get(student.id)?.assignedAt ?? genericAssignment?.assignedAt ?? new Date()
     }))
-    .filter(Boolean)
     .filter((discount) => !explicitDiscounts.some((explicit) => reductionDedupKey(explicit) === reductionDedupKey(discount!)));
   const reductions = [...explicitDiscounts, ...derivedDiscounts];
 
@@ -2508,6 +2586,15 @@ function summarizeTuitionMessage(input: {
   const next = input.lines
     .filter((line) => line.outstandingAfter > 0)
     .sort((left, right) => new Date(left.dueDate).getTime() - new Date(right.dueDate).getTime())[0];
+  const nextGroup = next
+    ? input.lines.filter((line) =>
+      line.outstandingAfter > 0
+      && line.label === next.label
+      && line.dueDate === next.dueDate
+    )
+    : [];
+  const nextGroupRemaining = roundCurrency(nextGroup.reduce((sum, line) => sum + line.outstandingAfter, 0));
+  const nextGroupStudents = nextGroup.map((line) => `${line.studentName} ${formatAlertCurrency(line.outstandingAfter)}`).join("; ");
 
   return [
     `Total amount received: ${formatAlertCurrency(input.totalReceived)}.`,
@@ -2517,7 +2604,7 @@ function summarizeTuitionMessage(input: {
     unpaid.length
       ? `Remaining unpaid: ${formatAlertCurrency(unpaid.reduce((sum, line) => sum + line.outstandingAfter, 0))}.`
       : "All targeted obligations are fully paid.",
-    next ? `Next required payment: ${next.studentName} - ${next.label}, ${formatAlertCurrency(next.outstandingAfter)} due by ${dayjs(next.dueDate).format("DD/MM/YYYY")}.` : "No next payment is currently required.",
+    next ? `Next required payment: ${next.label}, ${formatAlertCurrency(nextGroupRemaining)} due by ${dayjs(next.dueDate).format("DD/MM/YYYY")}${nextGroupStudents ? ` (${nextGroupStudents})` : ""}.` : "No next payment is currently required.",
     overdue.length ? `Overdue balance: ${formatAlertCurrency(overdue.reduce((sum, line) => sum + line.outstandingAfter, 0))}.` : "No overdue balance remains in this allocation preview.",
     input.advanceBalance > 0 ? `Advance retained: ${formatAlertCurrency(input.advanceBalance)}.` : ""
   ].filter(Boolean).join(" ");
@@ -2778,6 +2865,92 @@ export async function ensureParentTuitionEnginePlan(input: {
       if (hasLockedInstallments) {
         if (existingAssignment?.paymentOptionType !== calculation.paymentOptionType) {
           throw new Error("This student already has tuition payments allocated. Create an approved special agreement before changing the payment plan.");
+        }
+        const lockedPaid = roundCurrency(existingInstallments.reduce((sum, installment) => {
+          const allocationPaid = installment.allocations.reduce((allocationSum, allocation) => allocationSum + Number(allocation.amount || 0), 0);
+          return sum + Math.max(Number(installment.amountPaid || 0), allocationPaid);
+        }, 0));
+        const assignmentData = {
+          financialProfileId: profile.id,
+          tuitionPlanId: plan?.id ?? null,
+          financialAgreementId: null,
+          gradeGroup: calculation.gradeGroup,
+          paymentOptionType: calculation.paymentOptionType,
+          expectedTotal: calculation.finalTuition,
+          reductionTotal: calculation.totalReductionAmount,
+          remainingBalanceSnapshot: roundCurrency(Math.max(calculation.finalTuition - lockedPaid, 0)),
+          isActive: true,
+          notes: input.notes ?? "EduPay Tuition Payment Engine assignment"
+        };
+        if (existingAssignment) {
+          await tx.parentPlanAssignment.update({ where: { id: existingAssignment.id }, data: assignmentData });
+        }
+        await tx.discount.deleteMany({
+          where: {
+            schoolId: input.schoolId,
+            parentId: input.parentId,
+            studentId: calculation.studentId,
+            academicYearId: academicYear.id,
+            scope: { in: [ReductionScope.PARENT, ReductionScope.PAYMENT_OPTION] }
+          }
+        });
+        if (calculation.familyDiscountAmount > 0) {
+          await tx.discount.create({
+            data: {
+              schoolId: input.schoolId,
+              parentId: input.parentId,
+              studentId: calculation.studentId,
+              academicYearId: academicYear.id,
+              financialProfileId: profile.id,
+              tuitionPlanId: plan?.id,
+              title: "Family account discount",
+              scope: ReductionScope.PARENT,
+              amount: calculation.familyDiscountAmount,
+              percentage: calculation.familyDiscountRate,
+              paymentOptionType: calculation.paymentOptionType,
+              gradeGroup: calculation.gradeGroup,
+              description: "10% family discount applied first because the parent has two or more children enrolled."
+            }
+          });
+        }
+        if (calculation.planDiscountAmount > 0) {
+          await tx.discount.create({
+            data: {
+              schoolId: input.schoolId,
+              parentId: input.parentId,
+              studentId: calculation.studentId,
+              academicYearId: academicYear.id,
+              financialProfileId: profile.id,
+              tuitionPlanId: plan?.id,
+              title: `${getPaymentOptionLabel(calculation.paymentOptionType)} discount`,
+              scope: ReductionScope.PAYMENT_OPTION,
+              amount: calculation.planDiscountAmount,
+              percentage: calculation.planDiscountRate,
+              paymentOptionType: calculation.paymentOptionType,
+              gradeGroup: calculation.gradeGroup,
+              description: "Payment plan discount applied after the family discount."
+            }
+          });
+        }
+        for (const row of calculation.schedule) {
+          const installment = existingInstallments.find((entry) => entry.sequence === row.sequence);
+          if (!installment) continue;
+          const allocationPaid = installment.allocations.reduce((sum, allocation) => sum + Number(allocation.amount || 0), 0);
+          const amountPaid = roundCurrency(Math.max(Number(installment.amountPaid || 0), allocationPaid));
+          await tx.paymentInstallment.update({
+            where: { id: installment.id },
+            data: {
+              financialProfileId: profile.id,
+              tuitionPlanId: plan?.id,
+              label: row.label,
+              periodKey: row.periodKey,
+              dueDate: row.dueDate,
+              amountDue: row.amountDue,
+              amountPaid,
+              status: deriveInstallmentStatus(row.amountDue, amountPaid, row.dueDate),
+              notes: input.notes ?? "Recalculated by EduPay Tuition Payment Engine after family size change"
+            }
+          });
         }
         continue;
       }

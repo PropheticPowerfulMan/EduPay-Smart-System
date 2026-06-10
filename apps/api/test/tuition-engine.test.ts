@@ -210,6 +210,83 @@ describe("EduPay Tuition Payment Engine", () => {
     expect(receiptChildren.find((child) => child.studentName === "Child G9")?.remaining).toBeCloseTo(3414.37, 2);
   });
 
+  it("matches the pasted 3-child 3500 USD scenario across official tuition plans", () => {
+    const children = [
+      { id: "pasted-g1", fullName: "G1", className: "Grade 1" },
+      { id: "pasted-g6", fullName: "G6", className: "Grade 6" },
+      { id: "pasted-k5", fullName: "K5", className: "K5" }
+    ];
+    const expected = {
+      [PaymentOptionType.FULL_PRESEPTEMBER]: {
+        total: 9272.475,
+        remaining: 5772.475,
+        next: "$ 5772.48 USD",
+        children: {
+          G1: { final: 3053.7, allocated: 1152.65, remaining: 1901.05 },
+          G6: { final: 3721.95, allocated: 1404.89, remaining: 2317.06 },
+          K5: { final: 2496.825, allocated: 942.45, remaining: 1554.37 }
+        }
+      },
+      [PaymentOptionType.TWO_INSTALLMENTS]: {
+        total: 9787.6125,
+        remaining: 6287.6125,
+        next: "$ 1393.79 USD",
+        children: {
+          G1: { final: 3223.35, allocated: 1152.65, remaining: 2070.7 },
+          G6: { final: 3928.725, allocated: 1404.89, remaining: 2523.83 },
+          K5: { final: 2635.5375, allocated: 942.45, remaining: 1693.09 }
+        }
+      },
+      [PaymentOptionType.THREE_INSTALLMENTS]: {
+        total: 10096.695,
+        remaining: 6596.695,
+        next: "$ 3231.10 USD",
+        children: {
+          G1: { final: 3325.14, allocated: 1152.65, remaining: 2172.49 },
+          G6: { final: 4052.79, allocated: 1404.9, remaining: 2647.89 },
+          K5: { final: 2718.765, allocated: 942.45, remaining: 1776.31 }
+        }
+      },
+      [PaymentOptionType.STANDARD_MONTHLY]: {
+        total: 10302.75,
+        remaining: 6802.75,
+        next: "$ 621.10 USD",
+        children: {
+          G1: { final: 3393, allocated: 1152.65, remaining: 2240.35 },
+          G6: { final: 4135.5, allocated: 1404.89, remaining: 2730.61 },
+          K5: { final: 2774.25, allocated: 942.45, remaining: 1831.8 }
+        }
+      }
+    };
+
+    for (const paymentOptionType of Object.keys(expected) as Array<keyof typeof expected>) {
+      const result = simulateTuitionEngineScenario({
+        paymentOptionType,
+        amount: 3500,
+        children
+      });
+      const planExpected = expected[paymentOptionType];
+      expect(result.totals.finalTuition).toBe(planExpected.total);
+      expect(result.totals.allocated).toBe(3500);
+      expect(result.totals.remaining).toBe(planExpected.remaining);
+      expect(result.allocationPreview.message).toContain(planExpected.next);
+
+      for (const row of result.calculations) {
+        const childExpected = planExpected.children[row.studentName as keyof typeof planExpected.children];
+        const allocated = result.allocationPreview.lines
+          .filter((line) => line.studentId === row.studentId)
+          .reduce((sum, line) => round(sum + line.allocated), 0);
+        const remaining = result.allocationPreview.lines
+          .filter((line) => line.studentId === row.studentId)
+          .reduce((sum, line) => round(sum + line.outstandingAfter), 0);
+        expect(row.familyAdjustedTuition).toBe(round(row.baseAnnualTuition * 0.9));
+        expect(row.finalTuition).toBe(childExpected.final);
+        expect(allocated).toBeCloseTo(childExpected.allocated, 2);
+        expect(remaining).toBeCloseTo(childExpected.remaining, 2);
+      }
+    }
+  });
+
   it("builds parent email and SMS notices with receipt, allocation, balance, and next payment", () => {
     const result = simulateTuitionEngineScenario({
       paymentOptionType: PaymentOptionType.STANDARD_MONTHLY,

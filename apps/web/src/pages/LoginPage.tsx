@@ -73,6 +73,10 @@ function ForgotPasswordModal({ onClose, t, initialResetToken = "" }: { onClose: 
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (identifier.trim().length < 3) {
+      setError("Entrez l'e-mail ou le code d'accès du compte.");
+      return;
+    }
     if (resetToken.trim().length < 24) {
       setError("Entrez le code de réinitialisation reçu par e-mail.");
       return;
@@ -91,7 +95,7 @@ function ForgotPasswordModal({ onClose, t, initialResetToken = "" }: { onClose: 
     try {
       const result = await api<{ message?: string }>("/api/auth/reset-password", {
         method: "POST",
-        body: JSON.stringify({ token: resetToken.trim(), newPassword })
+        body: JSON.stringify({ identifier: identifier.trim(), token: resetToken.trim(), newPassword })
       });
       setSuccessMessage(result.message || "Mot de passe réinitialisé. Vous pouvez vous connecter.");
       setResetToken("");
@@ -243,6 +247,13 @@ function ForgotPasswordModal({ onClose, t, initialResetToken = "" }: { onClose: 
               <p className="text-sm text-ink-dim">{successMessage || "Si ce compte existe, un code vient d'être envoyé. Collez ce code ci-dessous pour choisir un nouveau mot de passe."}</p>
             </div>
             <form onSubmit={handleResetPassword} className="space-y-4">
+              <input
+                type="text"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                placeholder="E-mail ou code d'accès du compte"
+                className="w-full"
+              />
               <textarea
                 value={resetToken}
                 onChange={(e) => setResetToken(e.target.value)}

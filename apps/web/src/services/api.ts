@@ -1617,10 +1617,12 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
   }
 
   if (normalizedPath === "/api/auth/reset-password" && method === "POST") {
+    const identifier = String(body.identifier ?? body.email ?? "");
     const token = String(body.token ?? "").trim();
     const newPassword = String(body.newPassword ?? "");
     const resetToken = getDemoPasswordResetTokens().find((item) => item.token === token);
-    if (!resetToken || newPassword.length < 8) {
+    const requestedEmail = resolveDemoResetEmail(identifier);
+    if (!resetToken || resetToken.usedAt || !requestedEmail || requestedEmail !== resetToken.email || newPassword.length < 8) {
       throw new Error("Code de reinitialisation invalide ou expire.");
     }
 

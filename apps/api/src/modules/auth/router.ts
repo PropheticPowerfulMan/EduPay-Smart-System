@@ -57,6 +57,7 @@ const forgotPasswordSchema = z.object({
 });
 
 const resetPasswordSchema = z.object({
+  identifier: z.string().min(3).max(120),
   token: z.string().min(24).max(120),
   newPassword: z.string().min(8)
 });
@@ -126,6 +127,13 @@ function buildPasswordResetLink(token: string) {
 
 function normalizeIdentifier(identifier: string) {
   return identifier.trim();
+}
+
+function userMatchesRecoveryIdentifier(user: { email: string; accessCode: string | null }, identifier: string) {
+  const normalizedIdentifier = normalizeIdentifier(identifier).toLowerCase();
+  const normalizedAccessCode = normalizeAccessCode(identifier);
+  return user.email.trim().toLowerCase() === normalizedIdentifier
+    || Boolean(user.accessCode && normalizeAccessCode(user.accessCode) === normalizedAccessCode);
 }
 
 function matchesSharedParent(sharedParent: SharedParentOption, identifier: string, email: string, accessCode: string) {
@@ -438,9 +446,10 @@ authRouter.post("/forgot-password", recoveryLimiter, async (req, res) => {
           "",
           "Une demande de réinitialisation de mot de passe a été reçue pour votre compte EduPay.",
           "",
+          `Identifiant du compte: ${user.accessCode || user.email}`,
           `Code de réinitialisation: ${token}`,
           `Lien direct: ${buildPasswordResetLink(token)}`,
-          "Ce code expire dans 30 minutes et ne peut être utilisé qu'une seule fois.",
+          "Ce code expire dans 30 minutes, ne peut être utilisé qu'une seule fois et doit être confirmé avec votre e-mail ou code d'accès.",
           "",
           "Si vous n'êtes pas à l'origine de cette demande, ignorez ce message."
         ].join("\n")
@@ -460,7 +469,12 @@ authRouter.post("/reset-password", recoveryLimiter, async (req, res) => {
     include: { user: true }
   });
 
-  if (!resetToken || resetToken.usedAt || resetToken.expiresAt.getTime() < Date.now()) {
+  if (
+    !resetToken
+    || resetToken.usedAt
+    || resetToken.expiresAt.getTime() < Date.now()
+    || !userMatchesRecoveryIdentifier(resetToken.user, payload.identifier)
+  ) {
     return res.status(400).json({ message: "Code de réinitialisation invalide ou expiré." });
   }
 

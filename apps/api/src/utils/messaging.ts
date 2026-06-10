@@ -198,7 +198,7 @@ function hasSmsConfig() {
 }
 
 function getSmsApiUrl() {
-  return env.AFRICASTALKING_API_URL || env.AFRIKTALK_API_URL;
+  return env.AFRICASTALKING_API_URL || env.AFRIKTALK_API_URL || "https://api.africastalking.com/version1/messaging";
 }
 
 function getSmsUsername() {
@@ -245,7 +245,10 @@ function smtpTransport() {
 }
 
 function normalizePhoneNumber(phone: string) {
-  return phone.replace(/[^\d+]/g, "");
+  const cleaned = phone.replace(/[^\d+]/g, "");
+  if (/^0\d{8,11}$/.test(cleaned)) return `+243${cleaned.slice(1)}`;
+  if (/^243\d{8,11}$/.test(cleaned)) return `+${cleaned}`;
+  return cleaned;
 }
 
 function isAfricaTalkingEndpoint(url: string) {
@@ -305,13 +308,14 @@ export async function sendSms(input: SmsInput): Promise<DeliveryStatus> {
     const apiKey = getSmsApiKey();
     const sender = getSmsSender();
     const isAfricaTalking = isAfricaTalkingEndpoint(endpoint);
+    const buildAfricaTalkingBody = (includeSender: boolean) => new URLSearchParams({
+      username,
+      to,
+      message: input.text,
+      ...(includeSender && sender ? { from: sender } : {})
+    });
     const body = isAfricaTalking
-      ? new URLSearchParams({
-        username,
-        to,
-        message: input.text,
-        ...(sender ? { from: sender } : {})
-      })
+      ? buildAfricaTalkingBody(true)
       : JSON.stringify({
         username,
         sender,
@@ -319,14 +323,14 @@ export async function sendSms(input: SmsInput): Promise<DeliveryStatus> {
         to,
         message: input.text
       });
-
     const response = await fetch(endpoint, {
       method: "POST",
       headers: isAfricaTalking
         ? {
           Accept: "application/json",
           "Content-Type": "application/x-www-form-urlencoded",
-          apiKey
+          apiKey,
+          apikey: apiKey
         }
         : {
           Accept: "application/json",
@@ -336,7 +340,33 @@ export async function sendSms(input: SmsInput): Promise<DeliveryStatus> {
         },
       body
     });
-    const responseText = await response.text();
+    let responseText = await response.text();
+    if (isAfricaTalking && !response.ok && sender && /sender|from|short.?code|alphanumeric/i.test(responseText)) {
+      const retryResponse = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded",
+          apiKey,
+          apikey: apiKey
+        },
+        body: buildAfricaTalkingBody(false)
+      });
+      if (retryResponse.ok) {
+        responseText = await retryResponse.text();
+        let retryBody: unknown = null;
+        try {
+          retryBody = responseText ? JSON.parse(responseText) : null;
+        } catch {
+          retryBody = null;
+        }
+        if (!isSuccessfulAfrikTalkResponse(retryBody)) {
+          throw new Error(`SMS provider did not accept any recipient: ${responseText}`);
+        }
+        return "SENT";
+      }
+      responseText = await retryResponse.text();
+    }
     let responseBody: unknown = null;
     try {
       responseBody = responseText ? JSON.parse(responseText) : null;
