@@ -6,11 +6,11 @@ import rateLimit from "express-rate-limit";
 import { z } from "zod";
 import { prisma } from "../../prisma";
 import { env } from "../../config/env";
-import { syncOrbitRegistryMirror, type SharedParentOption } from "../../integrations/orbitRegistry";
+import { syncOrbitRegistryMirror, type SharedParentOption, type SharedTeacherOption } from "../../integrations/orbitRegistry";
 import { authGuard, AuthenticatedRequest } from "../../middlewares/auth";
 import { sendEmail } from "../../utils/messaging";
 
-type StaffRole = "SUPER_ADMIN" | "OWNER" | "ADMIN" | "FINANCIAL_MANAGER" | "ACCOUNTANT" | "CASHIER" | "HR_MANAGER" | "AUDITOR" | "PARENT";
+type StaffRole = "SUPER_ADMIN" | "OWNER" | "ADMIN" | "FINANCIAL_MANAGER" | "ACCOUNTANT" | "CASHIER" | "HR_MANAGER" | "AUDITOR" | "PARENT" | "EMPLOYEE";
 
 function generateAccessCode(role: StaffRole) {
   const suffix = Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -39,7 +39,7 @@ const registerSchema = z.object({
   fullName: z.string().min(3),
   email: z.string().email(),
   password: z.string().min(8),
-  role: z.enum(["SUPER_ADMIN", "OWNER", "ADMIN", "FINANCIAL_MANAGER", "ACCOUNTANT", "CASHIER", "HR_MANAGER", "AUDITOR", "PARENT"]),
+  role: z.enum(["SUPER_ADMIN", "OWNER", "ADMIN", "FINANCIAL_MANAGER", "ACCOUNTANT", "CASHIER", "HR_MANAGER", "AUDITOR", "PARENT", "EMPLOYEE"]),
   schoolId: z.string().min(1)
 });
 
@@ -148,6 +148,22 @@ function matchesSharedParent(sharedParent: SharedParentOption, identifier: strin
   );
 }
 
+function matchesSharedEmployee(sharedEmployee: SharedTeacherOption, identifier: string, email: string, accessCode: string) {
+  const normalizedIdentifier = identifier.trim();
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedAccessCode = normalizeAccessCode(accessCode);
+  const normalizedSharedAccessCode = normalizeAccessCode(sharedEmployee.accessCode);
+  return Boolean(
+    (normalizedAccessCode && normalizedSharedAccessCode === normalizedAccessCode)
+    || (normalizedEmail && sharedEmployee.email?.trim().toLowerCase() === normalizedEmail)
+    || sharedEmployee.id === normalizedIdentifier
+    || sharedEmployee.displayId === normalizedIdentifier
+    || sharedEmployee.orbitId === normalizedIdentifier
+    || sharedEmployee.employeeId === normalizedIdentifier
+    || sharedEmployee.fullName.trim().toLowerCase() === normalizedIdentifier.toLowerCase()
+  );
+}
+
 async function authenticateWithSavanex(identifier: string, password: string) {
   if (!savanexAuthIsEnabled()) {
     return null;
@@ -176,7 +192,7 @@ async function authenticateWithSavanex(identifier: string, password: string) {
   const payload = await response.json().catch(() => ({} as Record<string, any>));
   const user = payload.user || {};
   const role = typeof user.role === "string" ? user.role.trim().toLowerCase() : "";
-  if (role !== "parent") {
+  if (!["parent", "teacher", "employee"].includes(role)) {
     return null;
   }
 
@@ -186,10 +202,15 @@ async function authenticateWithSavanex(identifier: string, password: string) {
     : `${accessCode.toLowerCase()}@savanex.local`;
 
   return {
-    fullName: typeof user.full_name === "string" && user.full_name.trim() ? user.full_name.trim() : "Parent SAVANEX",
+    role,
+    fullName: typeof user.full_name === "string" && user.full_name.trim()
+      ? user.full_name.trim()
+      : (role === "parent" ? "Parent SAVANEX" : "Employé SAVANEX"),
     email,
     accessCode,
-    mustChangePassword: Boolean(user.must_change_password)
+    mustChangePassword: Boolean(user.must_change_password),
+    employeeId: typeof user.employee_id === "string" ? user.employee_id.trim() : "",
+    phone: typeof user.phone === "string" ? user.phone.trim() : ""
   };
 }
 
@@ -281,6 +302,118 @@ async function ensureExternalParentUser(options: {
   return { user, parent };
 }
 
+function employeeCodeFromSharedEmployee(employee: SharedTeacherOption, fallbackAccessCode: string) {
+  return (
+    employee.employeeId?.trim()
+    || employee.displayId?.trim()
+    || employee.externalIds.find((entry) => entry.externalId?.trim())?.externalId?.trim()
+    || fallbackAccessCode.replace(/^ACC-/, "")
+    || employee.id
+  );
+}
+
+async function ensureExternalEmployeeUser(options: {
+  identifier: string;
+  password: string;
+  fullName: string;
+  email: string;
+  accessCode: string;
+  mustChangePassword: boolean;
+  employeeId?: string;
+  phone?: string;
+}) {
+  const schoolId = await resolveEduPaySchoolId();
+  if (!schoolId) {
+    throw new Error("EduPay school bootstrap is missing.");
+  }
+
+  const mirrored = await syncOrbitRegistryMirror(schoolId);
+  const sharedEmployee = mirrored.teachers.find((entry) => matchesSharedEmployee(
+    entry,
+    options.identifier,
+    options.email,
+    options.accessCode
+  ));
+
+  if (!sharedEmployee) {
+    throw new Error("Employee shared profile not found in Orbit mirror.");
+  }
+
+  const passwordHash = await bcrypt.hash(options.password, 10);
+  const email = options.email || `${options.accessCode.toLowerCase()}@savanex.local`;
+  const accessCode = options.accessCode || normalizeAccessCode(sharedEmployee.accessCode) || await generateUniqueAccessCode("EMPLOYEE");
+  const candidateUser = await prisma.user.findFirst({
+    where: {
+      schoolId,
+      OR: [
+        { email },
+        { accessCode }
+      ]
+    }
+  });
+
+  const user = candidateUser
+    ? await prisma.user.update({
+      where: { id: candidateUser.id },
+      data: {
+        fullName: options.fullName || sharedEmployee.fullName,
+        email,
+        accessCode,
+        passwordHash,
+        mustChangePassword: options.mustChangePassword || Boolean(sharedEmployee.mustChangePassword),
+        role: "EMPLOYEE",
+        schoolId
+      }
+    })
+    : await prisma.user.create({
+      data: {
+        fullName: options.fullName || sharedEmployee.fullName,
+        email,
+        accessCode,
+        passwordHash,
+        mustChangePassword: options.mustChangePassword || Boolean(sharedEmployee.mustChangePassword),
+        role: "EMPLOYEE",
+        schoolId
+      }
+    });
+
+  const employeeCode = employeeCodeFromSharedEmployee(sharedEmployee, accessCode);
+  const existingProfile = await prisma.employeeSalaryProfile.findUnique({
+    where: { schoolId_employeeCode: { schoolId, employeeCode } }
+  });
+  const profileData = {
+    fullName: options.fullName || sharedEmployee.fullName,
+    department: sharedEmployee.department || "Administration",
+    position: sharedEmployee.jobTitle || sharedEmployee.subject || sharedEmployee.employeeType || "Employé",
+    contactEmail: sharedEmployee.email || email,
+    contactPhone: sharedEmployee.phone || options.phone || null,
+    notes: [
+      `Compte EduPay employé lié à SAVANEX.`,
+      `UserId: ${user.id}`,
+      `Email: ${email}`,
+      `AccessCode: ${accessCode}`,
+      `OrbitId: ${sharedEmployee.orbitId}`,
+      `SavanexEmployeeId: ${sharedEmployee.employeeId || options.employeeId || employeeCode}`
+    ].join("\n")
+  };
+
+  const salaryProfile = existingProfile
+    ? await prisma.employeeSalaryProfile.update({
+      where: { id: existingProfile.id },
+      data: profileData
+    })
+    : await prisma.employeeSalaryProfile.create({
+      data: {
+        schoolId,
+        employeeCode,
+        baseSalary: 0,
+        ...profileData
+      }
+    });
+
+  return { user, salaryProfile };
+}
+
 export const authRouter = Router();
 
 const loginLimiter = rateLimit({
@@ -367,7 +500,7 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
     }
 
     const externalUser = await authenticateWithSavanex(identifier, payload.password);
-    if (externalUser) {
+    if (externalUser?.role === "parent") {
       const resolved = await ensureExternalParentUser({
         identifier,
         password: payload.password,
@@ -383,6 +516,28 @@ authRouter.post("/login", loginLimiter, async (req, res) => {
         fullName: resolved.user.fullName,
         parentId: resolved.parent.id,
         photoUrl: resolved.parent.photoUrl,
+        accessCode: resolved.user.accessCode,
+        mustChangePassword: resolved.user.mustChangePassword
+      });
+    }
+    if (externalUser && ["teacher", "employee"].includes(externalUser.role)) {
+      const resolved = await ensureExternalEmployeeUser({
+        identifier,
+        password: payload.password,
+        fullName: externalUser.fullName,
+        email: externalUser.email,
+        accessCode: externalUser.accessCode,
+        mustChangePassword: externalUser.mustChangePassword,
+        employeeId: externalUser.employeeId,
+        phone: externalUser.phone
+      });
+      const token = buildToken({ id: resolved.user.id, role: resolved.user.role, schoolId: resolved.user.schoolId });
+      return res.json({
+        token,
+        role: resolved.user.role,
+        fullName: resolved.user.fullName,
+        salaryProfileId: resolved.salaryProfile.id,
+        employeeCode: resolved.salaryProfile.employeeCode,
         accessCode: resolved.user.accessCode,
         mustChangePassword: resolved.user.mustChangePassword
       });

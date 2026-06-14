@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { schoolBranding } from "../config/branding";
-import { resolveApiUrl } from "../services/api";
+import { api, resolveApiUrl } from "../services/api";
 import {
   buildReceiptSecurity,
   parseReceiptVerificationToken,
@@ -78,7 +78,7 @@ function compareReceiptWithApi(receipt: ReceiptVerificationRecord, apiPayment: V
 
   const scannedStudents = receipt.parties.studentNames.join(" | ").trim();
   const apiStudents = apiPayment.studentNames.join(" | ").trim();
-  if (scannedStudents !== apiStudents) mismatches.push("Eleves");
+  if (scannedStudents !== apiStudents) mismatches.push("Élèves");
 
   return { matched: mismatches.length === 0, mismatches };
 }
@@ -99,7 +99,7 @@ function DetailGrid({ rows }: { rows: Array<[string, string]> }) {
 function AllocationSummaryBlock({ summary }: { summary: NonNullable<VerificationApiResponse["payment"]["tuitionAllocationSummary"]> }) {
   return (
     <section className="rounded-3xl border border-emerald-400/20 bg-emerald-500/10 p-5 shadow-xl">
-      <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-200">Repartition tuition</p>
+      <p className="text-xs font-black uppercase tracking-[0.22em] text-emerald-200">Répartition des frais scolaires</p>
       <h2 className="mt-2 font-display text-xl font-bold text-white">
         Répartition {summary.mode === "AUTO" ? "automatique exécutée par le système" : "manuelle exécutée par le financier"}
       </h2>
@@ -108,12 +108,12 @@ function AllocationSummaryBlock({ summary }: { summary: NonNullable<Verification
         {summary.perChild.map((child) => (
           <div key={child.studentName} className="rounded-2xl border border-white/10 bg-white/5 p-4">
             <p className="font-semibold text-white">{child.studentName}</p>
-            <p className="mt-2 text-sm text-emerald-100">Applique: $ {formatMoney(child.allocated)}</p>
-            <p className="text-sm text-amber-100">Reste: $ {formatMoney(child.remaining)}</p>
+            <p className="mt-2 text-sm text-emerald-100">Appliqué : $ {formatMoney(child.allocated)}</p>
+            <p className="text-sm text-amber-100">Reste : $ {formatMoney(child.remaining)}</p>
             <div className="mt-2 space-y-1 text-xs text-ink-dim">
               {child.lines.map((line) => (
                 <p key={`${child.studentName}-${line.label}-${line.allocated}`}>
-                  {line.label}: avant $ {formatMoney(line.outstandingBefore)}, applique $ {formatMoney(line.allocated)}, reste $ {formatMoney(line.outstandingAfter)} ({line.dueBucket})
+                  {line.label} : avant $ {formatMoney(line.outstandingBefore)}, appliqué $ {formatMoney(line.allocated)}, reste $ {formatMoney(line.outstandingAfter)} ({line.dueBucket})
                 </p>
               ))}
             </div>
@@ -151,28 +151,16 @@ export function ReceiptVerificationPage() {
     let active = true;
     setApiState("loading");
 
-    fetch(resolveApiUrl(`/api/payments/verify/${encodeURIComponent(transactionNumber)}`))
-      .then(async (response) => {
-        if (!active) return;
-        if (response.status === 404) {
-          setApiResult(null);
-          setApiState("missing");
-          return;
-        }
-        if (!response.ok) {
-          setApiResult(null);
-          setApiState("error");
-          return;
-        }
-        const data = await response.json() as VerificationApiResponse;
+    api<VerificationApiResponse>(`/api/payments/verify/${encodeURIComponent(transactionNumber)}`)
+      .then((data) => {
         if (!active) return;
         setApiResult(data);
         setApiState("ready");
       })
-      .catch(() => {
+      .catch((error) => {
         if (!active) return;
         setApiResult(null);
-        setApiState("error");
+        setApiState(error instanceof Error && /introuvable|not found|404/i.test(error.message) ? "missing" : "error");
       });
 
     return () => {
@@ -191,8 +179,8 @@ export function ReceiptVerificationPage() {
       reason: apiResult.payment.reason,
       amount: apiResult.payment.amount,
       amountWords: apiResult.payment.amountInWords,
-      method: apiResult.payment.method as "CASH" | "AIRTEL_MONEY" | "MPESA" | "ORANGE_MONEY",
-      status: apiResult.payment.status as "COMPLETED" | "PENDING" | "FAILED"
+      method: apiResult.payment.method as "CASH" | "AIRTEL_MONEY" | "MPESA" | "ORANGE_MONEY" | "BANK_TRANSFER",
+      status: apiResult.payment.status as "COMPLETED" | "PENDING" | "FAILED" | "CANCELLED"
     });
   }, [apiResult]);
 
@@ -207,10 +195,10 @@ export function ReceiptVerificationPage() {
               <div className="flex items-center gap-4">
                 <img src={schoolBranding.logoSrc} alt={schoolBranding.schoolName} className="h-16 w-16 rounded-2xl border border-brand-200/20 bg-white object-contain p-2" />
                 <div>
-                  <p className="text-xs font-black uppercase tracking-[0.24em] text-brand-300">Verification EduPay</p>
-                  <h1 className="mt-2 font-display text-3xl font-bold text-white">Recu de transaction</h1>
+                  <p className="text-xs font-black uppercase tracking-[0.24em] text-brand-300">Vérification EduPay</p>
+                  <h1 className="mt-2 font-display text-3xl font-bold text-white">Reçu de transaction</h1>
                   <p className="mt-2 max-w-2xl text-sm text-ink-dim">
-                    Cette page confirme le QR, verifie la transaction dans EduPay et signale toute difference avec la base.
+                    Cette page confirme le code QR, vérifie la transaction dans EduPay et signale toute différence avec la base de données.
                   </p>
                 </div>
               </div>
@@ -224,39 +212,39 @@ export function ReceiptVerificationPage() {
             {!receipt || !validation ? (
               <div className="space-y-6">
                 <div className={`rounded-3xl border p-6 ${txParam ? "border-sky-400/20 bg-sky-500/10 text-sky-100" : "border-red-400/20 bg-red-500/10 text-red-100"}`}>
-                  <p className="text-xs font-black uppercase tracking-[0.22em]">{txParam ? "QR transaction" : "QR invalide"}</p>
+                  <p className="text-xs font-black uppercase tracking-[0.22em]">{txParam ? "Transaction QR" : "QR invalide"}</p>
                   <h2 className="mt-3 font-display text-2xl font-bold text-white">
                     {txParam ? "Vérification directe dans EduPay" : "Aucune donnée de reçu exploitable"}
                   </h2>
                   <p className="mt-3 text-sm leading-6 text-current/90">
                     {txParam
-                      ? `Le QR a ouvert la verification de la transaction ${txParam}. EduPay recherche maintenant ce paiement dans la base.`
+                      ? `Le code QR a ouvert la vérification de la transaction ${txParam}. EduPay recherche maintenant ce paiement dans la base de données.`
                       : "Le lien scanné ne contient pas de référence EduPay valide."}
                   </p>
                 </div>
 
-                {apiState === "loading" && <p className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-ink-dim">Verification de la transaction dans l'API EduPay en cours...</p>}
-                {apiState === "missing" && <p className="rounded-3xl border border-amber-400/20 bg-amber-500/10 p-5 text-sm text-amber-100">Aucune transaction correspondante n'a été trouvée en base pour ce numéro.</p>}
-                {apiState === "error" && <p className="rounded-3xl border border-red-400/20 bg-red-500/10 p-5 text-sm text-red-100">La verification en base est indisponible pour le moment.</p>}
+                {apiState === "loading" && <p className="rounded-3xl border border-white/10 bg-white/5 p-5 text-sm text-ink-dim">Vérification de la transaction dans l'API EduPay en cours...</p>}
+                {apiState === "missing" && <p className="rounded-3xl border border-amber-400/20 bg-amber-500/10 p-5 text-sm text-amber-100">Aucune transaction correspondant à ce numéro n'a été trouvée dans la base de données.</p>}
+                {apiState === "error" && <p className="rounded-3xl border border-red-400/20 bg-red-500/10 p-5 text-sm text-red-100">La vérification dans la base de données est indisponible pour le moment.</p>}
                 {apiState === "ready" && apiResult && (
                   <div className="space-y-6">
                     <div className={`rounded-3xl border p-5 ${shortQrCodeMatches ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100" : "border-sky-400/30 bg-sky-500/10 text-sky-100"}`}>
-                      <p className="text-xs font-black uppercase tracking-[0.22em]">Transaction retrouvee</p>
+                      <p className="text-xs font-black uppercase tracking-[0.22em]">Transaction retrouvée</p>
                       <h2 className="mt-3 font-display text-2xl font-bold text-white">
-                        {shortQrCodeMatches ? "Le code QR correspond a la transaction EduPay" : "La transaction existe dans EduPay"}
+                        {shortQrCodeMatches ? "Le code QR correspond à la transaction EduPay" : "La transaction existe dans EduPay"}
                       </h2>
                       <p className="mt-3 text-sm leading-6 text-current/90">
                         Le scan renvoie vers la fiche publique et confirme la transaction {apiResult.payment.transactionNumber}.
                       </p>
                     </div>
                     <section className="rounded-3xl border border-white/10 bg-slate-900/60 p-5 shadow-xl">
-                      <p className="text-xs font-black uppercase tracking-[0.22em] text-brand-300">Details transaction</p>
+                      <p className="text-xs font-black uppercase tracking-[0.22em] text-brand-300">Détails de la transaction</p>
                       <DetailGrid rows={[
                         ["Transaction", apiResult.payment.transactionNumber],
                         ["Date", apiResult.payment.date],
                         ["Parent", apiResult.payment.parentFullName],
                         ["Paiement pour", apiResult.payment.paymentSubjectName],
-                        ["Eleves", apiResult.payment.studentNames.join(" / ") || "N/A"],
+                        ["Élèves", apiResult.payment.studentNames.join(" / ") || "N/A"],
                         ["Motif", apiResult.payment.reason],
                         ["Montant", `$ ${formatMoney(apiResult.payment.amount)}`],
                         ["Méthode", apiResult.payment.method],
@@ -274,7 +262,7 @@ export function ReceiptVerificationPage() {
               <div className="space-y-6">
                 <div className={`rounded-3xl border p-5 ${validation.valid ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100" : "border-amber-400/30 bg-amber-500/10 text-amber-100"}`}>
                   <p className="text-xs font-black uppercase tracking-[0.22em]">
-                    {validation.valid ? "Recu coherent" : "Verification partielle"}
+                    {validation.valid ? "Reçu cohérent" : "Vérification partielle"}
                   </p>
                   <h2 className="mt-3 font-display text-2xl font-bold text-white">
                     {validation.valid ? "Les codes du reçu correspondent aux données scannées" : "Les données du reçu ne correspondent pas entièrement aux codes"}
@@ -287,16 +275,16 @@ export function ReceiptVerificationPage() {
                 </div>
 
                 <div className={`rounded-3xl border p-5 ${apiState === "ready" && apiComparison?.matched ? "border-sky-400/30 bg-sky-500/10 text-sky-100" : "border-white/10 bg-white/5 text-ink"}`}>
-                  <p className="text-xs font-black uppercase tracking-[0.22em] text-brand-300">Recoupement base de données</p>
-                  {apiState === "loading" && <p className="mt-3 text-sm text-ink-dim">Verification de la transaction dans l'API EduPay en cours...</p>}
-                  {apiState === "missing" && <p className="mt-3 text-sm text-amber-100">Aucune transaction correspondante n'a été trouvée en base pour ce numéro.</p>}
-                  {apiState === "error" && <p className="mt-3 text-sm text-red-200">La verification en base est indisponible pour le moment.</p>}
+                  <p className="text-xs font-black uppercase tracking-[0.22em] text-brand-300">Recoupement avec la base de données</p>
+                  {apiState === "loading" && <p className="mt-3 text-sm text-ink-dim">Vérification de la transaction dans l'API EduPay en cours...</p>}
+                  {apiState === "missing" && <p className="mt-3 text-sm text-amber-100">Aucune transaction correspondant à ce numéro n'a été trouvée dans la base de données.</p>}
+                  {apiState === "error" && <p className="mt-3 text-sm text-red-200">La vérification dans la base de données est indisponible pour le moment.</p>}
                   {apiState === "ready" && apiResult && apiComparison && (
                     <div className="mt-3 space-y-3">
                       <p className="text-sm leading-6 text-current/90">
                         {apiComparison.matched
-                          ? "Les données scannées correspondent aux données récupérées en base pour cette transaction."
-                          : `Des écarts ont été détectés entre le QR et la base : ${apiComparison.mismatches.join(", ")}.`}
+                          ? "Les données scannées correspondent aux données récupérées dans la base pour cette transaction."
+                          : `Des écarts ont été détectés entre le code QR et la base : ${apiComparison.mismatches.join(", ")}.`}
                       </p>
                       {apiResult.payment.downloads ? (
                         <div className="flex flex-wrap gap-3 pt-2">
@@ -314,13 +302,13 @@ export function ReceiptVerificationPage() {
 
                 <div className="grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
                   <section className="rounded-3xl border border-white/10 bg-slate-900/60 p-5 shadow-xl">
-                    <p className="text-xs font-black uppercase tracking-[0.22em] text-brand-300">Details transaction</p>
+                    <p className="text-xs font-black uppercase tracking-[0.22em] text-brand-300">Détails de la transaction</p>
                     <DetailGrid rows={[
                       ["Transaction", receipt.transaction.transactionNumber],
                       ["Date", receipt.transaction.date],
                       ["Parent", receipt.parties.parentFullName],
                       ["Paiement pour", receipt.parties.paymentSubjectName],
-                      ["Eleves", receipt.parties.studentNames.join(" / ") || "N/A"],
+                      ["Élèves", receipt.parties.studentNames.join(" / ") || "N/A"],
                       ["Motif", receipt.transaction.reason],
                       ["Montant", `$ ${formatMoneyString(receipt.transaction.amount)}`],
                       ["Montant en lettres", receipt.transaction.amountWords],
@@ -331,7 +319,7 @@ export function ReceiptVerificationPage() {
 
                   <aside className="space-y-6">
                     <section className="rounded-3xl border border-white/10 bg-slate-900/60 p-5 shadow-xl">
-                      <p className="text-xs font-black uppercase tracking-[0.22em] text-brand-300">Emetteur</p>
+                      <p className="text-xs font-black uppercase tracking-[0.22em] text-brand-300">Émetteur</p>
                       <div className="mt-4 space-y-2 text-sm text-ink-dim">
                         <p className="font-semibold text-white">{receipt.issuer.schoolName}</p>
                         <p>{receipt.issuer.appName}</p>
@@ -342,7 +330,7 @@ export function ReceiptVerificationPage() {
                     <section className="rounded-3xl border border-white/10 bg-slate-900/60 p-5 shadow-xl">
                       <p className="text-xs font-black uppercase tracking-[0.22em] text-brand-300">Codes de sécurité</p>
                       <DetailGrid rows={[
-                        ["Verification", receipt.security.verificationCode],
+                        ["Vérification", receipt.security.verificationCode],
                         ["Sceau", receipt.security.sealCode],
                         ["Hash", receipt.security.hash]
                       ]} />

@@ -1,8 +1,13 @@
 import {
   ApprovalStepStatus,
+  EmployeeDeductionMode,
+  EmployeeObligationStatus,
+  EmployeeObligationType,
+  EmployeeRepaymentMethod,
   ExpenseCategoryType,
   ExpenseStatus,
   FinancialAttachmentKind,
+  NotificationChannel,
   PayrollFrequency,
   PaymentMethod,
   Role
@@ -12,6 +17,7 @@ import { z } from "zod";
 import { authGuard, authorize, AuthenticatedRequest } from "../../middlewares/auth";
 import {
   createBudget,
+  createEmployeeFinancialObligation,
   createExpense,
   createExpenseCategory,
   createPayrollRun,
@@ -19,8 +25,10 @@ import {
   createVendor,
   deleteVendor,
   getExpenseOverview,
+  getEmployeeFinancialSnapshot,
   listAccountingEntries,
   listBudgets,
+  listEmployeeFinancialObligations,
   listCashflowEntries,
   listExpenseCategories,
   listExpenses,
@@ -28,6 +36,9 @@ import {
   listSalaryProfiles,
   listVendors,
   processExpenseApproval,
+  recordEmployeeRepayment,
+  sendEmployeeFinancialTransparencyNotice,
+  updateSalaryProfile,
   updateVendor
 } from "./service";
 
@@ -106,7 +117,15 @@ const salaryProfileSchema = z.object({
   defaultDeduction: z.number().min(0).optional(),
   advanceBalance: z.number().min(0).optional(),
   debtRecoveryRate: z.number().min(0).max(100).optional(),
+  deductionMode: z.nativeEnum(EmployeeDeductionMode).optional(),
+  maxDeductionRate: z.number().min(0).max(80).optional(),
+  contactEmail: z.string().email().optional().or(z.literal("")),
+  contactPhone: z.string().optional(),
   notes: z.string().optional()
+});
+
+const salaryProfileUpdateSchema = salaryProfileSchema.partial().extend({
+  isActive: z.boolean().optional()
 });
 
 const payrollRunSchema = z.object({
@@ -166,6 +185,35 @@ expenseRouter.post("/vendors", authorize(...writeRoles), async (req: Authenticat
     console.error("Vendor create error", error);
     return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to create vendor." });
   }
+});
+
+const employeeObligationSchema = z.object({
+  salaryProfileId: z.string().min(1),
+  type: z.nativeEnum(EmployeeObligationType),
+  title: z.string().min(3),
+  principalAmount: z.number().positive(),
+  currency: z.string().optional(),
+  disbursementMethod: z.nativeEnum(PaymentMethod).optional(),
+  repaymentMethod: z.nativeEnum(EmployeeRepaymentMethod).optional(),
+  installmentAmount: z.number().positive(),
+  startDate: z.string().min(1),
+  dueDate: z.string().min(1),
+  notes: z.string().max(4000).optional()
+});
+
+const employeeRepaymentSchema = z.object({
+  paidAmount: z.number().positive(),
+  paymentMethod: z.nativeEnum(PaymentMethod).optional(),
+  paidAt: z.string().optional(),
+  reference: z.string().max(120).optional(),
+  notes: z.string().max(1000).optional()
+});
+
+const employeeTransparencyNoticeSchema = z.object({
+  salaryProfileId: z.string().min(1),
+  channels: z.array(z.nativeEnum(NotificationChannel)).min(1).default([NotificationChannel.DASHBOARD]),
+  subject: z.string().max(180).optional(),
+  body: z.string().max(4000).optional()
 });
 
 expenseRouter.put("/vendors/:vendorId", authorize(...writeRoles), async (req: AuthenticatedRequest, res) => {
@@ -300,5 +348,112 @@ expenseRouter.post("/payroll/runs", authorize(...writeRoles), async (req: Authen
   } catch (error) {
     console.error("Payroll run create error", error);
     return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to create payroll run." });
+  }
+});
+
+expenseRouter.put("/payroll/profiles/:salaryProfileId", authorize(...writeRoles), async (req: AuthenticatedRequest, res) => {
+  try {
+    const payload = salaryProfileUpdateSchema.parse(req.body);
+    return res.json(await updateSalaryProfile({ schoolId: req.user!.schoolId, salaryProfileId: req.params.salaryProfileId, ...payload }));
+  } catch (error) {
+    console.error("Payroll profile update error", error);
+    return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to update salary profile." });
+  }
+});
+
+expenseRouter.get("/employee-finance/obligations", authorize(...readRoles), async (req: AuthenticatedRequest, res) => {
+  try {
+    const status = typeof req.query.status === "string" && req.query.status in EmployeeObligationStatus
+      ? req.query.status as EmployeeObligationStatus
+      : undefined;
+    const type = typeof req.query.type === "string" && req.query.type in EmployeeObligationType
+      ? req.query.type as EmployeeObligationType
+      : undefined;
+    return res.json(await listEmployeeFinancialObligations({
+      schoolId: req.user!.schoolId,
+      salaryProfileId: typeof req.query.salaryProfileId === "string" ? req.query.salaryProfileId : undefined,
+      employeeCode: typeof req.query.employeeCode === "string" ? req.query.employeeCode : undefined,
+      query: typeof req.query.query === "string" ? req.query.query : undefined,
+      dateFrom: typeof req.query.dateFrom === "string" ? req.query.dateFrom : undefined,
+      dateTo: typeof req.query.dateTo === "string" ? req.query.dateTo : undefined,
+      status,
+      type
+    }));
+  } catch (error) {
+    console.error("Employee obligations list error", error);
+    return res.status(500).json({ message: "Unable to load employee obligations." });
+  }
+});
+
+expenseRouter.get("/employee-finance/snapshot", authorize(...readRoles), async (req: AuthenticatedRequest, res) => {
+  try {
+    return res.json(await getEmployeeFinancialSnapshot({
+      schoolId: req.user!.schoolId,
+      salaryProfileId: typeof req.query.salaryProfileId === "string" ? req.query.salaryProfileId : undefined,
+      employeeCode: typeof req.query.employeeCode === "string" ? req.query.employeeCode : undefined,
+      dateFrom: typeof req.query.dateFrom === "string" ? req.query.dateFrom : undefined,
+      dateTo: typeof req.query.dateTo === "string" ? req.query.dateTo : undefined
+    }));
+  } catch (error) {
+    console.error("Employee finance snapshot error", error);
+    return res.status(404).json({ message: error instanceof Error ? error.message : "Employee finance snapshot not found." });
+  }
+});
+
+expenseRouter.get("/employee-finance/me", authorize("EMPLOYEE"), async (req: AuthenticatedRequest, res) => {
+  try {
+    return res.json(await getEmployeeFinancialSnapshot({
+      schoolId: req.user!.schoolId,
+      userId: req.user!.sub,
+      dateFrom: typeof req.query.dateFrom === "string" ? req.query.dateFrom : undefined,
+      dateTo: typeof req.query.dateTo === "string" ? req.query.dateTo : undefined
+    }));
+  } catch (error) {
+    console.error("Employee own finance snapshot error", error);
+    return res.status(404).json({ message: error instanceof Error ? error.message : "Employee finance snapshot not found." });
+  }
+});
+
+expenseRouter.post("/employee-finance/obligations", authorize(...writeRoles), async (req: AuthenticatedRequest, res) => {
+  try {
+    const payload = employeeObligationSchema.parse(req.body);
+    return res.status(201).json(await createEmployeeFinancialObligation({
+      schoolId: req.user!.schoolId,
+      createdById: req.user!.sub,
+      approvedById: req.user!.sub,
+      ...payload
+    }));
+  } catch (error) {
+    console.error("Employee obligation create error", error);
+    return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to create employee obligation." });
+  }
+});
+
+expenseRouter.post("/employee-finance/repayments/:repaymentId/pay", authorize(...writeRoles), async (req: AuthenticatedRequest, res) => {
+  try {
+    const payload = employeeRepaymentSchema.parse(req.body);
+    return res.json(await recordEmployeeRepayment({
+      schoolId: req.user!.schoolId,
+      repaymentId: req.params.repaymentId,
+      recordedById: req.user!.sub,
+      ...payload
+    }));
+  } catch (error) {
+    console.error("Employee repayment record error", error);
+    return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to record employee repayment." });
+  }
+});
+
+expenseRouter.post("/employee-finance/notify", authorize(...writeRoles), async (req: AuthenticatedRequest, res) => {
+  try {
+    const payload = employeeTransparencyNoticeSchema.parse(req.body);
+    return res.json(await sendEmployeeFinancialTransparencyNotice({
+      schoolId: req.user!.schoolId,
+      sentById: req.user!.sub,
+      ...payload
+    }));
+  } catch (error) {
+    console.error("Employee transparency notice error", error);
+    return res.status(400).json({ message: error instanceof Error ? error.message : "Unable to notify employee." });
   }
 });

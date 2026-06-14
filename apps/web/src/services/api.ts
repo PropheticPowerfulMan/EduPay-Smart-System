@@ -28,7 +28,9 @@ const DEMO_EXPENSE_BUDGETS_KEY = "edupay_demo_expense_budgets_v1";
 const DEMO_EXPENSE_ITEMS_KEY = "edupay_demo_expense_items_v1";
 const DEMO_SALARY_PROFILES_KEY = "edupay_demo_salary_profiles_v2";
 const DEMO_PAYROLL_RUNS_KEY = "edupay_demo_payroll_runs_v1";
+const DEMO_EMPLOYEE_OBLIGATIONS_KEY = "edupay_demo_employee_obligations_v1";
 const DEMO_EMPLOYEES_KEY = "edupay_demo_employees_v2";
+const DEMO_EMPLOYEE_MESSAGES_KEY = "edupay_demo_employee_messages_v1";
 const API_RESPONSE_CACHE_PREFIX = "edupay_api_cache_v1:";
 const OFFLINE_MUTATION_QUEUE_KEY = "edupay_offline_mutation_queue_v1";
 const DEMO_FALLBACK_ENABLED = (import.meta.env.VITE_ENABLE_DEMO_FALLBACK ?? "").trim().toLowerCase() === "true";
@@ -207,6 +209,10 @@ type DemoSalaryProfile = {
   defaultDeduction: number;
   advanceBalance: number;
   debtRecoveryRate: number;
+  deductionMode?: "AUTOMATIC" | "MANUAL" | "HYBRID";
+  maxDeductionRate?: number;
+  contactEmail?: string;
+  contactPhone?: string;
   notes?: string;
   isActive: boolean;
   createdAt: string;
@@ -237,6 +243,51 @@ type DemoPayrollRun = {
     salarySlipNumber: string;
     salaryProfile: DemoSalaryProfile;
   }>;
+};
+
+type DemoEmployeeRepayment = {
+  id: string;
+  method: string;
+  expectedAmount: number;
+  paidAmount: number;
+  currency: string;
+  dueDate: string;
+  paidAt?: string | null;
+  status: string;
+  reference?: string | null;
+  notes?: string | null;
+};
+
+type DemoEmployeeObligation = {
+  id: string;
+  salaryProfileId: string;
+  type: string;
+  title: string;
+  principalAmount: number;
+  amountPaid: number;
+  balance: number;
+  currency: string;
+  repaymentMethod: string;
+  installmentAmount: number;
+  startDate: string;
+  dueDate: string;
+  status: string;
+  riskLevel: string;
+  riskScore: number;
+  notes?: string;
+  salaryProfile?: DemoSalaryProfile;
+  repayments: DemoEmployeeRepayment[];
+  createdAt: string;
+};
+
+type DemoEmployeeMessage = {
+  id: string;
+  salaryProfileId: string;
+  channel: "DASHBOARD" | "EMAIL" | "SMS";
+  subject?: string;
+  content: string;
+  status: string;
+  createdAt: string;
 };
 
 type DemoEmployee = {
@@ -1177,6 +1228,10 @@ function buildUnifiedDemoSalaryProfiles(): DemoSalaryProfile[] {
     defaultDeduction: index % 3 === 0 ? 10 : 5,
     advanceBalance: 0,
     debtRecoveryRate: 0,
+    deductionMode: index % 4 === 0 ? "HYBRID" : "AUTOMATIC",
+    maxDeductionRate: 35,
+    contactEmail: `${String(fullName).toLowerCase().replace(/\s+/g, ".")}@kcs.local`,
+    contactPhone: `+24399000${String(index + 1).padStart(3, "0")}`,
     notes: "Population demo unifiee KCS",
     isActive: true,
     createdAt: `2026-01-${String(index + 2).padStart(2, "0")}T07:00:00.000Z`
@@ -1198,6 +1253,10 @@ function getDemoSalaryProfiles() {
       defaultDeduction: 10,
       advanceBalance: 0,
       debtRecoveryRate: 0,
+      deductionMode: "HYBRID",
+      maxDeductionRate: 35,
+      contactEmail: "mireille.ilunga@kcs.local",
+      contactPhone: "+243990001001",
       notes: "Cycle secondaire",
       isActive: true,
       createdAt: new Date().toISOString()
@@ -1222,7 +1281,13 @@ function getDemoSalaryProfiles() {
   ]);
   const reconciledProfiles = profiles.filter((profile) => profile.isActive !== false).length < OFFICIAL_DEMO_COUNTS.employees
     ? buildUnifiedDemoSalaryProfiles()
-    : profiles;
+    : profiles.map((profile, index) => ({
+      ...profile,
+      deductionMode: profile.deductionMode ?? (index % 4 === 1 ? "MANUAL" : "AUTOMATIC"),
+      maxDeductionRate: profile.maxDeductionRate ?? 35,
+      contactEmail: profile.contactEmail ?? `${profile.fullName.toLowerCase().replace(/\s+/g, ".")}@kcs.local`,
+      contactPhone: profile.contactPhone ?? `+24399000${String(index + 1).padStart(3, "0")}`
+    }));
   writeJson(DEMO_SALARY_PROFILES_KEY, reconciledProfiles);
   return reconciledProfiles;
 }
@@ -1260,6 +1325,81 @@ function getDemoPayrollRuns() {
   const runs = readJson<DemoPayrollRun[]>(DEMO_PAYROLL_RUNS_KEY, []);
   writeJson(DEMO_PAYROLL_RUNS_KEY, runs);
   return runs;
+}
+
+function getDemoEmployeeObligations() {
+  const profiles = getDemoSalaryProfiles();
+  const first = profiles[0];
+  const second = profiles[1] ?? first;
+  const seed: DemoEmployeeObligation[] = first ? [
+    {
+      id: "emp-obligation-001",
+      salaryProfileId: first.id,
+      type: "SALARY_ADVANCE",
+      title: "Avance sur salaire - urgence familiale",
+      principalAmount: 180,
+      amountPaid: 60,
+      balance: 120,
+      currency: first.currency,
+      repaymentMethod: "SALARY_DEDUCTION",
+      installmentAmount: 30,
+      startDate: "2026-05-01T00:00:00.000Z",
+      dueDate: "2026-09-30T00:00:00.000Z",
+      status: "ACTIVE",
+      riskLevel: "LOW",
+      riskScore: 24,
+      notes: "Deduction mensuelle validee par le financier.",
+      salaryProfile: first,
+      repayments: [0, 1, 2, 3, 4, 5].map((index) => ({
+        id: `emp-repayment-001-${index}`,
+        method: "SALARY_DEDUCTION",
+        expectedAmount: 30,
+        paidAmount: index < 2 ? 30 : 0,
+        currency: first.currency,
+        dueDate: new Date(Date.UTC(2026, 4 + index, 28)).toISOString(),
+        paidAt: index < 2 ? new Date(Date.UTC(2026, 4 + index, 28)).toISOString() : null,
+        status: index < 2 ? "PAID" : "SCHEDULED"
+      })),
+      createdAt: "2026-05-01T08:00:00.000Z"
+    },
+    {
+      id: "emp-obligation-002",
+      salaryProfileId: second.id,
+      type: "SCHOOL_DEBT",
+      title: "Dette cantine employee",
+      principalAmount: 95,
+      amountPaid: 20,
+      balance: 75,
+      currency: second.currency,
+      repaymentMethod: "EXTERNAL_PAYMENT",
+      installmentAmount: 25,
+      startDate: "2026-04-15T00:00:00.000Z",
+      dueDate: "2026-06-15T00:00:00.000Z",
+      status: "OVERDUE",
+      riskLevel: "MEDIUM",
+      riskScore: 48,
+      notes: "Paiement hors salaire promis par mobile money.",
+      salaryProfile: second,
+      repayments: [0, 1, 2].map((index) => ({
+        id: `emp-repayment-002-${index}`,
+        method: "EXTERNAL_PAYMENT",
+        expectedAmount: index === 2 ? 45 : 25,
+        paidAmount: index === 0 ? 20 : 0,
+        currency: second.currency,
+        dueDate: new Date(Date.UTC(2026, 3 + index, 15)).toISOString(),
+        paidAt: index === 0 ? "2026-04-20T00:00:00.000Z" : null,
+        status: index === 0 ? "PARTIALLY_PAID" : "OVERDUE"
+      })),
+      createdAt: "2026-04-15T08:00:00.000Z"
+    }
+  ] : [];
+  const obligations = readJson<DemoEmployeeObligation[]>(DEMO_EMPLOYEE_OBLIGATIONS_KEY, seed);
+  const reconciled = obligations.length ? obligations.map((item) => ({
+    ...item,
+    salaryProfile: profiles.find((profile) => profile.id === item.salaryProfileId) ?? item.salaryProfile
+  })) : seed;
+  writeJson(DEMO_EMPLOYEE_OBLIGATIONS_KEY, reconciled);
+  return reconciled;
 }
 
 function getDemoAccountingEntries() {
@@ -1421,6 +1561,122 @@ function saveDemoSalaryProfiles(profiles: DemoSalaryProfile[]) {
 
 function saveDemoPayrollRuns(runs: DemoPayrollRun[]) {
   writeJson(DEMO_PAYROLL_RUNS_KEY, runs);
+}
+
+function getDemoEmployeeMessages() {
+  return readJson<DemoEmployeeMessage[]>(DEMO_EMPLOYEE_MESSAGES_KEY, []);
+}
+
+function saveDemoEmployeeMessages(messages: DemoEmployeeMessage[]) {
+  writeJson(DEMO_EMPLOYEE_MESSAGES_KEY, messages);
+}
+
+function calculateDemoSalaryProjection(profile: DemoSalaryProfile, obligations: DemoEmployeeObligation[]) {
+  const baseSalary = roundAmount(profile.baseSalary || 0);
+  const bonuses = roundAmount(profile.defaultBonus || 0);
+  const deductions = roundAmount(profile.defaultDeduction || 0);
+  const maxDeductionRate = Math.min(Math.max(Number(profile.maxDeductionRate ?? 35), 0), 80);
+  const deductionCeiling = roundAmount(baseSalary * (maxDeductionRate / 100));
+  const mode = profile.deductionMode ?? "AUTOMATIC";
+  const shouldAutoDeduct = mode !== "MANUAL";
+  const baseDebtRecovered = shouldAutoDeduct ? roundAmount((baseSalary * Number(profile.debtRecoveryRate || 0)) / 100) : 0;
+  let remainingRoom = Math.max(deductionCeiling - deductions - baseDebtRecovered, 0);
+  let advancesRecovered = 0;
+  let scheduledDebtRecovered = 0;
+  const plannedRepayments: Array<{ repaymentId: string; obligationId: string; amount: number; type: string }> = [];
+  const deferredRepayments: Array<{ repaymentId: string; obligationId: string; amount: number; reason: string; dueDate?: string }> = [];
+  const dueRepayments = obligations.flatMap((obligation) =>
+    obligation.repayments
+      .filter((repayment) => repayment.status !== "PAID" && new Date(repayment.dueDate).getTime() <= Date.now())
+      .map((repayment) => ({ repayment, obligation }))
+  );
+
+  for (const { repayment, obligation } of dueRepayments) {
+    const outstanding = roundAmount(Math.max(repayment.expectedAmount - repayment.paidAmount, 0));
+    if (outstanding <= 0) continue;
+    if (!shouldAutoDeduct || !["SALARY_DEDUCTION", "MIXED"].includes(repayment.method)) {
+      deferredRepayments.push({ repaymentId: repayment.id, obligationId: obligation.id, amount: outstanding, reason: mode === "MANUAL" ? "Mode manuel" : "Paiement hors salaire", dueDate: repayment.dueDate });
+      continue;
+    }
+    if (remainingRoom <= 0) {
+      deferredRepayments.push({ repaymentId: repayment.id, obligationId: obligation.id, amount: outstanding, reason: "Plafond salarial atteint", dueDate: repayment.dueDate });
+      continue;
+    }
+    const amount = roundAmount(Math.min(outstanding, remainingRoom));
+    plannedRepayments.push({ repaymentId: repayment.id, obligationId: obligation.id, amount, type: obligation.type });
+    if (obligation.type === "SALARY_ADVANCE") advancesRecovered = roundAmount(advancesRecovered + amount);
+    else scheduledDebtRecovered = roundAmount(scheduledDebtRecovered + amount);
+    remainingRoom = roundAmount(remainingRoom - amount);
+    if (amount < outstanding) {
+      deferredRepayments.push({ repaymentId: repayment.id, obligationId: obligation.id, amount: roundAmount(outstanding - amount), reason: "Solde reporte", dueDate: repayment.dueDate });
+    }
+  }
+
+  const debtRecovered = roundAmount(baseDebtRecovered + scheduledDebtRecovered);
+  const totalDeductions = roundAmount(deductions + advancesRecovered + debtRecovered);
+  const grossSalary = roundAmount(baseSalary + bonuses);
+  const netSalary = roundAmount(grossSalary - totalDeductions);
+  const salaryPressure = baseSalary > 0 ? roundAmount((totalDeductions / baseSalary) * 100) : 0;
+  return {
+    mode,
+    baseSalary,
+    bonuses,
+    deductions,
+    advancesRecovered,
+    debtRecovered,
+    totalDeductions,
+    grossSalary,
+    netSalary,
+    salaryPressure,
+    maxDeductionRate,
+    deductionCeiling,
+    plannedRepayments,
+    deferredRepayments,
+    recommendation: mode === "MANUAL"
+      ? "Mode manuel actif: aucune deduction automatique sans decision administrative."
+      : deferredRepayments.length
+        ? "Certaines echeances sont reportees pour proteger le salaire mensuel."
+        : "Deduction compatible avec le plafond salarial.",
+    riskLevel: salaryPressure >= 45 || deferredRepayments.length >= 3 ? "HIGH" : salaryPressure >= 30 || deferredRepayments.length ? "MEDIUM" : "LOW"
+  };
+}
+
+function buildDemoEmployeeFinancialSnapshot(profile: DemoSalaryProfile) {
+  const obligations = getDemoEmployeeObligations().filter((item) => item.salaryProfileId === profile.id);
+  const repayments = obligations.flatMap((item) => item.repayments);
+  const overdue = repayments.filter((item) => item.status !== "PAID" && new Date(item.dueDate).getTime() < Date.now());
+  const next = repayments.filter((item) => item.status !== "PAID").sort((a, b) => String(a.dueDate).localeCompare(String(b.dueDate)))[0] ?? null;
+  const salaryProjection = calculateDemoSalaryProjection(profile, obligations);
+  const payrollRecords = getDemoPayrollRuns().flatMap((run) =>
+    run.items.filter((item) => item.salaryProfile.employeeCode === profile.employeeCode).map((item) => ({ ...item, payrollRun: run }))
+  );
+  const totalBalance = roundAmount(obligations.reduce((sum, item) => sum + item.balance, 0));
+  return {
+    profile,
+    obligations,
+    payrollRecords,
+    salaryProjection,
+    communicationHistory: getDemoEmployeeMessages()
+      .filter((message) => message.salaryProfileId === profile.id)
+      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))),
+    totals: {
+      totalPrincipal: roundAmount(obligations.reduce((sum, item) => sum + item.principalAmount, 0)),
+      totalPaid: roundAmount(obligations.reduce((sum, item) => sum + item.amountPaid, 0)),
+      totalBalance,
+      salaryAdvanceBalance: roundAmount(obligations.filter((item) => item.type === "SALARY_ADVANCE").reduce((sum, item) => sum + item.balance, 0)),
+      schoolDebtBalance: roundAmount(obligations.filter((item) => item.type === "SCHOOL_DEBT").reduce((sum, item) => sum + item.balance, 0)),
+      overdueAmount: roundAmount(overdue.reduce((sum, item) => sum + Math.max(item.expectedAmount - item.paidAmount, 0), 0)),
+      overdueCount: overdue.length,
+      nextRepaymentAmount: roundAmount(next?.expectedAmount ?? 0),
+      nextRepaymentDueDate: next?.dueDate ?? null,
+      salaryPressure: salaryProjection.salaryPressure
+    },
+    intelligence: {
+      riskLevel: totalBalance > profile.baseSalary * 2 || overdue.length >= 2 || salaryProjection.riskLevel === "HIGH" ? "HIGH" : totalBalance > profile.baseSalary || overdue.length || salaryProjection.riskLevel === "MEDIUM" ? "MEDIUM" : "LOW",
+      recommendation: overdue.length ? "Regulariser les echeances en retard avant une nouvelle avance." : salaryProjection.recommendation,
+      salaryProtectionFloor: salaryProjection.deductionCeiling
+    }
+  };
 }
 
 function saveDemoExpenseItems(expenses: DemoExpenseItem[]) {
@@ -1599,6 +1855,10 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
 
     if (email === "admin@school.com" && password === adminPassword) {
       return { token: "local-admin-token", role: "ADMIN", fullName: "Administrateur" } as T;
+    }
+
+    if (email === "employee@school.com" && password === "password123") {
+      return { token: "local-employee-token", role: "EMPLOYEE", fullName: "Mireille Ilunga" } as T;
     }
 
     throw new Error("Identifiants invalides.");
@@ -1803,6 +2063,10 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       defaultDeduction: roundAmount(Number(body.defaultDeduction ?? 0)),
       advanceBalance: roundAmount(Number(body.advanceBalance ?? 0)),
       debtRecoveryRate: roundAmount(Number(body.debtRecoveryRate ?? 0)),
+      deductionMode: String(body.deductionMode ?? "AUTOMATIC") as DemoSalaryProfile["deductionMode"],
+      maxDeductionRate: roundAmount(Number(body.maxDeductionRate ?? 35)),
+      contactEmail: String(body.contactEmail ?? ""),
+      contactPhone: String(body.contactPhone ?? ""),
       notes: String(body.notes ?? ""),
       isActive: true,
       createdAt: new Date().toISOString()
@@ -1810,7 +2074,82 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     saveDemoSalaryProfiles([profile, ...getDemoSalaryProfiles()]);
     return profile as T;
   }
+  if (normalizedPath.startsWith("/api/expenses/payroll/profiles/") && method === "PUT") {
+    const profileId = normalizedPath.split("/").pop();
+    const profiles = getDemoSalaryProfiles().map((profile) => profile.id !== profileId ? profile : ({
+      ...profile,
+      ...(body.employeeCode !== undefined ? { employeeCode: String(body.employeeCode) } : {}),
+      ...(body.fullName !== undefined ? { fullName: String(body.fullName) } : {}),
+      ...(body.department !== undefined ? { department: String(body.department) } : {}),
+      ...(body.position !== undefined ? { position: String(body.position) } : {}),
+      ...(body.baseSalary !== undefined ? { baseSalary: roundAmount(Number(body.baseSalary)) } : {}),
+      ...(body.defaultBonus !== undefined ? { defaultBonus: roundAmount(Number(body.defaultBonus)) } : {}),
+      ...(body.defaultDeduction !== undefined ? { defaultDeduction: roundAmount(Number(body.defaultDeduction)) } : {}),
+      ...(body.debtRecoveryRate !== undefined ? { debtRecoveryRate: roundAmount(Number(body.debtRecoveryRate)) } : {}),
+      ...(body.deductionMode !== undefined ? { deductionMode: String(body.deductionMode) as DemoSalaryProfile["deductionMode"] } : {}),
+      ...(body.maxDeductionRate !== undefined ? { maxDeductionRate: roundAmount(Number(body.maxDeductionRate)) } : {}),
+      ...(body.contactEmail !== undefined ? { contactEmail: String(body.contactEmail) } : {}),
+      ...(body.contactPhone !== undefined ? { contactPhone: String(body.contactPhone) } : {}),
+      ...(body.notes !== undefined ? { notes: String(body.notes) } : {}),
+      ...(body.isActive !== undefined ? { isActive: Boolean(body.isActive) } : {})
+    }));
+    saveDemoSalaryProfiles(profiles);
+    const updated = profiles.find((profile) => profile.id === profileId);
+    if (!updated) throw new Error("Profil salarial introuvable.");
+    return updated as T;
+  }
   if (normalizedPath === "/api/expenses/payroll/runs" && method === "GET") return getDemoPayrollRuns() as T;
+  if (normalizedPath.startsWith("/api/expenses/employee-finance/obligations") && method === "GET") {
+    const url = new URL(`http://local${normalizedPath}`);
+    const employeeCode = url.searchParams.get("employeeCode")?.trim().toLowerCase();
+    const query = url.searchParams.get("query")?.trim().toLowerCase();
+    const dateFrom = url.searchParams.get("dateFrom");
+    const dateTo = url.searchParams.get("dateTo");
+    return getDemoEmployeeObligations().filter((item) => {
+      const profile = item.salaryProfile;
+      const matchesEmployee = !employeeCode || profile?.employeeCode.toLowerCase() === employeeCode || profile?.fullName.toLowerCase().includes(employeeCode);
+      const matchesText = !query || [item.title, item.type, item.status, item.repaymentMethod, item.notes, profile?.fullName, profile?.department].join(" ").toLowerCase().includes(query);
+      const timestamps = [item.startDate, item.dueDate, ...item.repayments.map((repayment) => repayment.dueDate)].map((value) => new Date(value).getTime());
+      const from = dateFrom ? new Date(dateFrom).getTime() : Number.NEGATIVE_INFINITY;
+      const to = dateTo ? new Date(dateTo).getTime() + 86400000 : Number.POSITIVE_INFINITY;
+      const matchesPeriod = timestamps.some((value) => value >= from && value <= to);
+      return matchesEmployee && matchesText && matchesPeriod;
+    }) as T;
+  }
+  if (normalizedPath.startsWith("/api/expenses/employee-finance/snapshot") && method === "GET") {
+    const url = new URL(`http://local${normalizedPath}`);
+    const salaryProfileId = url.searchParams.get("salaryProfileId");
+    const employeeCode = url.searchParams.get("employeeCode")?.trim().toLowerCase();
+    const profile = getDemoSalaryProfiles().find((item) =>
+      (salaryProfileId && item.id === salaryProfileId)
+      || (employeeCode && (item.employeeCode.toLowerCase() === employeeCode || item.fullName.toLowerCase().includes(employeeCode)))
+    ) ?? getDemoSalaryProfiles()[0];
+    return buildDemoEmployeeFinancialSnapshot(profile) as T;
+  }
+  if (normalizedPath.startsWith("/api/expenses/employee-finance/me") && method === "GET") {
+    const profile = getDemoSalaryProfiles().find((item) => item.fullName === localStorage.getItem(NAME_STORAGE_KEY)) ?? getDemoSalaryProfiles()[0];
+    return buildDemoEmployeeFinancialSnapshot(profile) as T;
+  }
+  if (normalizedPath === "/api/expenses/employee-finance/notify" && method === "POST") {
+    const profile = getDemoSalaryProfiles().find((item) => item.id === String(body.salaryProfileId));
+    if (!profile) throw new Error("Profil salarial introuvable.");
+    const snapshot = buildDemoEmployeeFinancialSnapshot(profile);
+    const channels = Array.isArray(body.channels) ? body.channels.map((item) => String(item)) : ["DASHBOARD"];
+    const subject = String(body.subject ?? "Transparence salariale EduPay");
+    const content = String(body.body ?? `Salaire net previsionnel: ${snapshot.salaryProjection.netSalary.toFixed(2)} ${profile.currency}. Deductions: ${snapshot.salaryProjection.totalDeductions.toFixed(2)}. Solde avances/dettes: ${snapshot.totals.totalBalance.toFixed(2)}.`);
+    const createdAt = new Date().toISOString();
+    const messages = channels.map((channel) => ({
+      id: `employee-message-${Date.now()}-${channel}`,
+      salaryProfileId: profile.id,
+      channel: channel as DemoEmployeeMessage["channel"],
+      subject,
+      content,
+      status: channel === "EMAIL" ? (profile.contactEmail ? "SIMULATED" : "SKIPPED:NO_EMAIL") : channel === "SMS" ? (profile.contactPhone ? "SIMULATED" : "SKIPPED:NO_PHONE") : "VISIBLE",
+      createdAt
+    }));
+    saveDemoEmployeeMessages([...messages, ...getDemoEmployeeMessages()]);
+    return { profileId: profile.id, statuses: messages.map((message) => ({ channel: message.channel, status: message.status })), snapshot } as T;
+  }
   if (normalizedPath === "/api/expenses/payroll/runs" && method === "POST") {
     const profiles = getDemoSalaryProfiles().filter((profile) =>
       profile.isActive && (!body.department || profile.department === String(body.department))
@@ -1818,18 +2157,16 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
     if (!profiles.length) throw new Error("Aucun profil salarial actif pour ce run.");
     const period = getDemoCurrentPeriod();
     const items = profiles.map((profile, index) => {
-      const bonuses = roundAmount(profile.defaultBonus || 0);
-      const deductions = roundAmount(profile.defaultDeduction || 0);
-      const debtRecovered = roundAmount((profile.baseSalary * profile.debtRecoveryRate) / 100);
-      const netSalary = roundAmount(profile.baseSalary + bonuses - deductions - debtRecovered);
+      const obligations = getDemoEmployeeObligations().filter((item) => item.salaryProfileId === profile.id);
+      const projection = calculateDemoSalaryProjection(profile, obligations);
       return {
         id: `payroll-item-${Date.now()}-${index}`,
-        baseSalary: profile.baseSalary,
-        bonuses,
-        deductions,
-        advancesRecovered: 0,
-        debtRecovered,
-        netSalary,
+        baseSalary: projection.baseSalary,
+        bonuses: projection.bonuses,
+        deductions: projection.deductions,
+        advancesRecovered: projection.advancesRecovered,
+        debtRecovered: projection.debtRecovered,
+        netSalary: projection.netSalary,
         salarySlipNumber: `SLIP-${Date.now()}-${index + 1}`,
         salaryProfile: profile
       };
@@ -2702,6 +3039,9 @@ export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   if (!response.ok) {
     if (response.status === 401) {
       if (path === "/api/auth/login") {
+        if (LOCAL_API_FALLBACK_ENABLED && canFallbackToDemo(path, init)) {
+          return demoApi<T>(path, init);
+        }
         const loginError = await response.json().catch(() => null) as { message?: string } | null;
         throw new Error(loginError?.message || "Identifiants invalides.");
       }

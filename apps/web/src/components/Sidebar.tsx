@@ -5,6 +5,7 @@ import {
   BriefcaseBusiness,
   ChartColumnBig,
   CreditCard,
+  HandCoins,
   GraduationCap,
   Landmark,
   LayoutDashboard,
@@ -37,6 +38,8 @@ export function Sidebar() {
 
   const links: SidebarLink[] = role === "PARENT"
     ? [{ to: "/parent", label: t("navParent"), icon: <BadgeDollarSign className="h-4 w-4" aria-hidden="true" /> }]
+    : role === "EMPLOYEE"
+      ? [{ to: "/employee", label: "Ma situation", icon: <HandCoins className="h-4 w-4" aria-hidden="true" /> }]
     : [
         { to: "/", label: t("navDashboard"), icon: <LayoutDashboard className="h-4 w-4" aria-hidden="true" /> },
         { to: "/operations", label: t("navOperations"), icon: <Landmark className="h-4 w-4" aria-hidden="true" /> },

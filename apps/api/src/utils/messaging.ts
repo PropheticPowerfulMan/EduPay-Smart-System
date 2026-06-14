@@ -13,7 +13,7 @@ type SmsInput = {
   text: string;
 };
 
-type DeliveryStatus = "SENT" | "FAILED" | "SIMULATED" | "SKIPPED";
+type DeliveryStatus = "SENT" | "FAILED" | "FAILED_NETWORK" | "SIMULATED" | "SKIPPED";
 
 export type MessagingConfigStatus = {
   email: {
@@ -189,11 +189,14 @@ function hasSmtpConfig() {
 }
 
 function hasSmsConfig() {
+  const username = getSmsUsername();
+  const apiKey = getSmsApiKey();
   return Boolean(
     getSmsApiUrl() &&
-    getSmsUsername() &&
-    getSmsApiKey() &&
-    getSmsApiKey() !== "CHANGE_ME"
+    username &&
+    username !== "CHANGE_ME" &&
+    apiKey &&
+    apiKey !== "CHANGE_ME"
   );
 }
 
@@ -265,6 +268,47 @@ function isSuccessfulAfrikTalkResponse(body: unknown) {
     const statusCode = String(recipient.statusCode ?? recipient.StatusCode ?? "").toLowerCase();
     return status.includes("success") || status.includes("sent") || status.includes("submitted") || statusCode === "101";
   });
+}
+
+function africasTalkingResponseMentionsSenderIssue(responseText: string) {
+  return /sender|from|short.?code|alphanumeric|not.?allowed|not.?registered|invalid.?sender/i.test(responseText);
+}
+
+function parseJsonResponseText(responseText: string) {
+  try {
+    return responseText ? JSON.parse(responseText) : null;
+  } catch {
+    return null;
+  }
+}
+
+function isSmsNetworkError(error: unknown) {
+  const candidate = error as {
+    code?: string;
+    cause?: { code?: string };
+  };
+  const code = candidate?.cause?.code || candidate?.code;
+  return Boolean(
+    code &&
+    [
+      "ENOTFOUND",
+      "EAI_AGAIN",
+      "ECONNREFUSED",
+      "ETIMEDOUT",
+      "ECONNRESET",
+      "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+      "SELF_SIGNED_CERT_IN_CHAIN",
+      "CERT_HAS_EXPIRED"
+    ].includes(code)
+  );
+}
+
+async function parseSmsProviderResponse(response: Response) {
+  const responseText = await response.text();
+  return {
+    responseText,
+    responseBody: parseJsonResponseText(responseText)
+  };
 }
 
 export async function sendEmail(input: EmailInput): Promise<DeliveryStatus> {
@@ -340,8 +384,13 @@ export async function sendSms(input: SmsInput): Promise<DeliveryStatus> {
         },
       body
     });
-    let responseText = await response.text();
-    if (isAfricaTalking && !response.ok && sender && /sender|from|short.?code|alphanumeric/i.test(responseText)) {
+    let { responseText, responseBody } = await parseSmsProviderResponse(response);
+    if (
+      isAfricaTalking
+      && sender
+      && (!response.ok || !isSuccessfulAfrikTalkResponse(responseBody))
+      && africasTalkingResponseMentionsSenderIssue(responseText)
+    ) {
       const retryResponse = await fetch(endpoint, {
         method: "POST",
         headers: {
@@ -352,26 +401,13 @@ export async function sendSms(input: SmsInput): Promise<DeliveryStatus> {
         },
         body: buildAfricaTalkingBody(false)
       });
-      if (retryResponse.ok) {
-        responseText = await retryResponse.text();
-        let retryBody: unknown = null;
-        try {
-          retryBody = responseText ? JSON.parse(responseText) : null;
-        } catch {
-          retryBody = null;
-        }
-        if (!isSuccessfulAfrikTalkResponse(retryBody)) {
-          throw new Error(`SMS provider did not accept any recipient: ${responseText}`);
-        }
+      const retry = await parseSmsProviderResponse(retryResponse);
+      responseText = retry.responseText;
+      responseBody = retry.responseBody;
+      if (retryResponse.ok && isSuccessfulAfrikTalkResponse(responseBody)) {
+        console.warn("SMS sent through Africa's Talking after retrying without sender ID.");
         return "SENT";
       }
-      responseText = await retryResponse.text();
-    }
-    let responseBody: unknown = null;
-    try {
-      responseBody = responseText ? JSON.parse(responseText) : null;
-    } catch {
-      responseBody = null;
     }
     if (!response.ok) throw new Error(`SMS provider responded with ${response.status}: ${responseText}`);
     if (!isSuccessfulAfrikTalkResponse(responseBody)) {
@@ -380,6 +416,10 @@ export async function sendSms(input: SmsInput): Promise<DeliveryStatus> {
     return "SENT";
   } catch (error) {
     console.error("SMS delivery failed", error);
+    if (isSmsNetworkError(error)) {
+      console.error("SMS delivery failed because EduPay cannot reach the SMS provider network endpoint.");
+      return "FAILED_NETWORK";
+    }
     return "FAILED";
   }
 }

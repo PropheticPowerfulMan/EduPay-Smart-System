@@ -17,6 +17,7 @@ const AIAssistantPage = lazy(() => loadAIAssistantPage().then((module) => ({ def
 const FinanceDashboardPage = lazy(() => loadFinanceDashboardPage().then((module) => ({ default: module.FinanceDashboardPage })));
 const FinancialOperationsPage = lazy(() => loadFinancialOperationsPage().then((module) => ({ default: module.FinancialOperationsPage })));
 const EmployeesPage = lazy(() => import("./pages/EmployeesPage").then((module) => ({ default: module.EmployeesPage })));
+const EmployeeFinancePage = lazy(() => import("./pages/EmployeeFinancePage").then((module) => ({ default: module.EmployeeFinancePage })));
 const FinanceParentAdminPage = lazy(() => import("./pages/FinanceParentAdminPage").then((module) => ({ default: module.FinanceParentAdminPage })));
 const FinanceParentPage = lazy(() => import("./pages/FinanceParentPage").then((module) => ({ default: module.FinanceParentPage })));
 const MessagesPage = lazy(() => import("./pages/MessagesPage").then((module) => ({ default: module.MessagesPage })));
@@ -42,6 +43,7 @@ function withPageLoader(element: React.ReactNode) {
 
 function getHomePathByRole(role: Role | null) {
   if (!role) return "/login";
+  if (role === "EMPLOYEE") return "/employee";
   return role === "PARENT" ? "/parent" : "/";
 }
 
@@ -49,7 +51,7 @@ function ProtectedLayout() {
   const role = useAuthStore((s) => s.role);
 
   useEffect(() => {
-    if (!role || role === "PARENT") return;
+    if (!role || role === "PARENT" || role === "EMPLOYEE") return;
 
     const warmupTimer = window.setTimeout(() => {
       void loadFinancialOperationsPage();
@@ -93,6 +95,9 @@ function RoleHome() {
   const role = useAuthStore((s) => s.role);
   if (role === "PARENT") {
     return <Navigate to="/parent" replace />;
+  }
+  if (role === "EMPLOYEE") {
+    return <Navigate to="/employee" replace />;
   }
   if (role && STAFF_ROLES.includes(role)) {
     return withPageLoader(<FinanceDashboardPage />);
@@ -145,6 +150,9 @@ export function App() {
           </Route>
           <Route element={<RoleRoute allowedRoles={["PARENT"]} />}>
             <Route path="parent" element={withPageLoader(<FinanceParentPage />)} />
+          </Route>
+          <Route element={<RoleRoute allowedRoles={["EMPLOYEE"]} />}>
+            <Route path="employee" element={withPageLoader(<EmployeeFinancePage />)} />
           </Route>
           <Route path="*" element={<NotFoundPage />} />
         </Route>

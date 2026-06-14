@@ -4,7 +4,7 @@ import { env } from "../config/env";
 
 export type JwtPayload = {
   sub: string;
-  role: "SUPER_ADMIN" | "OWNER" | "ADMIN" | "FINANCIAL_MANAGER" | "ACCOUNTANT" | "CASHIER" | "HR_MANAGER" | "AUDITOR" | "PARENT";
+  role: "SUPER_ADMIN" | "OWNER" | "ADMIN" | "FINANCIAL_MANAGER" | "ACCOUNTANT" | "CASHIER" | "HR_MANAGER" | "AUDITOR" | "PARENT" | "EMPLOYEE";
   schoolId: string;
 };
 

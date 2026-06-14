@@ -17,6 +17,7 @@ enum Role {
   HR_MANAGER
   AUDITOR
   PARENT
+  EMPLOYEE
 }
 
 enum PaymentMethod {
@@ -210,6 +211,41 @@ enum FinancialAttachmentKind {
   EXPENSE_SUPPORT
 }
 
+enum EmployeeObligationType {
+  SALARY_ADVANCE
+  SCHOOL_DEBT
+  OTHER_DEBT
+}
+
+enum EmployeeRepaymentMethod {
+  SALARY_DEDUCTION
+  EXTERNAL_PAYMENT
+  MIXED
+}
+
+enum EmployeeObligationStatus {
+  DRAFT
+  ACTIVE
+  PAID
+  OVERDUE
+  CANCELLED
+  WRITTEN_OFF
+}
+
+enum EmployeeRepaymentStatus {
+  SCHEDULED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  SKIPPED
+}
+
+enum EmployeeDeductionMode {
+  AUTOMATIC
+  MANUAL
+  HYBRID
+}
+
 model School {
   id          String    @id @default(cuid())
   name        String
@@ -241,6 +277,9 @@ model School {
   expenseApprovalSteps  ExpenseApprovalStep[]
   financialAttachments  FinancialAttachment[]
   employeeSalaryProfiles EmployeeSalaryProfile[]
+  employeeObligations    EmployeeObligation[]
+  employeeRepayments     EmployeeRepayment[]
+  employeeCommunicationLogs EmployeeCommunicationLog[]
   payrollRuns           PayrollRun[]
   payrollItems          PayrollItem[]
   accountingEntries     AccountingEntry[]
@@ -270,6 +309,10 @@ model User {
   uploadedFinancialAttachments FinancialAttachment[] @relation("AttachmentUploader")
   createdBudgets Budget[] @relation("BudgetCreator")
   createdPayrollRuns PayrollRun[] @relation("PayrollCreator")
+  createdEmployeeObligations EmployeeObligation[] @relation("EmployeeObligationCreator")
+  approvedEmployeeObligations EmployeeObligation[] @relation("EmployeeObligationApprover")
+  recordedEmployeeRepayments EmployeeRepayment[] @relation("EmployeeRepaymentRecorder")
+  sentEmployeeCommunications EmployeeCommunicationLog[] @relation("EmployeeCommunicationSender")
 }
 
 model PasswordResetToken {
@@ -610,15 +653,104 @@ model EmployeeSalaryProfile {
   defaultDeduction  Float            @default(0)
   advanceBalance    Float            @default(0)
   debtRecoveryRate  Float            @default(0)
+  deductionMode     EmployeeDeductionMode @default(AUTOMATIC)
+  maxDeductionRate  Float            @default(35)
+  contactEmail      String?
+  contactPhone      String?
   isActive          Boolean          @default(true)
   notes             String?
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   school            School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
   payrollItems      PayrollItem[]
+  obligations       EmployeeObligation[]
+  repayments        EmployeeRepayment[]
+  communicationLogs EmployeeCommunicationLog[]
 
   @@unique([schoolId, employeeCode])
   @@index([schoolId, department, isActive])
+}
+
+model EmployeeCommunicationLog {
+  id              String              @id @default(cuid())
+  schoolId        String
+  salaryProfileId String
+  sentById        String?
+  channel         NotificationChannel
+  subject         String?
+  content         String
+  status          String
+  metadata        Json?
+  createdAt       DateTime            @default(now())
+  school          School              @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  salaryProfile   EmployeeSalaryProfile @relation(fields: [salaryProfileId], references: [id], onDelete: Cascade)
+  sentBy          User?               @relation("EmployeeCommunicationSender", fields: [sentById], references: [id])
+
+  @@index([schoolId, salaryProfileId, createdAt])
+  @@index([channel, status])
+}
+
+model EmployeeObligation {
+  id                String                   @id @default(cuid())
+  schoolId          String
+  salaryProfileId   String
+  createdById       String?
+  approvedById      String?
+  type              EmployeeObligationType
+  title             String
+  principalAmount   Float
+  amountPaid        Float                    @default(0)
+  balance           Float
+  currency          String                   @default("USD")
+  repaymentMethod   EmployeeRepaymentMethod  @default(SALARY_DEDUCTION)
+  installmentAmount Float
+  startDate         DateTime
+  dueDate           DateTime
+  status            EmployeeObligationStatus @default(ACTIVE)
+  riskLevel         String                   @default("LOW")
+  riskScore         Float                    @default(0)
+  notes             String?
+  metadata          Json?
+  approvedAt        DateTime?
+  settledAt         DateTime?
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  school            School                   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  salaryProfile     EmployeeSalaryProfile    @relation(fields: [salaryProfileId], references: [id], onDelete: Cascade)
+  createdBy         User?                    @relation("EmployeeObligationCreator", fields: [createdById], references: [id])
+  approvedBy        User?                    @relation("EmployeeObligationApprover", fields: [approvedById], references: [id])
+  repayments        EmployeeRepayment[]
+
+  @@index([schoolId, status, dueDate])
+  @@index([salaryProfileId, status])
+}
+
+model EmployeeRepayment {
+  id              String                  @id @default(cuid())
+  schoolId        String
+  obligationId    String
+  salaryProfileId String
+  payrollItemId   String?
+  recordedById    String?
+  method          EmployeeRepaymentMethod
+  expectedAmount  Float
+  paidAmount      Float                   @default(0)
+  currency        String                  @default("USD")
+  dueDate         DateTime
+  paidAt          DateTime?
+  status          EmployeeRepaymentStatus @default(SCHEDULED)
+  reference       String?
+  notes           String?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  school          School                  @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  obligation      EmployeeObligation      @relation(fields: [obligationId], references: [id], onDelete: Cascade)
+  salaryProfile   EmployeeSalaryProfile   @relation(fields: [salaryProfileId], references: [id], onDelete: Cascade)
+  payrollItem     PayrollItem?            @relation(fields: [payrollItemId], references: [id])
+  recordedBy      User?                   @relation("EmployeeRepaymentRecorder", fields: [recordedById], references: [id])
+
+  @@index([schoolId, dueDate, status])
+  @@index([salaryProfileId, status])
 }
 
 model PayrollRun {
@@ -670,6 +802,7 @@ model PayrollItem {
   salaryProfile     EmployeeSalaryProfile @relation(fields: [salaryProfileId], references: [id], onDelete: Cascade)
   accountingEntries AccountingEntry[]
   cashflowEntries   CashflowEntry[]
+  employeeRepayments EmployeeRepayment[]
 
   @@index([schoolId, payrollRunId])
 }

@@ -9,7 +9,8 @@ export type Role =
   | "CASHIER"
   | "HR_MANAGER"
   | "AUDITOR"
-  | "PARENT";
+  | "PARENT"
+  | "EMPLOYEE";
 
 export const STAFF_ROLES: Role[] = [
   "SUPER_ADMIN",
@@ -43,6 +44,7 @@ function clearStoredAuth() {
 export function normalizeRole(value: unknown, parentId?: string | null): Role | null {
   const role = String(value ?? "").trim().toUpperCase();
   if (role === "PARENT") return role;
+  if (role === "EMPLOYEE") return role;
   if (STAFF_ROLES.includes(role as Role)) return role as Role;
   return parentId ? "PARENT" : null;
 }
