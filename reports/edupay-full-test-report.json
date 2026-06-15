@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-05-30T08:00:00.112Z",
+  "generatedAt": "2026-06-10T22:54:27.786Z",
   "scope": "EduPay full financial simulation - deterministic in-memory campaign",
   "parents": [
     {
@@ -286,7 +286,7 @@
         "allocatedTotal": 3576.0375,
         "advanceBalance": 0,
         "lines": 4,
-        "message": "Total amount received: $ 3576.04 USD. Allocated: Mia Kanku $ 1611.67 USD; Joel Kanku $ 1964.36 USD. Remaining unpaid: $ 3576.04 USD. Next required payment: Mia Kanku - Installment 2 - before February, $ 1611.68 USD due by 01/03/2027. No overdue balance remains in this allocation preview."
+        "message": "Total amount received: $ 3576.04 USD. Allocated: Mia Kanku $ 1611.67 USD; Joel Kanku $ 1964.36 USD. Remaining unpaid: $ 3576.04 USD. Next required payment: Mia Kanku - Installment 2 - before February, $ 1611.68 USD due by 01/02/2027. No overdue balance remains in this allocation preview."
       }
     },
     {
@@ -315,7 +315,7 @@
         "allocatedTotal": 7793.5284,
         "advanceBalance": 0,
         "lines": 9,
-        "message": "Total amount received: $ 7793.53 USD. Allocated: Ava Lukusa $ 1957.51 USD; Ben Lukusa $ 2394.10 USD; Grace Lukusa $ 3441.92 USD. Remaining unpaid: $ 3030.82 USD. Next required payment: Ava Lukusa - Installment 3 - Mar/Apr/May/June period, $ 761.25 USD due by 01/07/2027. No overdue balance remains in this allocation preview."
+        "message": "Total amount received: $ 7793.53 USD. Allocated: Ava Lukusa $ 1957.51 USD; Ben Lukusa $ 2394.10 USD; Grace Lukusa $ 3441.92 USD. Remaining unpaid: $ 3030.82 USD. Next required payment: Ava Lukusa - Installment 3 - Mar/Apr/May/June period, $ 761.25 USD due by 01/03/2027. No overdue balance remains in this allocation preview."
       }
     },
     {
@@ -368,7 +368,7 @@
         "allocatedTotal": 3387.825,
         "advanceBalance": 0,
         "lines": 2,
-        "message": "Total amount received: $ 3387.82 USD. Allocated: Eden Beya $ 1526.85 USD; Iris Beya $ 1860.97 USD. Remaining unpaid: $ 3387.82 USD. Next required payment: Eden Beya - Full annual payment before September, $ 1526.85 USD due by 01/09/2027. No overdue balance remains in this allocation preview."
+        "message": "Total amount received: $ 3387.82 USD. Allocated: Eden Beya $ 1526.85 USD; Iris Beya $ 1860.97 USD. Remaining unpaid: $ 3387.82 USD. Next required payment: Eden Beya - Full annual payment before September, $ 1526.85 USD due by 01/09/2026. No overdue balance remains in this allocation preview."
       }
     },
     {
@@ -395,7 +395,7 @@
         "allocatedTotal": 700,
         "advanceBalance": 0,
         "lines": 7,
-        "message": "Total amount received: $ 700.00 USD. Allocated: Samuel Nsimba $ 700.00 USD. Remaining unpaid: $ 3895.00 USD. Next required payment: Samuel Nsimba - Month 5 payment, $ 459.50 USD due by 01/10/2026. No overdue balance remains in this allocation preview."
+        "message": "Total amount received: $ 700.00 USD. Allocated: Samuel Nsimba $ 700.00 USD. Remaining unpaid: $ 3895.00 USD. Next required payment: Samuel Nsimba - Initial 4-month payment, $ 1138.00 USD due by 01/09/2026. No overdue balance remains in this allocation preview."
       }
     },
     {
@@ -423,7 +423,7 @@
         "allocatedTotal": 900,
         "advanceBalance": 0,
         "lines": 14,
-        "message": "Total amount received: $ 900.00 USD. Allocated: Liam Mpoyi $ 405.62 USD; Emma Mpoyi $ 494.38 USD. Remaining unpaid: $ 6628.50 USD. Next required payment: Liam Mpoyi - Month 5 payment, $ 339.30 USD due by 01/10/2026. No overdue balance remains in this allocation preview."
+        "message": "Total amount received: $ 900.00 USD. Allocated: Liam Mpoyi $ 405.62 USD; Emma Mpoyi $ 494.38 USD. Remaining unpaid: $ 6628.50 USD. Next required payment: Liam Mpoyi - Initial 4-month payment, $ 951.58 USD due by 01/09/2026. No overdue balance remains in this allocation preview."
       }
     },
     {
@@ -460,7 +460,7 @@
         "allocatedTotal": 6079.185,
         "advanceBalance": 0,
         "lines": 9,
-        "message": "Total amount received: $ 6079.19 USD. Allocated: Nina Kabongo $ 1662.56 USD; Theo Kabongo $ 2026.40 USD; Zoe Kabongo $ 2390.22 USD. Remaining unpaid: $ 6079.19 USD. Next required payment: Nina Kabongo - Installment 2 - Dec/Jan/Feb period, $ 554.18 USD due by 01/03/2027. No overdue balance remains in this allocation preview."
+        "message": "Total amount received: $ 6079.19 USD. Allocated: Nina Kabongo $ 1662.56 USD; Theo Kabongo $ 2026.40 USD; Zoe Kabongo $ 2390.22 USD. Remaining unpaid: $ 6079.19 USD. Next required payment: Nina Kabongo - Installment 2 - Dec/Jan/Feb period, $ 554.18 USD due by 01/12/2026. No overdue balance remains in this allocation preview."
       }
     },
     {
@@ -485,7 +485,7 @@
         "allocatedTotal": 1500,
         "advanceBalance": 0,
         "lines": 7,
-        "message": "Total amount received: $ 1500.00 USD. Allocated: Daniel Kalala $ 1500.00 USD. Remaining unpaid: $ 1500.00 USD. Next required payment: Daniel Kalala - Month 6 payment, $ 300.00 USD due by 01/11/2026. No overdue balance remains in this allocation preview."
+        "message": "Total amount received: $ 1500.00 USD. Allocated: Daniel Kalala $ 1500.00 USD. Remaining unpaid: $ 1500.00 USD. Next required payment: Daniel Kalala - Month 6 payment, $ 300.00 USD due by 01/02/2027. No overdue balance remains in this allocation preview."
       }
     },
     {

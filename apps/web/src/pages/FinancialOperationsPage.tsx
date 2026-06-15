@@ -1020,8 +1020,18 @@ export function FinancialOperationsPage() {
     setEmployeeObligations(nextObligations);
   }
 
+  function openOperationsModule(module: OperationTab) {
+    setActiveTab(module);
+    setActiveDialog(module);
+    setActiveSubDialog(null);
+  }
+
   function openEmployeeObligationDialog(type: "SALARY_ADVANCE" | "SCHOOL_DEBT" | "OTHER_DEBT") {
     const firstProfile = salaryProfiles[0];
+    setActiveTab("payroll");
+    setActiveDialog("payroll");
+    setActionError(null);
+    setSuccess(null);
     setEmployeeObligationForm({
       ...EMPTY_EMPLOYEE_OBLIGATION_FORM,
       salaryProfileId: firstProfile?.id ?? "",
@@ -1035,6 +1045,10 @@ export function FinancialOperationsPage() {
 
   function openEmployeeRepaymentDialog() {
     const firstOpenRepayment = openEmployeeRepayments[0];
+    setActiveTab("payroll");
+    setActiveDialog("payroll");
+    setActionError(null);
+    setSuccess(null);
     setEmployeeRepaymentForm({
       ...EMPTY_EMPLOYEE_REPAYMENT_FORM,
       repaymentId: firstOpenRepayment?.repayment.id ?? "",
@@ -2031,6 +2045,10 @@ export function FinancialOperationsPage() {
   }
 
   function openSalaryProfileDialog() {
+    setActiveTab("payroll");
+    setActiveDialog("payroll");
+    setActionError(null);
+    setSuccess(null);
     setSalaryForm(EMPTY_SALARY_FORM);
     setActiveSubDialog("salary-profile-create");
   }
@@ -2039,6 +2057,10 @@ export function FinancialOperationsPage() {
     event.preventDefault();
     setActionError(null);
     setSuccess(null);
+    if (!salaryProfiles.length) {
+      setActionError("Ajoutez d'abord au moins un profil salarial actif avant de lancer la paie.");
+      return;
+    }
     setSubmittingKey("payroll");
     try {
       const created = await api<PayrollRun>("/api/expenses/payroll/runs", {
@@ -2062,6 +2084,14 @@ export function FinancialOperationsPage() {
     event.preventDefault();
     setActionError(null);
     setSuccess(null);
+    if (!salaryProfiles.length) {
+      setActionError("Ajoutez d'abord un profil salarial avant d'enregistrer une avance ou une dette.");
+      return;
+    }
+    if (!employeeObligationForm.salaryProfileId) {
+      setActionError("Selectionnez l'employe concerne par cette operation.");
+      return;
+    }
     setSubmittingKey("employee-obligation");
     try {
       const created = await api<EmployeeObligation>("/api/expenses/employee-finance/obligations", {
@@ -2097,6 +2127,14 @@ export function FinancialOperationsPage() {
     event.preventDefault();
     setActionError(null);
     setSuccess(null);
+    if (!openEmployeeRepayments.length) {
+      setActionError("Aucune echeance ouverte n'est disponible pour un remboursement.");
+      return;
+    }
+    if (!employeeRepaymentForm.repaymentId) {
+      setActionError("Selectionnez l'echeance a encaisser.");
+      return;
+    }
     setSubmittingKey("employee-repayment");
     try {
       const updated = await api<EmployeeRepayment & { receipt?: { receiptNumber: string } | null }>(`/api/expenses/employee-finance/repayments/${employeeRepaymentForm.repaymentId}/pay`, {
@@ -2300,9 +2338,7 @@ export function FinancialOperationsPage() {
               key={module.value}
               type="button"
               onClick={() => {
-                setActiveTab(module.value);
-                setActiveDialog(module.value);
-                setActiveSubDialog(null);
+                openOperationsModule(module.value);
               }}
               className="group min-w-0 rounded-2xl border border-white/10 bg-white/[0.045] p-4 text-left shadow-lg transition hover:border-brand-300/30 hover:bg-white/[0.075]"
             >

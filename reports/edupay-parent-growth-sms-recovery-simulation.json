@@ -1,0 +1,866 @@
+{
+  "generatedAt": "2026-06-10T23:15:01.366Z",
+  "parent": {
+    "id": "cmq8orv1u0011pvcg0s4q0ty6",
+    "fullName": "Parent Simulation SMS 1781133290751",
+    "email": "parent.sms.sim.1781133290751@kcs.local",
+    "phone": "+243816300058",
+    "accessCode": "ACC-PAR-SIM-MQ8ORUV4",
+    "temporaryPasswordBeforeRecovery": "Temp-Sim-1781133290751!"
+  },
+  "messaging": {
+    "configured": true,
+    "providerUrl": "https://api.africastalking.com/version1/messaging",
+    "sender": "",
+    "initialSmsStatus": "FAILED",
+    "paymentSmsStatuses": [
+      {
+        "type": "UNPAID_BALANCE",
+        "status": "FAILED",
+        "createdAt": "2026-06-10T23:14:58.910Z"
+      },
+      {
+        "type": "UNPAID_BALANCE",
+        "status": "FAILED",
+        "createdAt": "2026-06-10T23:14:56.853Z"
+      },
+      {
+        "type": "UNPAID_BALANCE",
+        "status": "FAILED",
+        "createdAt": "2026-06-10T23:14:53.957Z"
+      }
+    ]
+  },
+  "stages": [
+    {
+      "stage": 1,
+      "paymentAmount": 500,
+      "calculationTotals": {
+        "totalExpected": 3770,
+        "totalReduction": 0,
+        "familyDiscount": 0,
+        "planDiscount": 0
+      },
+      "paymentTransaction": "SIM-GROWTH-1781133293054-1",
+      "receiptNumber": "REC-SIM-GROWTH-1781133293054-1",
+      "snapshot": {
+        "activeTuitionPlan": "Grades 1-5 - Standard monthly payment",
+        "totalExpected": 3770,
+        "totalPaid": 500,
+        "totalDebt": 3270,
+        "totalReduction": 0,
+        "students": [
+          {
+            "id": "cmq8orw6h0013pvcg1fjrm9dg",
+            "fullName": "Simulation Eleve 1",
+            "className": "Grade 1",
+            "expectedTotal": 3770,
+            "reductionTotal": 0,
+            "paid": 500,
+            "balance": 3270
+          }
+        ],
+        "reductions": [],
+        "messages": [
+          {
+            "type": "UNPAID_BALANCE",
+            "channel": "SMS",
+            "status": "FAILED"
+          },
+          {
+            "type": "UNPAID_BALANCE",
+            "channel": "DASHBOARD",
+            "status": "OPEN"
+          },
+          {
+            "type": "UNPAID_BALANCE",
+            "channel": "EMAIL",
+            "status": "SIMULATED"
+          }
+        ]
+      }
+    },
+    {
+      "stage": 2,
+      "paymentAmount": 1200,
+      "calculationTotals": {
+        "totalExpected": 7528.5,
+        "totalReduction": 836.5,
+        "familyDiscount": 836.5,
+        "planDiscount": 0
+      },
+      "paymentTransaction": "SIM-GROWTH-1781133296003-2",
+      "receiptNumber": "REC-SIM-GROWTH-1781133296003-2",
+      "snapshot": {
+        "activeTuitionPlan": "Plans de scolarité mixtes",
+        "totalExpected": 7528.5,
+        "totalPaid": 1700,
+        "totalDebt": 5828.5,
+        "totalReduction": 836.5,
+        "students": [
+          {
+            "id": "cmq8orw6h0013pvcg1fjrm9dg",
+            "fullName": "Simulation Eleve 1",
+            "className": "Grade 1",
+            "expectedTotal": 3393,
+            "reductionTotal": 377,
+            "paid": 993.93182,
+            "balance": 2399.06818
+          },
+          {
+            "id": "cmq8oryka006epvcgwczqisi2",
+            "fullName": "Simulation Eleve 2",
+            "className": "Grade 6",
+            "expectedTotal": 4135.5,
+            "reductionTotal": 459.5,
+            "paid": 706.06818,
+            "balance": 3429.43182
+          }
+        ],
+        "reductions": [
+          {
+            "title": "Family account discount",
+            "source": "MANUAL",
+            "scope": "PARENT",
+            "amount": 377,
+            "studentName": "Simulation Eleve 1",
+            "paymentOptionType": "STANDARD_MONTHLY"
+          },
+          {
+            "title": "Family account discount",
+            "source": "MANUAL",
+            "scope": "PARENT",
+            "amount": 459.5,
+            "studentName": "Simulation Eleve 2",
+            "paymentOptionType": "STANDARD_MONTHLY"
+          }
+        ],
+        "messages": [
+          {
+            "type": "UNPAID_BALANCE",
+            "channel": "SMS",
+            "status": "FAILED"
+          },
+          {
+            "type": "UNPAID_BALANCE",
+            "channel": "EMAIL",
+            "status": "SIMULATED"
+          },
+          {
+            "type": "UNPAID_BALANCE",
+            "channel": "DASHBOARD",
+            "status": "OPEN"
+          },
+          {
+            "type": "UNPAID_BALANCE",
+            "channel": "SMS",
+            "status": "FAILED"
+          },
+          {
+            "type": "UNPAID_BALANCE",
+            "channel": "DASHBOARD",
+            "status": "OPEN"
+          }
+        ]
+      }
+    },
+    {
+      "stage": 3,
+      "paymentAmount": 1800,
+      "calculationTotals": {
+        "totalExpected": 12406.5,
+        "totalReduction": 1378.5,
+        "familyDiscount": 1378.5,
+        "planDiscount": 0
+      },
+      "paymentTransaction": "SIM-GROWTH-1781133297923-3",
+      "receiptNumber": "REC-SIM-GROWTH-1781133297923-3",
+      "snapshot": {
+        "activeTuitionPlan": "Plans de scolarité mixtes",
+        "totalExpected": 12406.5,
+        "totalPaid": 3500,
+        "totalDebt": 8906.5,
+        "totalReduction": 1378.5,
+        "students": [
+          {
+            "id": "cmq8orw6h0013pvcg1fjrm9dg",
+            "fullName": "Simulation Eleve 1",
+            "className": "Grade 1",
+            "expectedTotal": 3393,
+            "reductionTotal": 377,
+            "paid": 1397.26834,
+            "balance": 1995.73166
+          },
+          {
+            "id": "cmq8orzyk00c9pvcguodk272i",
+            "fullName": "Simulation Eleve 3",
+            "className": "Grade 9",
+            "expectedTotal": 4878,
+            "reductionTotal": 542,
+            "paid": 820.09992,
+            "balance": 4057.90008
+          },
+          {
+            "id": "cmq8oryka006epvcgwczqisi2",
+            "fullName": "Simulation Eleve 2",
+            "className": "Grade 6",
+            "expectedTotal": 4135.5,
+            "reductionTotal": 459.5,
+            "paid": 1282.63174,
+            "balance": 2852.86826
+          }
+        ],
+        "reductions": [
+          {
+            "title": "Family account discount",
+            "source": "MANUAL",
+            "scope": "PARENT",
+            "amount": 459.5,
+            "studentName": "Simulation Eleve 2",
+            "paymentOptionType": "STANDARD_MONTHLY"
+          },
+          {
+            "title": "Family account discount",
+            "source": "MANUAL",
+            "scope": "PARENT",
+            "amount": 377,
+            "studentName": "Simulation Eleve 1",
+            "paymentOptionType": "STANDARD_MONTHLY"
+          },
+          {
+            "title": "Family account discount",
+            "source": "MANUAL",
+            "scope": "PARENT",
+            "amount": 542,
+            "studentName": "Simulation Eleve 3",
+            "paymentOptionType": "STANDARD_MONTHLY"
+          }
+        ],
+        "messages": [
+          {
+            "type": "UNPAID_BALANCE",
+            "channel": "SMS",
+            "status": "FAILED"
+          },
+          {
+            "type": "UNPAID_BALANCE",
+            "channel": "EMAIL",
+            "status": "SIMULATED"
+          },
+          {
+            "type": "UNPAID_BALANCE",
+            "channel": "DASHBOARD",
+            "status": "OPEN"
+          },
+          {
+            "type": "UNPAID_BALANCE",
+            "channel": "SMS",
+            "status": "FAILED"
+          },
+          {
+            "type": "UNPAID_BALANCE",
+            "channel": "DASHBOARD",
+            "status": "OPEN"
+          }
+        ]
+      }
+    }
+  ],
+  "recovery": {
+    "tokenLength": 32,
+    "wrongIdentifierBlocked": true,
+    "correctIdentifierAccepted": true,
+    "passwordChanged": true,
+    "tokenMarkedUsed": true,
+    "reuseBlocked": true,
+    "finalLoginIdentifier": "ACC-PAR-SIM-MQ8ORUV4",
+    "finalPasswordForManualTest": "Recovered-1781133299389!"
+  },
+  "finalParentDashboard": {
+    "profile": {
+      "id": "cmq8orwiv0024pvcg3otp0yvk",
+      "activeTuitionPlan": "Plans de scolarité mixtes",
+      "activeTuitionPlanId": null,
+      "activeAgreementId": null,
+      "totalPaid": 3500,
+      "totalDebt": 8906.5,
+      "totalReduction": 1378.5,
+      "carriedOverDebt": 0,
+      "overdueInstallments": 0,
+      "pendingPaymentsTotal": 0,
+      "failedPaymentsTotal": 0,
+      "paymentBehaviorScore": 28.21102,
+      "lastPaymentAt": "2026-06-10T23:14:58.335Z",
+      "childrenLinkedToAccount": 3,
+      "expectedNetRevenue": 12406.5,
+      "completionRate": 28.21102
+    },
+    "students": [
+      {
+        "id": "cmq8orw6h0013pvcg1fjrm9dg",
+        "fullName": "Simulation Eleve 1",
+        "className": "Grade 1",
+        "annualFee": 0,
+        "gradeGroup": "GRADE_1_5",
+        "paymentOptionType": "STANDARD_MONTHLY",
+        "paymentOptionLabel": "Standard monthly payment",
+        "expectedTotal": 3393,
+        "reductionTotal": 377,
+        "originalAmount": 3770,
+        "planCode": "STANDARD_MONTHLY",
+        "planName": "Grades 1-5 - Standard monthly payment",
+        "agreementId": null,
+        "installments": [
+          {
+            "id": "persisted-cmq8orwkw0028pvcg2pd2qu8d",
+            "persistedId": "cmq8orwkw0028pvcg2pd2qu8d",
+            "label": "Initial 4-month payment",
+            "periodKey": "initial-four-months",
+            "dueDate": "2026-09-01T00:00:00.000Z",
+            "amountDue": 1357.2,
+            "amountPaid": 558.90736,
+            "balance": 798.29264,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8orw6h0013pvcg1fjrm9dg",
+            "studentName": "Simulation Eleve 1",
+            "gradeGroup": "GRADE_1_5"
+          },
+          {
+            "id": "persisted-cmq8orwl9002apvcg95hq4vmu",
+            "persistedId": "cmq8orwl9002apvcg95hq4vmu",
+            "label": "Month 5 payment",
+            "periodKey": "month-5",
+            "dueDate": "2027-01-01T00:00:00.000Z",
+            "amountDue": 339.3,
+            "amountPaid": 139.72683,
+            "balance": 199.57317,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8orw6h0013pvcg1fjrm9dg",
+            "studentName": "Simulation Eleve 1",
+            "gradeGroup": "GRADE_1_5"
+          },
+          {
+            "id": "persisted-cmq8orwlg002cpvcgw75zznsm",
+            "persistedId": "cmq8orwlg002cpvcgw75zznsm",
+            "label": "Month 6 payment",
+            "periodKey": "month-6",
+            "dueDate": "2027-02-01T00:00:00.000Z",
+            "amountDue": 339.3,
+            "amountPaid": 139.72683,
+            "balance": 199.57317,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8orw6h0013pvcg1fjrm9dg",
+            "studentName": "Simulation Eleve 1",
+            "gradeGroup": "GRADE_1_5"
+          },
+          {
+            "id": "persisted-cmq8orwlp002epvcgh2qq5gnd",
+            "persistedId": "cmq8orwlp002epvcgh2qq5gnd",
+            "label": "Month 7 payment",
+            "periodKey": "month-7",
+            "dueDate": "2027-03-01T00:00:00.000Z",
+            "amountDue": 339.3,
+            "amountPaid": 139.72683,
+            "balance": 199.57317,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8orw6h0013pvcg1fjrm9dg",
+            "studentName": "Simulation Eleve 1",
+            "gradeGroup": "GRADE_1_5"
+          },
+          {
+            "id": "persisted-cmq8orwlx002gpvcgdz5jejs8",
+            "persistedId": "cmq8orwlx002gpvcgdz5jejs8",
+            "label": "Month 8 payment",
+            "periodKey": "month-8",
+            "dueDate": "2027-04-01T00:00:00.000Z",
+            "amountDue": 339.3,
+            "amountPaid": 139.72683,
+            "balance": 199.57317,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8orw6h0013pvcg1fjrm9dg",
+            "studentName": "Simulation Eleve 1",
+            "gradeGroup": "GRADE_1_5"
+          },
+          {
+            "id": "persisted-cmq8orwm7002ipvcg9ttm2efa",
+            "persistedId": "cmq8orwm7002ipvcg9ttm2efa",
+            "label": "Month 9 payment",
+            "periodKey": "month-9",
+            "dueDate": "2027-05-01T00:00:00.000Z",
+            "amountDue": 339.3,
+            "amountPaid": 139.72683,
+            "balance": 199.57317,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8orw6h0013pvcg1fjrm9dg",
+            "studentName": "Simulation Eleve 1",
+            "gradeGroup": "GRADE_1_5"
+          },
+          {
+            "id": "persisted-cmq8orwmf002kpvcg7yuneu70",
+            "persistedId": "cmq8orwmf002kpvcg7yuneu70",
+            "label": "Month 10 payment",
+            "periodKey": "month-10",
+            "dueDate": "2027-06-01T00:00:00.000Z",
+            "amountDue": 339.3,
+            "amountPaid": 139.72683,
+            "balance": 199.57317,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8orw6h0013pvcg1fjrm9dg",
+            "studentName": "Simulation Eleve 1",
+            "gradeGroup": "GRADE_1_5"
+          }
+        ],
+        "paid": 1397.26834,
+        "balance": 1995.73166,
+        "overdueInstallments": 0,
+        "completionRate": 41.18091
+      },
+      {
+        "id": "cmq8orzyk00c9pvcguodk272i",
+        "fullName": "Simulation Eleve 3",
+        "className": "Grade 9",
+        "annualFee": 0,
+        "gradeGroup": "GRADE_9_12",
+        "paymentOptionType": "STANDARD_MONTHLY",
+        "paymentOptionLabel": "Standard monthly payment",
+        "expectedTotal": 4878,
+        "reductionTotal": 542,
+        "originalAmount": 5420,
+        "planCode": "STANDARD_MONTHLY",
+        "planName": "Grades 9-12 - Standard monthly payment",
+        "agreementId": null,
+        "installments": [
+          {
+            "id": "persisted-cmq8os09p00dipvcgdvgmvbuy",
+            "persistedId": "cmq8os09p00dipvcgdvgmvbuy",
+            "label": "Initial 4-month payment",
+            "periodKey": "initial-four-months",
+            "dueDate": "2026-09-01T00:00:00.000Z",
+            "amountDue": 1951.2,
+            "amountPaid": 328.03998,
+            "balance": 1623.16002,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8orzyk00c9pvcguodk272i",
+            "studentName": "Simulation Eleve 3",
+            "gradeGroup": "GRADE_9_12"
+          },
+          {
+            "id": "persisted-cmq8os0a400dkpvcgdxignfdp",
+            "persistedId": "cmq8os0a400dkpvcgdxignfdp",
+            "label": "Month 5 payment",
+            "periodKey": "month-5",
+            "dueDate": "2027-01-01T00:00:00.000Z",
+            "amountDue": 487.8,
+            "amountPaid": 82.00999,
+            "balance": 405.79001,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8orzyk00c9pvcguodk272i",
+            "studentName": "Simulation Eleve 3",
+            "gradeGroup": "GRADE_9_12"
+          },
+          {
+            "id": "persisted-cmq8os0aa00dmpvcggc3u8rfp",
+            "persistedId": "cmq8os0aa00dmpvcggc3u8rfp",
+            "label": "Month 6 payment",
+            "periodKey": "month-6",
+            "dueDate": "2027-02-01T00:00:00.000Z",
+            "amountDue": 487.8,
+            "amountPaid": 82.00999,
+            "balance": 405.79001,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8orzyk00c9pvcguodk272i",
+            "studentName": "Simulation Eleve 3",
+            "gradeGroup": "GRADE_9_12"
+          },
+          {
+            "id": "persisted-cmq8os0ak00dopvcgyzdbpdrb",
+            "persistedId": "cmq8os0ak00dopvcgyzdbpdrb",
+            "label": "Month 7 payment",
+            "periodKey": "month-7",
+            "dueDate": "2027-03-01T00:00:00.000Z",
+            "amountDue": 487.8,
+            "amountPaid": 82.00999,
+            "balance": 405.79001,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8orzyk00c9pvcguodk272i",
+            "studentName": "Simulation Eleve 3",
+            "gradeGroup": "GRADE_9_12"
+          },
+          {
+            "id": "persisted-cmq8os0ar00dqpvcgtmdrlnbz",
+            "persistedId": "cmq8os0ar00dqpvcgtmdrlnbz",
+            "label": "Month 8 payment",
+            "periodKey": "month-8",
+            "dueDate": "2027-04-01T00:00:00.000Z",
+            "amountDue": 487.8,
+            "amountPaid": 82.00999,
+            "balance": 405.79001,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8orzyk00c9pvcguodk272i",
+            "studentName": "Simulation Eleve 3",
+            "gradeGroup": "GRADE_9_12"
+          },
+          {
+            "id": "persisted-cmq8os0b000dspvcgd3j9ue85",
+            "persistedId": "cmq8os0b000dspvcgd3j9ue85",
+            "label": "Month 9 payment",
+            "periodKey": "month-9",
+            "dueDate": "2027-05-01T00:00:00.000Z",
+            "amountDue": 487.8,
+            "amountPaid": 82.00999,
+            "balance": 405.79001,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8orzyk00c9pvcguodk272i",
+            "studentName": "Simulation Eleve 3",
+            "gradeGroup": "GRADE_9_12"
+          },
+          {
+            "id": "persisted-cmq8os0b900dupvcgvxdw5wfg",
+            "persistedId": "cmq8os0b900dupvcgvxdw5wfg",
+            "label": "Month 10 payment",
+            "periodKey": "month-10",
+            "dueDate": "2027-06-01T00:00:00.000Z",
+            "amountDue": 487.8,
+            "amountPaid": 82.00999,
+            "balance": 405.79001,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8orzyk00c9pvcguodk272i",
+            "studentName": "Simulation Eleve 3",
+            "gradeGroup": "GRADE_9_12"
+          }
+        ],
+        "paid": 820.09992,
+        "balance": 4057.90008,
+        "overdueInstallments": 0,
+        "completionRate": 16.81222
+      },
+      {
+        "id": "cmq8oryka006epvcgwczqisi2",
+        "fullName": "Simulation Eleve 2",
+        "className": "Grade 6",
+        "annualFee": 0,
+        "gradeGroup": "GRADE_6_8",
+        "paymentOptionType": "STANDARD_MONTHLY",
+        "paymentOptionLabel": "Standard monthly payment",
+        "expectedTotal": 4135.5,
+        "reductionTotal": 459.5,
+        "originalAmount": 4595,
+        "planCode": "STANDARD_MONTHLY",
+        "planName": "Grades 6-8 - Standard monthly payment",
+        "agreementId": null,
+        "installments": [
+          {
+            "id": "persisted-cmq8oryuq007npvcg4h12ccfz",
+            "persistedId": "cmq8oryuq007npvcg4h12ccfz",
+            "label": "Initial 4-month payment",
+            "periodKey": "initial-four-months",
+            "dueDate": "2026-09-01T00:00:00.000Z",
+            "amountDue": 1654.2,
+            "amountPaid": 513.05267,
+            "balance": 1141.14733,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8oryka006epvcgwczqisi2",
+            "studentName": "Simulation Eleve 2",
+            "gradeGroup": "GRADE_6_8"
+          },
+          {
+            "id": "persisted-cmq8oryuz007ppvcgpvahdvgf",
+            "persistedId": "cmq8oryuz007ppvcgpvahdvgf",
+            "label": "Month 5 payment",
+            "periodKey": "month-5",
+            "dueDate": "2027-01-01T00:00:00.000Z",
+            "amountDue": 413.55,
+            "amountPaid": 128.26317,
+            "balance": 285.28683,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8oryka006epvcgwczqisi2",
+            "studentName": "Simulation Eleve 2",
+            "gradeGroup": "GRADE_6_8"
+          },
+          {
+            "id": "persisted-cmq8oryv8007rpvcgt6exbiiq",
+            "persistedId": "cmq8oryv8007rpvcgt6exbiiq",
+            "label": "Month 6 payment",
+            "periodKey": "month-6",
+            "dueDate": "2027-02-01T00:00:00.000Z",
+            "amountDue": 413.55,
+            "amountPaid": 128.26317,
+            "balance": 285.28683,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8oryka006epvcgwczqisi2",
+            "studentName": "Simulation Eleve 2",
+            "gradeGroup": "GRADE_6_8"
+          },
+          {
+            "id": "persisted-cmq8oryvf007tpvcg3eounc4i",
+            "persistedId": "cmq8oryvf007tpvcg3eounc4i",
+            "label": "Month 7 payment",
+            "periodKey": "month-7",
+            "dueDate": "2027-03-01T00:00:00.000Z",
+            "amountDue": 413.55,
+            "amountPaid": 128.26317,
+            "balance": 285.28683,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8oryka006epvcgwczqisi2",
+            "studentName": "Simulation Eleve 2",
+            "gradeGroup": "GRADE_6_8"
+          },
+          {
+            "id": "persisted-cmq8oryvp007vpvcg1pkp8ejh",
+            "persistedId": "cmq8oryvp007vpvcg1pkp8ejh",
+            "label": "Month 8 payment",
+            "periodKey": "month-8",
+            "dueDate": "2027-04-01T00:00:00.000Z",
+            "amountDue": 413.55,
+            "amountPaid": 128.26317,
+            "balance": 285.28683,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8oryka006epvcgwczqisi2",
+            "studentName": "Simulation Eleve 2",
+            "gradeGroup": "GRADE_6_8"
+          },
+          {
+            "id": "persisted-cmq8oryvw007xpvcgyud6oyta",
+            "persistedId": "cmq8oryvw007xpvcgyud6oyta",
+            "label": "Month 9 payment",
+            "periodKey": "month-9",
+            "dueDate": "2027-05-01T00:00:00.000Z",
+            "amountDue": 413.55,
+            "amountPaid": 128.26317,
+            "balance": 285.28683,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8oryka006epvcgwczqisi2",
+            "studentName": "Simulation Eleve 2",
+            "gradeGroup": "GRADE_6_8"
+          },
+          {
+            "id": "persisted-cmq8oryw4007zpvcg64bul3sy",
+            "persistedId": "cmq8oryw4007zpvcg64bul3sy",
+            "label": "Month 10 payment",
+            "periodKey": "month-10",
+            "dueDate": "2027-06-01T00:00:00.000Z",
+            "amountDue": 413.55,
+            "amountPaid": 128.26322,
+            "balance": 285.28678,
+            "status": "PARTIALLY_PAID",
+            "isOverdue": false,
+            "source": "persisted",
+            "planCode": "STANDARD_MONTHLY",
+            "paymentOptionType": "STANDARD_MONTHLY",
+            "studentId": "cmq8oryka006epvcgwczqisi2",
+            "studentName": "Simulation Eleve 2",
+            "gradeGroup": "GRADE_6_8"
+          }
+        ],
+        "paid": 1282.63174,
+        "balance": 2852.86826,
+        "overdueInstallments": 0,
+        "completionRate": 31.01516
+      }
+    ],
+    "reductions": [
+      {
+        "id": "cmq8os0mr00f3pvcgp4nnh4to",
+        "source": "MANUAL",
+        "title": "Family account discount",
+        "amount": 459.5,
+        "percentage": 10,
+        "parentId": "cmq8orv1u0011pvcg0s4q0ty6",
+        "studentId": "cmq8oryka006epvcgwczqisi2",
+        "academicYearId": "cmp1sjmd20001e6l8jw7mso80",
+        "academicYearName": "2026-2027",
+        "gradeGroup": "GRADE_6_8",
+        "paymentOptionType": "STANDARD_MONTHLY",
+        "scope": "PARENT",
+        "effectiveDate": "2026-06-10T23:14:58.228Z",
+        "studentName": "Simulation Eleve 2"
+      },
+      {
+        "id": "cmq8os0kc00f1pvcgupjxd5fj",
+        "source": "MANUAL",
+        "title": "Family account discount",
+        "amount": 377,
+        "percentage": 10,
+        "parentId": "cmq8orv1u0011pvcg0s4q0ty6",
+        "studentId": "cmq8orw6h0013pvcg1fjrm9dg",
+        "academicYearId": "cmp1sjmd20001e6l8jw7mso80",
+        "academicYearName": "2026-2027",
+        "gradeGroup": "GRADE_1_5",
+        "paymentOptionType": "STANDARD_MONTHLY",
+        "scope": "PARENT",
+        "effectiveDate": "2026-06-10T23:14:58.140Z",
+        "studentName": "Simulation Eleve 1"
+      },
+      {
+        "id": "cmq8os09g00dgpvcg5u8o8hb6",
+        "source": "MANUAL",
+        "title": "Family account discount",
+        "amount": 542,
+        "percentage": 10,
+        "parentId": "cmq8orv1u0011pvcg0s4q0ty6",
+        "studentId": "cmq8orzyk00c9pvcguodk272i",
+        "academicYearId": "cmp1sjmd20001e6l8jw7mso80",
+        "academicYearName": "2026-2027",
+        "gradeGroup": "GRADE_9_12",
+        "paymentOptionType": "STANDARD_MONTHLY",
+        "scope": "PARENT",
+        "effectiveDate": "2026-06-10T23:14:57.748Z",
+        "studentName": "Simulation Eleve 3"
+      }
+    ],
+    "messages": [
+      {
+        "id": "cmq8os15q00gopvcgak6y0u3d",
+        "type": "UNPAID_BALANCE",
+        "channel": "SMS",
+        "content": "EduPay REC-SIM-GROWTH-1781133297923-3 : reçu $ 1800.00 USD imputé $ 1800.00 USD reste $ 8906.50 USD. Prochain: Simulation Eleve 1 - Initial 4-month payment : $ 798.29 USD à payer avant le 01/09/2026",
+        "status": "FAILED",
+        "createdAt": "2026-06-10T23:14:58.910Z"
+      },
+      {
+        "id": "cmq8os10200gmpvcgiakj2cm9",
+        "type": "UNPAID_BALANCE",
+        "channel": "EMAIL",
+        "content": "Bonjour Parent Simulation SMS 1781133290751,\n\nEduPay a enregistré un paiement de scolarité sur votre compte famille.\n\nTransaction: SIM-GROWTH-1781133297923-3\nReçu : REC-SIM-GROWTH-1781133297923-3\nMode de paiement : MPESA\nMode d'affectation : AUTO\nMontant reçu : $ 1800.00 USD\nMontant imputé : $ 1800.00 USD\nSolde restant : $ 8906.50 USD\nAvance conservée : $ 0.00 USD\n\nImputation par enfant :\n- Simulation Eleve 1 : payé $ 403.34 USD, reste $ 1995.73 USD\n- Simulation Eleve 2 : payé $ 576.56 USD, reste $ 2852.87 USD\n- Simulation Eleve 3 : payé $ 820.10 USD, reste $ 4057.90 USD\n\nProchain paiement : Simulation Eleve 1 - Initial 4-month payment : $ 798.29 USD à payer avant le 01/09/2026\n\nNote financière : Total amount received: $ 1800.00 USD. Allocated: Simulation Eleve 1 $ 403.34 USD; Simulation Eleve 2 $ 576.56 USD; Simulation Eleve 3 $ 820.10 USD. Remaining unpaid: $ 8906.50 USD. Next required payment: Simulation Eleve 1 - Initial 4-month payment, $ 798.29 USD due by 01/09/2026. No overdue balance remains in this allocation preview.\n\nVeuillez conserver ce message avec votre reçu EduPay.",
+        "status": "SIMULATED",
+        "createdAt": "2026-06-10T23:14:58.706Z"
+      },
+      {
+        "id": "cmq8os10200glpvcga5jmpnlt",
+        "type": "UNPAID_BALANCE",
+        "channel": "DASHBOARD",
+        "content": "Bonjour Parent Simulation SMS 1781133290751,\n\nEduPay a enregistré un paiement de scolarité sur votre compte famille.\n\nTransaction: SIM-GROWTH-1781133297923-3\nReçu : REC-SIM-GROWTH-1781133297923-3\nMode de paiement : MPESA\nMode d'affectation : AUTO\nMontant reçu : $ 1800.00 USD\nMontant imputé : $ 1800.00 USD\nSolde restant : $ 8906.50 USD\nAvance conservée : $ 0.00 USD\n\nImputation par enfant :\n- Simulation Eleve 1 : payé $ 403.34 USD, reste $ 1995.73 USD\n- Simulation Eleve 2 : payé $ 576.56 USD, reste $ 2852.87 USD\n- Simulation Eleve 3 : payé $ 820.10 USD, reste $ 4057.90 USD\n\nProchain paiement : Simulation Eleve 1 - Initial 4-month payment : $ 798.29 USD à payer avant le 01/09/2026\n\nNote financière : Total amount received: $ 1800.00 USD. Allocated: Simulation Eleve 1 $ 403.34 USD; Simulation Eleve 2 $ 576.56 USD; Simulation Eleve 3 $ 820.10 USD. Remaining unpaid: $ 8906.50 USD. Next required payment: Simulation Eleve 1 - Initial 4-month payment, $ 798.29 USD due by 01/09/2026. No overdue balance remains in this allocation preview.\n\nVeuillez conserver ce message avec votre reçu EduPay.",
+        "status": "OPEN",
+        "createdAt": "2026-06-10T23:14:58.706Z"
+      },
+      {
+        "id": "cmq8orzkl00abpvcg8bxttbbf",
+        "type": "UNPAID_BALANCE",
+        "channel": "SMS",
+        "content": "EduPay REC-SIM-GROWTH-1781133296003-2 : reçu $ 1200.00 USD imputé $ 1200.00 USD reste $ 5828.50 USD. Prochain: Simulation Eleve 2 - Initial 4-month payment : $ 1371.77 USD à payer avant le 01/09/2026",
+        "status": "FAILED",
+        "createdAt": "2026-06-10T23:14:56.853Z"
+      },
+      {
+        "id": "cmq8orzep00a9pvcg3c53m3md",
+        "type": "UNPAID_BALANCE",
+        "channel": "DASHBOARD",
+        "content": "Bonjour Parent Simulation SMS 1781133290751,\n\nEduPay a enregistré un paiement de scolarité sur votre compte famille.\n\nTransaction: SIM-GROWTH-1781133296003-2\nReçu : REC-SIM-GROWTH-1781133296003-2\nMode de paiement : MPESA\nMode d'affectation : AUTO\nMontant reçu : $ 1200.00 USD\nMontant imputé : $ 1200.00 USD\nSolde restant : $ 5828.50 USD\nAvance conservée : $ 0.00 USD\n\nImputation par enfant :\n- Simulation Eleve 2 : payé $ 706.07 USD, reste $ 3429.43 USD\n- Simulation Eleve 1 : payé $ 493.93 USD, reste $ 2399.07 USD\n\nProchain paiement : Simulation Eleve 2 - Initial 4-month payment : $ 1371.77 USD à payer avant le 01/09/2026\n\nNote financière : Total amount received: $ 1200.00 USD. Allocated: Simulation Eleve 2 $ 706.07 USD; Simulation Eleve 1 $ 493.93 USD. Remaining unpaid: $ 5828.50 USD. Next required payment: Simulation Eleve 2 - Initial 4-month payment, $ 1371.77 USD due by 01/09/2026. No overdue balance remains in this allocation preview.\n\nVeuillez conserver ce message avec votre reçu EduPay.",
+        "status": "OPEN",
+        "createdAt": "2026-06-10T23:14:56.640Z"
+      },
+      {
+        "id": "cmq8orzeo00a8pvcguk8qlgkr",
+        "type": "UNPAID_BALANCE",
+        "channel": "EMAIL",
+        "content": "Bonjour Parent Simulation SMS 1781133290751,\n\nEduPay a enregistré un paiement de scolarité sur votre compte famille.\n\nTransaction: SIM-GROWTH-1781133296003-2\nReçu : REC-SIM-GROWTH-1781133296003-2\nMode de paiement : MPESA\nMode d'affectation : AUTO\nMontant reçu : $ 1200.00 USD\nMontant imputé : $ 1200.00 USD\nSolde restant : $ 5828.50 USD\nAvance conservée : $ 0.00 USD\n\nImputation par enfant :\n- Simulation Eleve 2 : payé $ 706.07 USD, reste $ 3429.43 USD\n- Simulation Eleve 1 : payé $ 493.93 USD, reste $ 2399.07 USD\n\nProchain paiement : Simulation Eleve 2 - Initial 4-month payment : $ 1371.77 USD à payer avant le 01/09/2026\n\nNote financière : Total amount received: $ 1200.00 USD. Allocated: Simulation Eleve 2 $ 706.07 USD; Simulation Eleve 1 $ 493.93 USD. Remaining unpaid: $ 5828.50 USD. Next required payment: Simulation Eleve 2 - Initial 4-month payment, $ 1371.77 USD due by 01/09/2026. No overdue balance remains in this allocation preview.\n\nVeuillez conserver ce message avec votre reçu EduPay.",
+        "status": "SIMULATED",
+        "createdAt": "2026-06-10T23:14:56.640Z"
+      },
+      {
+        "id": "cmq8orxc5004gpvcggi3n233j",
+        "type": "UNPAID_BALANCE",
+        "channel": "SMS",
+        "content": "EduPay REC-SIM-GROWTH-1781133293054-1 : reçu $ 500.00 USD imputé $ 500.00 USD reste $ 3270.00 USD. Prochain: Simulation Eleve 1 - Initial 4-month payment : $ 1308.00 USD à payer avant le 01/09/2026",
+        "status": "FAILED",
+        "createdAt": "2026-06-10T23:14:53.957Z"
+      },
+      {
+        "id": "cmq8orx0s004cpvcgyil3xmqe",
+        "type": "UNPAID_BALANCE",
+        "channel": "DASHBOARD",
+        "content": "Bonjour Parent Simulation SMS 1781133290751,\n\nEduPay a enregistré un paiement de scolarité sur votre compte famille.\n\nTransaction: SIM-GROWTH-1781133293054-1\nReçu : REC-SIM-GROWTH-1781133293054-1\nMode de paiement : MPESA\nMode d'affectation : AUTO\nMontant reçu : $ 500.00 USD\nMontant imputé : $ 500.00 USD\nSolde restant : $ 3270.00 USD\nAvance conservée : $ 0.00 USD\n\nImputation par enfant :\n- Simulation Eleve 1 : payé $ 500.00 USD, reste $ 3270.00 USD\n\nProchain paiement : Simulation Eleve 1 - Initial 4-month payment : $ 1308.00 USD à payer avant le 01/09/2026\n\nNote financière : Total amount received: $ 500.00 USD. Allocated: Simulation Eleve 1 $ 500.00 USD. Remaining unpaid: $ 3270.00 USD. Next required payment: Simulation Eleve 1 - Initial 4-month payment, $ 1308.00 USD due by 01/09/2026. No overdue balance remains in this allocation preview.\n\nVeuillez conserver ce message avec votre reçu EduPay.",
+        "status": "OPEN",
+        "createdAt": "2026-06-10T23:14:53.548Z"
+      },
+      {
+        "id": "cmq8orx5j004epvcgahl0uijv",
+        "type": "UNPAID_BALANCE",
+        "channel": "EMAIL",
+        "content": "Bonjour Parent Simulation SMS 1781133290751,\n\nEduPay a enregistré un paiement de scolarité sur votre compte famille.\n\nTransaction: SIM-GROWTH-1781133293054-1\nReçu : REC-SIM-GROWTH-1781133293054-1\nMode de paiement : MPESA\nMode d'affectation : AUTO\nMontant reçu : $ 500.00 USD\nMontant imputé : $ 500.00 USD\nSolde restant : $ 3270.00 USD\nAvance conservée : $ 0.00 USD\n\nImputation par enfant :\n- Simulation Eleve 1 : payé $ 500.00 USD, reste $ 3270.00 USD\n\nProchain paiement : Simulation Eleve 1 - Initial 4-month payment : $ 1308.00 USD à payer avant le 01/09/2026\n\nNote financière : Total amount received: $ 500.00 USD. Allocated: Simulation Eleve 1 $ 500.00 USD. Remaining unpaid: $ 3270.00 USD. Next required payment: Simulation Eleve 1 - Initial 4-month payment, $ 1308.00 USD due by 01/09/2026. No overdue balance remains in this allocation preview.\n\nVeuillez conserver ce message avec votre reçu EduPay.",
+        "status": "SIMULATED",
+        "createdAt": "2026-06-10T23:14:53.548Z"
+      }
+    ]
+  }
+}
