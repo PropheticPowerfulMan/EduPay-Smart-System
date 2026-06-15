@@ -1402,6 +1402,10 @@ function getDemoEmployeeObligations() {
   return reconciled;
 }
 
+function saveDemoEmployeeObligations(obligations: DemoEmployeeObligation[]) {
+  writeJson(DEMO_EMPLOYEE_OBLIGATIONS_KEY, obligations);
+}
+
 function getDemoAccountingEntries() {
   const expenseEntries = getDemoExpenseItems()
     .filter((expense) => expense.status === "APPROVED")
@@ -2115,6 +2119,116 @@ async function demoApi<T>(path: string, init?: RequestInit): Promise<T> {
       const matchesPeriod = timestamps.some((value) => value >= from && value <= to);
       return matchesEmployee && matchesText && matchesPeriod;
     }) as T;
+  }
+  if (normalizedPath === "/api/expenses/employee-finance/obligations" && method === "POST") {
+    const profiles = getDemoSalaryProfiles();
+    const profile = profiles.find((item) => item.id === String(body.salaryProfileId));
+    if (!profile) throw new Error("Profil salarial introuvable.");
+    const amount = roundAmount(Number(body.principalAmount ?? 0));
+    const installmentAmount = roundAmount(Number(body.installmentAmount ?? amount));
+    const createdAt = new Date().toISOString();
+    const obligationId = `emp-obligation-${Date.now()}`;
+    const receiptNumber = `EMP-${String(body.type) === "SALARY_ADVANCE" ? "ADV" : "DEBT"}-${Date.now()}`;
+    const repayment = {
+      id: `emp-repayment-${Date.now()}`,
+      method: String(body.repaymentMethod ?? "SALARY_DEDUCTION"),
+      expectedAmount: installmentAmount,
+      paidAmount: 0,
+      currency: String(body.currency ?? profile.currency),
+      dueDate: new Date(String(body.dueDate ?? createdAt)).toISOString(),
+      paidAt: null,
+      status: "SCHEDULED"
+    };
+    const obligation = {
+      id: obligationId,
+      salaryProfileId: profile.id,
+      type: String(body.type ?? "SALARY_ADVANCE"),
+      title: String(body.title ?? "Opération employé"),
+      principalAmount: amount,
+      amountPaid: 0,
+      balance: amount,
+      currency: String(body.currency ?? profile.currency),
+      repaymentMethod: String(body.repaymentMethod ?? "SALARY_DEDUCTION"),
+      installmentAmount,
+      startDate: new Date(String(body.startDate ?? createdAt)).toISOString(),
+      dueDate: new Date(String(body.dueDate ?? createdAt)).toISOString(),
+      status: "ACTIVE",
+      riskLevel: "LOW",
+      riskScore: 12,
+      notes: String(body.notes ?? ""),
+      salaryProfile: profile,
+      repayments: [repayment],
+      createdAt,
+      receipt: { receiptNumber }
+    };
+    saveDemoEmployeeObligations([obligation, ...getDemoEmployeeObligations()]);
+    const content = [
+      `Bonjour ${profile.fullName},`,
+      `${obligation.type === "SALARY_ADVANCE" ? "Avance sur salaire" : "Dette employé"}: ${obligation.title}`,
+      `Montant: ${amount.toFixed(2)} ${obligation.currency}`,
+      `Reçu: ${receiptNumber}`,
+      "Ce message est aussi disponible dans votre compte EduPay."
+    ].join("\n");
+    const messages = [
+      { id: `employee-message-${Date.now()}-dashboard`, salaryProfileId: profile.id, channel: "DASHBOARD" as const, subject: "Opération employé enregistrée", content, status: "VISIBLE", createdAt },
+      { id: `employee-message-${Date.now()}-email`, salaryProfileId: profile.id, channel: "EMAIL" as const, subject: "Opération employé enregistrée", content, status: profile.contactEmail ? "SIMULATED" : "SKIPPED:NO_EMAIL", createdAt },
+      { id: `employee-message-${Date.now()}-sms`, salaryProfileId: profile.id, channel: "SMS" as const, subject: "Opération employé enregistrée", content, status: profile.contactPhone ? "SIMULATED" : "SKIPPED:NO_PHONE", createdAt }
+    ];
+    saveDemoEmployeeMessages([...messages, ...getDemoEmployeeMessages()]);
+    return { ...obligation, notificationStatus: messages.map((message) => ({ channel: message.channel, status: message.status })) } as T;
+  }
+  if (normalizedPath.startsWith("/api/expenses/employee-finance/repayments/") && normalizedPath.endsWith("/pay") && method === "POST") {
+    const repaymentPathParts = normalizedPath.split("/");
+    const repaymentId = repaymentPathParts[repaymentPathParts.length - 2];
+    const obligations = getDemoEmployeeObligations();
+    const obligation = obligations.find((item) => item.repayments.some((repayment) => repayment.id === repaymentId));
+    if (!obligation || !repaymentId) throw new Error("Échéance de remboursement introuvable.");
+    const profile = getDemoSalaryProfiles().find((item) => item.id === obligation.salaryProfileId) ?? obligation.salaryProfile;
+    const amount = roundAmount(Number(body.paidAmount ?? 0));
+    const receiptNumber = `EMP-PAY-${Date.now()}`;
+    let updatedRepayment: DemoEmployeeRepayment | null = null;
+    const updatedObligations = obligations.map((item) => {
+      if (item.id !== obligation.id) return item;
+      const repayments = item.repayments.map((repayment) => {
+        if (repayment.id !== repaymentId) return repayment;
+        const nextPaid = roundAmount(Number(repayment.paidAmount || 0) + amount);
+        updatedRepayment = {
+          ...repayment,
+          paidAmount: nextPaid,
+          paidAt: new Date().toISOString(),
+          status: nextPaid >= repayment.expectedAmount ? "PAID" : "PARTIALLY_PAID",
+          reference: String(body.reference ?? ""),
+          notes: String(body.notes ?? "")
+        };
+        return updatedRepayment;
+      });
+      const balance = roundAmount(Math.max(Number(item.balance || 0) - amount, 0));
+      return {
+        ...item,
+        amountPaid: roundAmount(Number(item.amountPaid || 0) + amount),
+        balance,
+        status: balance <= 0 ? "PAID" : item.status,
+        repayments
+      };
+    });
+    saveDemoEmployeeObligations(updatedObligations);
+    const content = [
+      `Bonjour ${profile?.fullName ?? "Employé"},`,
+      `Remboursement enregistré: ${amount.toFixed(2)} ${obligation.currency}`,
+      `Opération: ${obligation.title}`,
+      `Reçu: ${receiptNumber}`,
+      "Ce message est aussi disponible dans votre compte EduPay."
+    ].join("\n");
+    const createdAt = new Date().toISOString();
+    const messages = [
+      { id: `employee-message-${Date.now()}-dashboard`, salaryProfileId: obligation.salaryProfileId, channel: "DASHBOARD" as const, subject: "Remboursement employé enregistré", content, status: "VISIBLE", createdAt },
+      { id: `employee-message-${Date.now()}-email`, salaryProfileId: obligation.salaryProfileId, channel: "EMAIL" as const, subject: "Remboursement employé enregistré", content, status: profile?.contactEmail ? "SIMULATED" : "SKIPPED:NO_EMAIL", createdAt },
+      { id: `employee-message-${Date.now()}-sms`, salaryProfileId: obligation.salaryProfileId, channel: "SMS" as const, subject: "Remboursement employé enregistré", content, status: profile?.contactPhone ? "SIMULATED" : "SKIPPED:NO_PHONE", createdAt }
+    ];
+    saveDemoEmployeeMessages([...messages, ...getDemoEmployeeMessages()]);
+    if (!updatedRepayment) throw new Error("Échéance de remboursement introuvable.");
+    const repaymentResult: DemoEmployeeRepayment = updatedRepayment;
+    return { ...repaymentResult, receipt: { receiptNumber }, notificationStatus: messages.map((message) => ({ channel: message.channel, status: message.status })) } as T;
   }
   if (normalizedPath.startsWith("/api/expenses/employee-finance/snapshot") && method === "GET") {
     const url = new URL(`http://local${normalizedPath}`);

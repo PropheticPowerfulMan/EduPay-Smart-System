@@ -110,6 +110,41 @@ type SalaryProfile = {
   isActive: boolean;
 };
 
+type EmployeeRepayment = {
+  id: string;
+  method: string;
+  expectedAmount: number;
+  paidAmount: number;
+  currency: string;
+  dueDate: string;
+  paidAt?: string | null;
+  status: string;
+  reference?: string | null;
+  notes?: string | null;
+};
+
+type EmployeeObligation = {
+  id: string;
+  salaryProfileId: string;
+  type: string;
+  title: string;
+  principalAmount: number;
+  amountPaid: number;
+  balance: number;
+  currency: string;
+  repaymentMethod: string;
+  installmentAmount: number;
+  startDate: string;
+  dueDate: string;
+  status: string;
+  riskLevel: string;
+  riskScore: number;
+  notes?: string | null;
+  receipt?: { receiptNumber: string; fileUrl?: string; mimeType?: string } | null;
+  salaryProfile?: Pick<SalaryProfile, "id" | "employeeCode" | "fullName" | "department" | "position"> | null;
+  repayments: EmployeeRepayment[];
+};
+
 type PayrollRun = {
   id: string;
   title: string;
@@ -253,6 +288,28 @@ type PayrollFormState = {
   notes: string;
 };
 
+type EmployeeObligationFormState = {
+  salaryProfileId: string;
+  type: string;
+  title: string;
+  principalAmount: string;
+  currency: string;
+  disbursementMethod: string;
+  repaymentMethod: string;
+  installmentAmount: string;
+  startDate: string;
+  dueDate: string;
+  notes: string;
+};
+
+type EmployeeRepaymentFormState = {
+  repaymentId: string;
+  paidAmount: string;
+  paymentMethod: string;
+  reference: string;
+  notes: string;
+};
+
 const EMPTY_EXPENSE_OVERVIEW: ExpenseOverview = {
   expenses: {
     totalExpenses: 0,
@@ -290,7 +347,7 @@ const PERIOD_FILTERS = [
   { value: "CUSTOM", label: "Intervalle precis" }
 ];
 type OperationTab = "expenses" | "budgets" | "payroll" | "accounting" | "cashflow" | "documents";
-type OperationSubDialog = "expense-create" | "vendor-create" | "vendor-registry" | "budget-create" | "salary-profile-create" | "payroll-run-create";
+type OperationSubDialog = "expense-create" | "vendor-create" | "vendor-registry" | "budget-create" | "salary-profile-create" | "payroll-run-create" | "employee-advance-create" | "employee-debt-create" | "employee-repayment-create";
 
 const EMPTY_EXPENSE_FORM: ExpenseFormState = {
   title: "",
@@ -346,6 +403,28 @@ const EMPTY_PAYROLL_FORM: PayrollFormState = {
   title: "",
   department: "",
   frequency: "MONTHLY",
+  notes: ""
+};
+
+const EMPTY_EMPLOYEE_OBLIGATION_FORM: EmployeeObligationFormState = {
+  salaryProfileId: "",
+  type: "SALARY_ADVANCE",
+  title: "",
+  principalAmount: "",
+  currency: "USD",
+  disbursementMethod: "CASH",
+  repaymentMethod: "SALARY_DEDUCTION",
+  installmentAmount: "",
+  startDate: new Date().toISOString().slice(0, 10),
+  dueDate: "",
+  notes: ""
+};
+
+const EMPTY_EMPLOYEE_REPAYMENT_FORM: EmployeeRepaymentFormState = {
+  repaymentId: "",
+  paidAmount: "",
+  paymentMethod: "CASH",
+  reference: "",
   notes: ""
 };
 
@@ -599,6 +678,7 @@ export function FinancialOperationsPage() {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [salaryProfiles, setSalaryProfiles] = useState<SalaryProfile[]>([]);
+  const [employeeObligations, setEmployeeObligations] = useState<EmployeeObligation[]>([]);
   const [payrollRuns, setPayrollRuns] = useState<PayrollRun[]>([]);
   const [accountingEntries, setAccountingEntries] = useState<AccountingEntry[]>([]);
   const [cashflowEntries, setCashflowEntries] = useState<CashflowEntry[]>([]);
@@ -630,6 +710,8 @@ export function FinancialOperationsPage() {
   const [budgetForm, setBudgetForm] = useState<BudgetFormState>(EMPTY_BUDGET_FORM);
   const [salaryForm, setSalaryForm] = useState<SalaryFormState>(EMPTY_SALARY_FORM);
   const [payrollForm, setPayrollForm] = useState<PayrollFormState>(EMPTY_PAYROLL_FORM);
+  const [employeeObligationForm, setEmployeeObligationForm] = useState<EmployeeObligationFormState>(EMPTY_EMPLOYEE_OBLIGATION_FORM);
+  const [employeeRepaymentForm, setEmployeeRepaymentForm] = useState<EmployeeRepaymentFormState>(EMPTY_EMPLOYEE_REPAYMENT_FORM);
   const availableCash = overview?.cashflow.availableCash ?? 0;
   const safeOverview = overview ?? EMPTY_EXPENSE_OVERVIEW;
 
@@ -641,18 +723,20 @@ export function FinancialOperationsPage() {
       api<Budget[]>("/api/expenses/budgets"),
       api<Expense[]>("/api/expenses"),
       api<SalaryProfile[]>("/api/expenses/payroll/profiles"),
+      api<EmployeeObligation[]>("/api/expenses/employee-finance/obligations"),
       api<PayrollRun[]>("/api/expenses/payroll/runs"),
       api<AccountingEntry[]>("/api/expenses/accounting-entries"),
       api<CashflowEntry[]>("/api/expenses/cashflow-entries"),
       api<ExpenseOverview>("/api/expenses/overview")
     ])
-      .then(([nextCategories, nextVendors, nextBudgets, nextExpenses, nextSalaryProfiles, nextPayrollRuns, nextAccountingEntries, nextCashflowEntries, nextOverview]) => {
+      .then(([nextCategories, nextVendors, nextBudgets, nextExpenses, nextSalaryProfiles, nextEmployeeObligations, nextPayrollRuns, nextAccountingEntries, nextCashflowEntries, nextOverview]) => {
         if (!active) return;
         setCategories(nextCategories);
         setVendors(nextVendors);
         setBudgets(nextBudgets);
         setExpenses(nextExpenses);
         setSalaryProfiles(nextSalaryProfiles);
+        setEmployeeObligations(nextEmployeeObligations);
         setPayrollRuns(nextPayrollRuns);
         setAccountingEntries(nextAccountingEntries);
         setCashflowEntries(nextCashflowEntries);
@@ -879,6 +963,29 @@ export function FinancialOperationsPage() {
   }, [vendorSearch, vendorUsage, vendors]);
   const selectedVendor = vendors.find((vendor) => vendor.id === selectedVendorId) ?? null;
 
+  const activeEmployeeObligations = useMemo(
+    () => employeeObligations.filter((obligation) => !["PAID", "CANCELLED", "WRITTEN_OFF"].includes(obligation.status)),
+    [employeeObligations]
+  );
+
+  const openEmployeeRepayments = useMemo(() => {
+    return activeEmployeeObligations.flatMap((obligation) =>
+      (obligation.repayments ?? [])
+        .filter((repayment) => repayment.status !== "PAID")
+        .map((repayment) => ({ obligation, repayment }))
+    );
+  }, [activeEmployeeObligations]);
+
+  const employeeFinanceTotals = useMemo(() => {
+    return activeEmployeeObligations.reduce((acc, obligation) => {
+      const balance = Number(obligation.balance || 0);
+      acc.totalBalance += balance;
+      if (obligation.type === "SALARY_ADVANCE") acc.advances += balance;
+      if (obligation.type === "SCHOOL_DEBT" || obligation.type === "OTHER_DEBT") acc.debts += balance;
+      return acc;
+    }, { totalBalance: 0, advances: 0, debts: 0 });
+  }, [activeEmployeeObligations]);
+
   const documentEntries = useMemo<DocumentEntry[]>(() => {
     return expenses
       .flatMap((expense) =>
@@ -906,6 +1013,35 @@ export function FinancialOperationsPage() {
     ]);
     setAccountingEntries(nextAccountingEntries);
     setCashflowEntries(nextCashflowEntries);
+  }
+
+  async function refreshEmployeeObligations() {
+    const nextObligations = await api<EmployeeObligation[]>("/api/expenses/employee-finance/obligations");
+    setEmployeeObligations(nextObligations);
+  }
+
+  function openEmployeeObligationDialog(type: "SALARY_ADVANCE" | "SCHOOL_DEBT" | "OTHER_DEBT") {
+    const firstProfile = salaryProfiles[0];
+    setEmployeeObligationForm({
+      ...EMPTY_EMPLOYEE_OBLIGATION_FORM,
+      salaryProfileId: firstProfile?.id ?? "",
+      type,
+      title: type === "SALARY_ADVANCE" ? "Avance sur salaire" : type === "SCHOOL_DEBT" ? "Dette envers l'école" : "Dette employé",
+      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+      repaymentMethod: type === "SALARY_ADVANCE" ? "SALARY_DEDUCTION" : "EXTERNAL_PAYMENT"
+    });
+    setActiveSubDialog(type === "SALARY_ADVANCE" ? "employee-advance-create" : "employee-debt-create");
+  }
+
+  function openEmployeeRepaymentDialog() {
+    const firstOpenRepayment = openEmployeeRepayments[0];
+    setEmployeeRepaymentForm({
+      ...EMPTY_EMPLOYEE_REPAYMENT_FORM,
+      repaymentId: firstOpenRepayment?.repayment.id ?? "",
+      paidAmount: firstOpenRepayment ? String(Math.max(Number(firstOpenRepayment.repayment.expectedAmount || 0) - Number(firstOpenRepayment.repayment.paidAmount || 0), 0)) : "",
+      reference: `EMP-PAY-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}`
+    });
+    setActiveSubDialog("employee-repayment-create");
   }
 
   function printHtmlDocument(html: string) {
@@ -1922,6 +2058,69 @@ export function FinancialOperationsPage() {
     }
   }
 
+  async function handleCreateEmployeeObligation(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setActionError(null);
+    setSuccess(null);
+    setSubmittingKey("employee-obligation");
+    try {
+      const created = await api<EmployeeObligation>("/api/expenses/employee-finance/obligations", {
+        method: "POST",
+        body: JSON.stringify({
+          salaryProfileId: employeeObligationForm.salaryProfileId,
+          type: employeeObligationForm.type,
+          title: employeeObligationForm.title,
+          principalAmount: Number(employeeObligationForm.principalAmount || 0),
+          currency: employeeObligationForm.currency || "USD",
+          disbursementMethod: employeeObligationForm.disbursementMethod,
+          repaymentMethod: employeeObligationForm.repaymentMethod,
+          installmentAmount: Number(employeeObligationForm.installmentAmount || employeeObligationForm.principalAmount || 0),
+          startDate: employeeObligationForm.startDate,
+          dueDate: employeeObligationForm.dueDate,
+          notes: employeeObligationForm.notes
+        })
+      });
+      setEmployeeObligations((current) => [created, ...current]);
+      setEmployeeObligationForm(EMPTY_EMPLOYEE_OBLIGATION_FORM);
+      setActiveSubDialog(null);
+      setSuccess(`Opération employé enregistrée. Reçu : ${created.receipt?.receiptNumber ?? "généré"}.`);
+      await refreshOverview();
+      await refreshLedgers();
+    } catch (submitError) {
+      setActionError(submitError instanceof Error ? submitError.message : "Impossible d'enregistrer l'opération employé.");
+    } finally {
+      setSubmittingKey(null);
+    }
+  }
+
+  async function handleRecordEmployeeRepayment(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setActionError(null);
+    setSuccess(null);
+    setSubmittingKey("employee-repayment");
+    try {
+      const updated = await api<EmployeeRepayment & { receipt?: { receiptNumber: string } | null }>(`/api/expenses/employee-finance/repayments/${employeeRepaymentForm.repaymentId}/pay`, {
+        method: "POST",
+        body: JSON.stringify({
+          paidAmount: Number(employeeRepaymentForm.paidAmount || 0),
+          paymentMethod: employeeRepaymentForm.paymentMethod,
+          reference: employeeRepaymentForm.reference,
+          notes: employeeRepaymentForm.notes
+        })
+      });
+      await refreshEmployeeObligations();
+      setEmployeeRepaymentForm(EMPTY_EMPLOYEE_REPAYMENT_FORM);
+      setActiveSubDialog(null);
+      setSuccess(`Remboursement enregistré. Reçu : ${updated.receipt?.receiptNumber ?? "généré"}.`);
+      await refreshOverview();
+      await refreshLedgers();
+    } catch (submitError) {
+      setActionError(submitError instanceof Error ? submitError.message : "Impossible d'enregistrer le remboursement.");
+    } finally {
+      setSubmittingKey(null);
+    }
+  }
+
   if (error && !overview) {
     return (
       <div className="flex min-h-[65vh] items-center justify-center px-4">
@@ -2597,6 +2796,30 @@ export function FinancialOperationsPage() {
                     tone="border-emerald-300/25 bg-emerald-500/10 text-emerald-100"
                     onClick={() => setActiveSubDialog("payroll-run-create")}
                   />
+                  <ActionNodeCard
+                    title="Avance sur salaire"
+                    subtitle="Décaisser une avance à un employé et générer le reçu."
+                    detail={currency.format(employeeFinanceTotals.advances)}
+                    icon={WalletCards}
+                    tone="border-cyan-300/25 bg-cyan-500/10 text-cyan-100"
+                    onClick={() => openEmployeeObligationDialog("SALARY_ADVANCE")}
+                  />
+                  <ActionNodeCard
+                    title="Dette employé"
+                    subtitle="Enregistrer une dette ou une obligation envers l'école."
+                    detail={currency.format(employeeFinanceTotals.debts)}
+                    icon={FilePlus2}
+                    tone="border-amber-300/25 bg-amber-500/10 text-amber-100"
+                    onClick={() => openEmployeeObligationDialog("SCHOOL_DEBT")}
+                  />
+                  <ActionNodeCard
+                    title="Remboursement"
+                    subtitle="Encaisser une échéance et produire un reçu de paiement."
+                    detail={`${openEmployeeRepayments.length} échéance(s) ouverte(s)`}
+                    icon={ReceiptText}
+                    tone="border-violet-300/25 bg-violet-500/10 text-violet-100"
+                    onClick={openEmployeeRepaymentDialog}
+                  />
                 </div>
               </SectionCard>
             )}
@@ -2617,6 +2840,32 @@ export function FinancialOperationsPage() {
                     </div>
                   </div>
                 ))}
+              </div>
+            </SectionCard>
+            <SectionCard title="Finance employé" subtitle="Avances, dettes, remboursements et reçus liés à la paie.">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <InfoPill label="Solde ouvert" value={currency.format(employeeFinanceTotals.totalBalance)} />
+                <InfoPill label="Avances" value={currency.format(employeeFinanceTotals.advances)} />
+                <InfoPill label="Dettes" value={currency.format(employeeFinanceTotals.debts)} />
+              </div>
+              <div className="mt-4 space-y-3">
+                {employeeObligations.slice(0, 5).map((obligation) => (
+                  <div key={obligation.id} className="rounded-2xl border border-white/10 bg-slate-950/40 p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-white">{obligation.title}</p>
+                        <p className="mt-1 text-xs text-ink-dim">
+                          {obligation.salaryProfile?.fullName ?? salaryProfiles.find((profile) => profile.id === obligation.salaryProfileId)?.fullName ?? "Employé"} • {obligation.type} • {obligation.status}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-mono text-sm font-bold text-white">{currency.format(Number(obligation.balance || 0))}</p>
+                        <p className="text-xs text-ink-dim">{obligation.receipt?.receiptNumber ?? "Reçu disponible après création"}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {!employeeObligations.length && <p className="text-sm text-ink-dim">Aucune avance, dette ou échéance employé n'est encore enregistrée.</p>}
               </div>
             </SectionCard>
           </div>
@@ -2762,6 +3011,110 @@ export function FinancialOperationsPage() {
                 <button type="submit" disabled={submittingKey === "payroll"} className="rounded-xl border border-brand-500/30 bg-brand-500/10 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-500/20 disabled:opacity-60">
                   Générer la paie
                 </button>
+              </form>
+            </OperationsSubDialog>
+          )}
+          {(activeSubDialog === "employee-advance-create" || activeSubDialog === "employee-debt-create") && canWrite && (
+            <OperationsSubDialog
+              title={activeSubDialog === "employee-advance-create" ? "Avance sur salaire" : "Dette employé"}
+              subtitle="Cette opération crée une écriture comptable, une ligne de trésorerie et un reçu."
+              onClose={() => setActiveSubDialog(null)}
+            >
+              <form className="grid gap-5" onSubmit={handleCreateEmployeeObligation}>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                    Employé
+                    <select className="input" value={employeeObligationForm.salaryProfileId} onChange={(event) => setEmployeeObligationForm((current) => ({ ...current, salaryProfileId: event.target.value }))} required>
+                      <option value="">Sélectionner un profil salarial</option>
+                      {salaryProfiles.map((profile) => (
+                        <option key={profile.id} value={profile.id}>{profile.fullName} - {profile.employeeCode}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                    Type
+                    <select className="input" value={employeeObligationForm.type} onChange={(event) => setEmployeeObligationForm((current) => ({ ...current, type: event.target.value }))}>
+                      <option value="SALARY_ADVANCE">Avance sur salaire</option>
+                      <option value="SCHOOL_DEBT">Dette envers l'école</option>
+                      <option value="OTHER_DEBT">Autre dette</option>
+                    </select>
+                  </label>
+                </div>
+
+                <input className="input" value={employeeObligationForm.title} onChange={(event) => setEmployeeObligationForm((current) => ({ ...current, title: event.target.value }))} placeholder="Titre de l'opération" required />
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <input className="input" type="number" min="0" step="0.01" value={employeeObligationForm.principalAmount} onChange={(event) => setEmployeeObligationForm((current) => ({ ...current, principalAmount: event.target.value }))} placeholder="Montant" required />
+                  <input className="input" type="number" min="0" step="0.01" value={employeeObligationForm.installmentAmount} onChange={(event) => setEmployeeObligationForm((current) => ({ ...current, installmentAmount: event.target.value }))} placeholder="Échéance" required />
+                  <select className="input" value={employeeObligationForm.disbursementMethod} onChange={(event) => setEmployeeObligationForm((current) => ({ ...current, disbursementMethod: event.target.value }))}>
+                    {PAYMENT_METHODS.map((method) => <option key={method} value={method}>{method}</option>)}
+                  </select>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <select className="input" value={employeeObligationForm.repaymentMethod} onChange={(event) => setEmployeeObligationForm((current) => ({ ...current, repaymentMethod: event.target.value }))}>
+                    <option value="SALARY_DEDUCTION">Déduction sur salaire</option>
+                    <option value="EXTERNAL_PAYMENT">Paiement hors salaire</option>
+                    <option value="MIXED">Mixte</option>
+                  </select>
+                  <input className="input" type="date" value={employeeObligationForm.startDate} onChange={(event) => setEmployeeObligationForm((current) => ({ ...current, startDate: event.target.value }))} required />
+                  <input className="input" type="date" value={employeeObligationForm.dueDate} onChange={(event) => setEmployeeObligationForm((current) => ({ ...current, dueDate: event.target.value }))} required />
+                </div>
+
+                <textarea className="input min-h-24" value={employeeObligationForm.notes} onChange={(event) => setEmployeeObligationForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes de validation, motif ou référence interne" />
+
+                <div className="flex flex-wrap justify-end gap-3">
+                  <button type="button" onClick={() => setActiveSubDialog(null)} className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white hover:border-brand-300/30 hover:bg-brand-500/10">
+                    Annuler
+                  </button>
+                  <button type="submit" disabled={submittingKey === "employee-obligation"} className="btn-primary justify-center px-5 py-3 text-sm font-semibold disabled:opacity-60">
+                    Enregistrer et générer le reçu
+                  </button>
+                </div>
+              </form>
+            </OperationsSubDialog>
+          )}
+
+          {activeSubDialog === "employee-repayment-create" && canWrite && (
+            <OperationsSubDialog title="Remboursement employé" subtitle="Encaisser une échéance ouverte et générer le reçu de paiement." onClose={() => setActiveSubDialog(null)}>
+              <form className="grid gap-5" onSubmit={handleRecordEmployeeRepayment}>
+                <label className="grid gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-ink-dim">
+                  Échéance à encaisser
+                  <select className="input" value={employeeRepaymentForm.repaymentId} onChange={(event) => {
+                    const selected = openEmployeeRepayments.find((entry) => entry.repayment.id === event.target.value);
+                    setEmployeeRepaymentForm((current) => ({
+                      ...current,
+                      repaymentId: event.target.value,
+                      paidAmount: selected ? String(Math.max(Number(selected.repayment.expectedAmount || 0) - Number(selected.repayment.paidAmount || 0), 0)) : current.paidAmount
+                    }));
+                  }} required>
+                    <option value="">Sélectionner une échéance</option>
+                    {openEmployeeRepayments.map(({ obligation, repayment }) => (
+                      <option key={repayment.id} value={repayment.id}>
+                        {(obligation.salaryProfile?.fullName ?? salaryProfiles.find((profile) => profile.id === obligation.salaryProfileId)?.fullName ?? "Employé")} - {obligation.title} - {currency.format(Math.max(Number(repayment.expectedAmount || 0) - Number(repayment.paidAmount || 0), 0))}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <input className="input" type="number" min="0" step="0.01" value={employeeRepaymentForm.paidAmount} onChange={(event) => setEmployeeRepaymentForm((current) => ({ ...current, paidAmount: event.target.value }))} placeholder="Montant payé" required />
+                  <select className="input" value={employeeRepaymentForm.paymentMethod} onChange={(event) => setEmployeeRepaymentForm((current) => ({ ...current, paymentMethod: event.target.value }))}>
+                    {PAYMENT_METHODS.map((method) => <option key={method} value={method}>{method}</option>)}
+                  </select>
+                  <input className="input" value={employeeRepaymentForm.reference} onChange={(event) => setEmployeeRepaymentForm((current) => ({ ...current, reference: event.target.value }))} placeholder="Référence paiement" />
+                </div>
+
+                <textarea className="input min-h-24" value={employeeRepaymentForm.notes} onChange={(event) => setEmployeeRepaymentForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Notes de caisse ou observation" />
+
+                <div className="flex flex-wrap justify-end gap-3">
+                  <button type="button" onClick={() => setActiveSubDialog(null)} className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm font-semibold text-white hover:border-brand-300/30 hover:bg-brand-500/10">
+                    Annuler
+                  </button>
+                  <button type="submit" disabled={submittingKey === "employee-repayment"} className="btn-primary justify-center px-5 py-3 text-sm font-semibold disabled:opacity-60">
+                    Encaisser et générer le reçu
+                  </button>
+                </div>
               </form>
             </OperationsSubDialog>
           )}

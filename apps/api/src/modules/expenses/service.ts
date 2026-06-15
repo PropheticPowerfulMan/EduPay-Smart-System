@@ -1060,6 +1060,72 @@ function buildEmployeeFinanceReceipt(input: {
   };
 }
 
+async function notifyEmployeeFinanceOperation(input: {
+  schoolId: string;
+  salaryProfileId: string;
+  sentById?: string;
+  subject: string;
+  body: string;
+}) {
+  const profile = await prisma.employeeSalaryProfile.findFirst({
+    where: { id: input.salaryProfileId, schoolId: input.schoolId }
+  });
+  if (!profile) return [];
+
+  const statuses: Array<{ channel: NotificationChannel; status: string; target?: string | null }> = [];
+  await prisma.employeeCommunicationLog.create({
+    data: {
+      schoolId: input.schoolId,
+      salaryProfileId: profile.id,
+      sentById: input.sentById,
+      channel: NotificationChannel.DASHBOARD,
+      subject: input.subject,
+      content: input.body,
+      status: "VISIBLE"
+    }
+  });
+  statuses.push({ channel: NotificationChannel.DASHBOARD, status: "VISIBLE" });
+
+  if (profile.contactEmail) {
+    const status = await sendEmail({
+      to: profile.contactEmail,
+      subject: input.subject,
+      text: input.body
+    });
+    await prisma.employeeCommunicationLog.create({
+      data: {
+        schoolId: input.schoolId,
+        salaryProfileId: profile.id,
+        sentById: input.sentById,
+        channel: NotificationChannel.EMAIL,
+        subject: input.subject,
+        content: input.body,
+        status
+      }
+    });
+    statuses.push({ channel: NotificationChannel.EMAIL, status, target: profile.contactEmail });
+  }
+
+  if (profile.contactPhone) {
+    const smsText = input.body.length > 300 ? `${input.body.slice(0, 297)}...` : input.body;
+    const status = await sendSms({ to: profile.contactPhone, text: smsText });
+    await prisma.employeeCommunicationLog.create({
+      data: {
+        schoolId: input.schoolId,
+        salaryProfileId: profile.id,
+        sentById: input.sentById,
+        channel: NotificationChannel.SMS,
+        subject: input.subject,
+        content: smsText,
+        status
+      }
+    });
+    statuses.push({ channel: NotificationChannel.SMS, status, target: profile.contactPhone });
+  }
+
+  return statuses;
+}
+
 export async function listEmployeeFinancialObligations(input: {
   schoolId: string;
   salaryProfileId?: string;
@@ -1128,7 +1194,7 @@ export async function createEmployeeFinancialObligation(input: {
   notes?: string;
   disbursementMethod?: PaymentMethod;
 }) {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const profile = await tx.employeeSalaryProfile.findFirst({ where: { id: input.salaryProfileId, schoolId: input.schoolId } });
     if (!profile) throw new Error("Profil salarial employe introuvable.");
     const principalAmount = roundCurrency(input.principalAmount);
@@ -1273,6 +1339,22 @@ export async function createEmployeeFinancialObligation(input: {
     });
     return { ...savedObligation, receipt };
   });
+  const operationLabel = input.type === EmployeeObligationType.SALARY_ADVANCE ? "Avance sur salaire" : "Dette employé";
+  const notificationStatus = await notifyEmployeeFinanceOperation({
+    schoolId: input.schoolId,
+    salaryProfileId: input.salaryProfileId,
+    sentById: input.createdById,
+    subject: `${operationLabel} enregistrée dans EduPay`,
+    body: [
+      `Bonjour ${result.salaryProfile.fullName},`,
+      `${operationLabel}: ${input.title}`,
+      `Montant: ${roundCurrency(input.principalAmount).toFixed(2)} ${result.currency}`,
+      `Échéance: ${dayjs(input.dueDate).format("DD/MM/YYYY")}`,
+      `Reçu: ${result.receipt.receiptNumber}`,
+      "Ce message est aussi disponible dans votre compte EduPay."
+    ].join("\n")
+  });
+  return { ...result, notificationStatus };
 }
 
 export async function recordEmployeeRepayment(input: {
@@ -1285,7 +1367,7 @@ export async function recordEmployeeRepayment(input: {
   notes?: string;
   paymentMethod?: PaymentMethod;
 }) {
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const repayment = await tx.employeeRepayment.findFirst({
       where: { id: input.repaymentId, schoolId: input.schoolId },
       include: { obligation: true }
@@ -1391,6 +1473,22 @@ export async function recordEmployeeRepayment(input: {
 
     return { ...updatedRepayment, receipt };
   });
+  const notificationStatus = await notifyEmployeeFinanceOperation({
+    schoolId: input.schoolId,
+    salaryProfileId: result.salaryProfileId,
+    sentById: input.recordedById,
+    subject: "Remboursement employé enregistré dans EduPay",
+    body: [
+      "Bonjour,",
+      `Un remboursement a été enregistré pour votre dossier employé.`,
+      `Montant payé: ${roundCurrency(input.paidAmount).toFixed(2)} ${result.currency}`,
+      `Date: ${dayjs(input.paidAt ? new Date(input.paidAt) : new Date()).format("DD/MM/YYYY HH:mm")}`,
+      `Reçu: ${result.receipt.receiptNumber}`,
+      input.reference ? `Référence: ${input.reference}` : "",
+      "Ce message est aussi disponible dans votre compte EduPay."
+    ].filter(Boolean).join("\n")
+  });
+  return { ...result, notificationStatus };
 }
 
 export async function getEmployeeFinancialSnapshot(input: {
